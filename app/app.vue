@@ -37,7 +37,7 @@ useSeoMeta({
           :to="`https://github.com/${site.repo}`"
           target="_blank"
           icon="i-simple-icons-github"
-          aria-label="skillspector on GitHub"
+          aria-label="skillspector-web on GitHub"
           color="neutral"
           variant="ghost"
         />
@@ -52,10 +52,10 @@ useSeoMeta({
       <template #left>
         <p class="text-sm text-muted">
           Runs <a
-            :href="`https://github.com/${site.repo}`"
+            :href="`https://github.com/${site.scannerRepo}`"
             target="_blank"
             class="underline"
-          >{{ site.repo }}</a>'s own scan pipeline — nothing scanned here leaves this server.
+          >{{ site.scannerRepo }}</a>'s own scan pipeline — nothing scanned here leaves this server.
         </p>
       </template>
     </UFooter>
