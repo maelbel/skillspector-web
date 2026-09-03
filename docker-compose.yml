@@ -1,0 +1,43 @@
+name: skillspector-web
+services:
+  api:
+    container_name: skillspector-api
+    build:
+      context: ./backend
+      target: development
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.local
+    volumes:
+      - ./backend:/app
+    tty: true
+    networks:
+      - internal
+    # Not published — only the web service talks to it. Uncomment for local
+    # debugging (curl http://localhost:8001/health):
+    # ports:
+    #   - "8001:8000"
+
+  web:
+    container_name: skillspector-web
+    build:
+      context: .
+      target: development
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NUXT_API_BASE: http://api:8000
+      NODE_OPTIONS: "--max-old-space-size=512"
+    ports:
+      - "3005:3000"
+    volumes:
+      - ./:/app
+    tty: true
+    depends_on:
+      - api
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
