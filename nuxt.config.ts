@@ -1,4 +1,3 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
@@ -13,8 +12,6 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
-    // Server-only: base URL of the FastAPI backend. Defaults to the
-    // in-compose service name; override for local dev without Docker.
     apiBase: process.env.NUXT_API_BASE || 'http://localhost:8000'
   },
 
@@ -22,8 +19,6 @@ export default defineNuxtConfig({
 
   vite: {
     server: {
-      // Vite's dev server rejects unrecognized Host headers by default; the
-      // production Docker target's plain Node server has no such check.
       allowedHosts: process.env.NUXT_ALLOWED_HOST ? [process.env.NUXT_ALLOWED_HOST] : []
     }
   },

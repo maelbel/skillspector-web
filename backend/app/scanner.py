@@ -69,7 +69,7 @@ async def _run(job: Job) -> None:
         try:
             job.result = await loop.run_in_executor(None, _invoke_graph, job.target, job.use_llm)
             job.status = JobStatus.DONE
-        except Exception as exc:  # noqa: BLE001 - surfaced to the client as the scan's error
+        except Exception as exc:  # noqa: BLE001
             job.error = str(exc)
             job.status = JobStatus.ERROR
         finally:
@@ -87,8 +87,6 @@ def _invoke_graph(target: str, use_llm: bool) -> dict[str, Any]:
         "tags": ["skillspector-web"],
         "metadata": {"input_path": target, "use_llm": use_llm},
     }
-    # The graph itself enforces a ~60s / 64MB workflow budget (state.py
-    # MAX_WORKFLOW_SECONDS), so no extra timeout wrapping is needed here.
     result = graph.invoke(state, config=config)
     report_body = result.get("report_body") or "{}"
     return json.loads(report_body)

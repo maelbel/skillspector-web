@@ -7,10 +7,6 @@ services:
       target: development
     restart: unless-stopped
     env_file:
-      # Optional: a fresh clone has no .env.local (see backend/.env.example),
-      # and the api runs fine on its defaults — static analysis only, no LLM
-      # provider — without one. Compose errors out on `docker compose up` if
-      # a *required* env_file is missing, which this isn't.
       - path: ./backend/.env.local
         required: false
     volumes:
@@ -18,10 +14,6 @@ services:
     tty: true
     networks:
       - internal
-    # Not published — only the web service talks to it. Uncomment for local
-    # debugging (curl http://localhost:8001/health):
-    # ports:
-    #   - "8001:8000"
 
   web:
     container_name: skillspector-web
