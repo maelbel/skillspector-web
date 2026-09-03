@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async () => {
   const { apiBase } = useRuntimeConfig()
 
   return await $fetch<{ status: string, skillspector_version: string, llm_available: boolean }>(
