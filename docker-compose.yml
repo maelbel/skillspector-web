@@ -7,7 +7,12 @@ services:
       target: development
     restart: unless-stopped
     env_file:
-      - ./backend/.env.local
+      # Optional: a fresh clone has no .env.local (see backend/.env.example),
+      # and the api runs fine on its defaults — static analysis only, no LLM
+      # provider — without one. Compose errors out on `docker compose up` if
+      # a *required* env_file is missing, which this isn't.
+      - path: ./backend/.env.local
+        required: false
     volumes:
       - ./backend:/app
     tty: true
