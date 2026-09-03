@@ -1,5 +1,14 @@
 export type JobStatus = 'pending' | 'running' | 'done' | 'error'
 
+export type LLMProvider = 'anthropic' | 'openai' | 'ollama'
+
+export interface LLMConfig {
+  provider: LLMProvider
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}
+
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
 export type Recommendation = 'SAFE' | 'CAUTION' | 'DO_NOT_INSTALL'

@@ -2,14 +2,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
-from app.scanner import Job, JobStatus, create_job, get_job, schedule
+from app.scanner import Job, JobStatus, LLMConfig, create_job, get_job, schedule
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
 
 class ScanRequest(BaseModel):
     target: str
-    use_llm: bool = False
+    llm: LLMConfig | None = None
 
     @field_validator("target")
     @classmethod
@@ -52,7 +52,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
 
 @router.post("", response_model=ScanQueuedResponse)
 async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
-    job = create_job(req.target, req.use_llm)
+    job = create_job(req.target, req.llm)
     schedule(job)
     return ScanQueuedResponse(id=job.id, status=job.status)
 

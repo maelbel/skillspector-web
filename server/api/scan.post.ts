@@ -1,5 +1,7 @@
+import type { LLMConfig } from '~~/shared/types/scan'
+
 export default defineEventHandler(async (event) => {
-  const { target, useLlm } = await readBody<{ target?: string, useLlm?: boolean }>(event)
+  const { target, llm } = await readBody<{ target?: string, llm?: LLMConfig }>(event)
 
   if (!target || typeof target !== 'string') {
     throw createError({ statusCode: 400, statusMessage: 'Missing "target" in request body' })
@@ -10,7 +12,17 @@ export default defineEventHandler(async (event) => {
   return await $fetch<{ id: string, status: string }>('/scan', {
     baseURL: apiBase,
     method: 'POST',
-    body: { target, use_llm: Boolean(useLlm) }
+    body: {
+      target,
+      llm: llm
+        ? {
+            provider: llm.provider,
+            api_key: llm.apiKey,
+            base_url: llm.baseUrl,
+            model: llm.model
+          }
+        : null
+    }
   }).catch((error) => {
     throw createError({
       statusCode: error?.response?.status ?? 502,
