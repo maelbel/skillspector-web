@@ -11,6 +11,7 @@ services:
         required: false
     volumes:
       - ./backend:/app
+      - claude_cli_auth:/root
     tty: true
     networks:
       - internal
@@ -38,3 +39,6 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  claude_cli_auth:

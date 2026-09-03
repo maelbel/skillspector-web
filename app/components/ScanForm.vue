@@ -1,11 +1,30 @@
 <script setup lang="ts">
 import type { LLMConfig, LLMProvider } from '~~/shared/types/scan'
 
-const PROVIDER_OPTIONS: { value: LLMProvider, label: string }[] = [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'ollama', label: 'Ollama (self-hosted)' }
-]
+const { data: health, pending: healthPending } = useFetch('/api/health')
+
+const PROVIDER_LABELS: Record<LLMProvider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama (self-hosted)',
+  claude_cli: 'Claude CLI (server login)'
+}
+
+const providerOptions = computed(() => {
+  const options: { value: LLMProvider, label: string, disabled?: boolean }[] = [
+    { value: 'anthropic', label: PROVIDER_LABELS.anthropic },
+    { value: 'openai', label: PROVIDER_LABELS.openai },
+    { value: 'ollama', label: PROVIDER_LABELS.ollama }
+  ]
+
+  if (healthPending.value) {
+    options.push({ value: 'claude_cli', label: 'Claude CLI (checking availability…)', disabled: true })
+  } else if (health.value?.claude_cli_available) {
+    options.push({ value: 'claude_cli', label: PROVIDER_LABELS.claude_cli })
+  }
+
+  return options
+})
 
 const target = ref('')
 const useLlm = ref(false)
@@ -16,7 +35,7 @@ const model = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
 
-const needsApiKey = computed(() => provider.value !== 'ollama')
+const needsApiKey = computed(() => provider.value !== 'ollama' && provider.value !== 'claude_cli')
 const canSubmit = computed(() => {
   if (!target.value.trim()) return false
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
@@ -31,6 +50,12 @@ const baseUrlPlaceholder = computed(() => {
       return 'https://api.openai.com/v1 (or an OpenAI-compatible endpoint)'
     default:
       return 'https://api.anthropic.com'
+  }
+})
+
+watch(provider, (value) => {
+  if (value === 'claude_cli' && !health.value?.claude_cli_available) {
+    provider.value = 'anthropic'
   }
 })
 
@@ -97,10 +122,11 @@ async function submit() {
         <UFormField label="Provider">
           <USelect
             v-model="provider"
-            :items="PROVIDER_OPTIONS"
+            :items="providerOptions"
             value-key="value"
             class="w-full"
             :disabled="submitting"
+            :loading="healthPending"
           />
         </UFormField>
 
@@ -117,8 +143,15 @@ async function submit() {
             :disabled="submitting"
           />
         </UFormField>
+        <p
+          v-else-if="provider === 'claude_cli'"
+          class="text-xs text-muted"
+        >
+          Uses this server's own Claude Code login — no key needed.
+        </p>
 
         <UFormField
+          v-if="provider !== 'claude_cli'"
           label="Base URL"
           description="Optional — override for a proxy or OpenAI-compatible endpoint."
         >
