@@ -58,3 +58,9 @@ For exposing this behind a real domain/TLS (Traefik or otherwise), see
   only if that's not desired for a given deployment.
 - `target` is restricted to `http(s)` URLs; local-path/zip-upload scanning isn't wired up (would
   need a file upload endpoint on the backend).
+
+## License
+
+[MIT](./LICENSE) for this project's own code. It depends on
+[NVIDIA/skillspector](https://github.com/NVIDIA/skillspector) (Apache-2.0) as a library, installed
+via pip — not vendored — so skillspector's license terms apply to that dependency separately.
