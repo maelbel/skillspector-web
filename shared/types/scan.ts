@@ -1,7 +1,3 @@
-// Mirrors backend/app/api/routes/scan.py's ScanStatusResponse, and — inside
-// `result` — skillspector's own `--format json` shape (nodes/report.py
-// `_format_json`). Keep in sync with whichever of those changes first.
-
 export type JobStatus = 'pending' | 'running' | 'done' | 'error'
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'

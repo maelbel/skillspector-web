@@ -6,7 +6,6 @@ node_modules/
 .env.local
 docker-compose.override.yml
 
-# Python (backend)
 backend/.venv/
 backend/__pycache__/
 backend/**/__pycache__/
