@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
     max_concurrent_scans: int = 2
     job_ttl_seconds: int = 3600
+    admin_token: str | None = None
 
 
 @lru_cache

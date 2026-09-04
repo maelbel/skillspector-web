@@ -41,10 +41,20 @@ docker compose up --build
 Serves the UI on http://localhost:3005. `api` is never published — only `web` talks to it, over
 the internal Docker network.
 
-Edit `backend/.env.local` first if you want the "use LLM analysis" toggle available (set
-`SKILLSPECTOR_PROVIDER` + the matching provider API key — see skillspector's own README). If you
-set `SKILLSPECTOR_PROVIDER=claude_cli`, note the backend image doesn't install the Claude CLI —
-static analysis still works, but the toggle will error until that's added.
+LLM-based semantic analysis is bring-your-own-key: each scan can optionally include a provider
+(Anthropic, OpenAI, or Ollama) and API key in the form, used only for that scan and never stored.
+No server-side setup is needed for this.
+
+A fourth option, Claude CLI, uses this server's own logged-in `claude` CLI session instead of a
+per-scan key — every visitor's Claude-CLI-backed scan shares that one login, there's no per-user
+isolation. It only shows up in the form once authenticated:
+
+```bash
+docker exec -it skillspector-api claude auth login
+```
+
+That's a one-time step (the login persists in the `claude_cli_auth` volume across restarts/rebuilds)
+and has to be run interactively by you — it can't be scripted into `docker-compose.yml` or CI.
 
 For exposing this behind a real domain/TLS (Traefik or otherwise), see
 [docs/REVERSE_PROXY.md](./docs/REVERSE_PROXY.md) — that config goes in a gitignored

@@ -22,6 +22,6 @@ const color = computed(() => COLORS[props.severity])
     variant="subtle"
     :size="size ?? 'sm'"
   >
-    {{ severity }}
+    <slot>{{ severity }}</slot>
   </UBadge>
 </template>

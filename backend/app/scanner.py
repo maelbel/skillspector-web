@@ -24,12 +24,15 @@ class JobStatus(StrEnum):
     ERROR = "error"
 
 
-LLMProvider = Literal["anthropic", "openai", "ollama"]
+LLMProvider = Literal["anthropic", "openai", "ollama", "claude_cli"]
 
-_PROVIDER_ENV_VARS: dict[LLMProvider, tuple[str, str | None]] = {
+_NO_API_KEY_PROVIDERS = {"ollama", "claude_cli"}
+
+_PROVIDER_ENV_VARS: dict[LLMProvider, tuple[str | None, str | None]] = {
     "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
     "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL"),
     "ollama": (None, "OLLAMA_BASE_URL"),
+    "claude_cli": (None, None),
 }
 
 
@@ -41,7 +44,7 @@ class LLMConfig(BaseModel):
 
     @model_validator(mode="after")
     def _require_key_for_hosted_providers(self) -> LLMConfig:
-        if self.provider != "ollama" and not (self.api_key and self.api_key.strip()):
+        if self.provider not in _NO_API_KEY_PROVIDERS and not (self.api_key and self.api_key.strip()):
             raise ValueError(f"{self.provider} requires an api_key")
         return self
 

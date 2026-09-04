@@ -1,6 +1,6 @@
 export type JobStatus = 'pending' | 'running' | 'done' | 'error'
 
-export type LLMProvider = 'anthropic' | 'openai' | 'ollama'
+export type LLMProvider = 'anthropic' | 'openai' | 'ollama' | 'claude_cli'
 
 export interface LLMConfig {
   provider: LLMProvider

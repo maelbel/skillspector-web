@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import type { Finding } from '~~/shared/types/scan'
+import type { Finding, Severity } from '~~/shared/types/scan'
 
 defineProps<{
   finding: Finding
 }>()
+
+const BORDER_COLOR: Record<Severity, string> = {
+  CRITICAL: 'border-l-error',
+  HIGH: 'border-l-error',
+  MEDIUM: 'border-l-warning',
+  LOW: 'border-l-primary'
+}
 </script>
 
 <template>
-  <UCard>
+  <UCard
+    class="border-l-4"
+    :class="BORDER_COLOR[finding.severity]"
+  >
     <template #header>
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -31,13 +41,15 @@ defineProps<{
       v-if="finding.remediation"
       class="mt-2 text-sm text-muted"
     >
-      <span class="font-semibold">Remediation:</span> {{ finding.remediation }}
+      <span class="font-semibold text-default">Remediation:</span> {{ finding.remediation }}
     </p>
 
-    <pre
-      v-if="finding.code_snippet"
-      class="mt-3 overflow-x-auto rounded-md bg-elevated p-3 text-xs font-mono"
-    >{{ finding.code_snippet }}</pre>
+    <div v-if="finding.code_snippet">
+      <p class="mt-3 mb-1 text-xs font-semibold text-muted uppercase tracking-wide">
+        Code
+      </p>
+      <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs font-mono">{{ finding.code_snippet }}</pre>
+    </div>
 
     <div
       v-if="finding.tags.length"

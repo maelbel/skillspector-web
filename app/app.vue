@@ -33,6 +33,15 @@ useSeoMeta({
         <UTooltip text="Toggle theme">
           <UColorModeButton />
         </UTooltip>
+        <UTooltip text="Admin">
+          <UButton
+            to="/admin"
+            icon="i-lucide-settings"
+            aria-label="Admin"
+            color="neutral"
+            variant="ghost"
+          />
+        </UTooltip>
         <UButton
           :to="`https://github.com/${site.repo}`"
           target="_blank"

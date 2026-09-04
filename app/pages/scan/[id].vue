@@ -15,6 +15,12 @@ const sortedIssues = computed(() => {
   return [...issues].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
 })
 
+const severityCounts = computed(() => {
+  const counts: Record<Severity, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }
+  for (const issue of sortedIssues.value) counts[issue.severity]++
+  return (Object.entries(counts) as [Severity, number][]).filter(([, count]) => count > 0)
+})
+
 const isWorking = computed(() => status.value?.status === 'pending' || status.value?.status === 'running')
 
 const errorMessage = computed(() => {
@@ -46,19 +52,22 @@ const errorMessage = computed(() => {
 
       <template v-else-if="isWorking || !status">
         <UCard>
-          <div class="flex items-center gap-3 py-4">
-            <UIcon
-              name="i-lucide-loader-circle"
-              class="size-5 animate-spin text-primary"
-            />
-            <div>
-              <p class="font-medium">
-                Scanning{{ status ? ` ${status.target}` : '…' }}
-              </p>
-              <p class="text-sm text-muted">
-                Static analysis usually finishes in a few seconds; can take up to ~60s.
-              </p>
+          <div class="flex flex-col gap-4 py-2">
+            <div class="flex items-center gap-3">
+              <UIcon
+                name="i-lucide-loader-circle"
+                class="size-5 animate-spin text-primary shrink-0"
+              />
+              <div>
+                <p class="font-medium">
+                  Scanning{{ status ? ` ${status.target}` : '…' }}
+                </p>
+                <p class="text-sm text-muted">
+                  Static analysis usually finishes in a few seconds; can take up to ~60s.
+                </p>
+              </div>
             </div>
+            <UProgress />
           </div>
         </UCard>
       </template>
@@ -97,9 +106,20 @@ const errorMessage = computed(() => {
         />
 
         <div v-if="sortedIssues.length">
-          <h2 class="mb-3 text-sm font-semibold text-muted uppercase tracking-wide">
-            {{ sortedIssues.length }} finding{{ sortedIssues.length === 1 ? '' : 's' }}
-          </h2>
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <h2 class="text-sm font-semibold text-muted uppercase tracking-wide">
+              {{ sortedIssues.length }} finding{{ sortedIssues.length === 1 ? '' : 's' }}
+            </h2>
+            <div class="flex gap-1.5">
+              <SeverityBadge
+                v-for="[severity, count] in severityCounts"
+                :key="severity"
+                :severity="severity"
+              >
+                {{ count }} {{ severity }}
+              </SeverityBadge>
+            </div>
+          </div>
           <div class="flex flex-col gap-3">
             <FindingCard
               v-for="issue in sortedIssues"
