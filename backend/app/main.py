@@ -10,18 +10,28 @@ if not _known_working:
     os.environ["SKILLSPECTOR_PROVIDER"] = "anthropic"
     os.environ["ANTHROPIC_API_KEY"] = "sk-placeholder-unlocks-llm-analyzer-wiring"
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 from skillspector.providers.claude_cli import ClaudeCLIProvider
 
-from app.api.routes import scan
+from app.api.routes import admin, scan
+from app.claude_login import kill_pending
 from app.core.config import get_settings
 
 settings = get_settings()
 
-app = FastAPI(title="Skillspector Web API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    kill_pending()
+
+
+app = FastAPI(title="Skillspector Web API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(scan.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")
