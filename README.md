@@ -16,17 +16,30 @@ POST /api/scan        (Nuxt) --> POST /scan        (FastAPI) --> graph.invoke(..
 GET  /api/scan/[id]    (Nuxt) --> GET  /scan/{id}    (FastAPI) --> job status + parsed report
 ```
 
+## Setup
+
+```bash
+pnpm install
+pnpm setup
+```
+
+`pnpm setup` is an interactive wizard ([@clack/prompts](https://github.com/bombshell-dev/clack))
+that writes `backend/.env.local` (CORS origins, max concurrent scans, an admin token) and then,
+depending on whether you pick Docker Compose or local processes, either brings up the containers
+or runs `uv sync` for you. Re-run it any time to regenerate `backend/.env.local`.
+
 ## Local development (no Docker)
 
 ```bash
+pnpm install
+pnpm setup   # choose "Local processes"
+
 # backend
 cd backend
-uv sync
 uv run uvicorn app.main:app --reload
 
 # frontend, in a second terminal
 cd ..
-pnpm install
 NUXT_API_BASE=http://localhost:8000 pnpm dev
 ```
 
@@ -35,6 +48,8 @@ Open http://localhost:3000.
 ## Docker
 
 ```bash
+pnpm install
+pnpm setup   # choose "Docker Compose", or answer "no" to the prompt and run the line below yourself
 docker compose up --build
 ```
 

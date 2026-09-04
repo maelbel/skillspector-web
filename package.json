@@ -9,7 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.122",
@@ -18,9 +19,11 @@
     "nuxt": "^4.5.2"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.7.0",
     "@nuxt/eslint": "^1.17.0",
     "@types/node": "^26.2.0",
     "eslint": "^10.8.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vue-tsc": "^3.3.9"
   },
