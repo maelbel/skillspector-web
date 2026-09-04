@@ -22,6 +22,7 @@ services:
       context: .
       target: development
     restart: unless-stopped
+    user: node
     environment:
       NODE_ENV: development
       NUXT_API_BASE: http://api:8000
