@@ -59,3 +59,20 @@ export interface ScanStatus {
   result: ScanReport | null
   error: string | null
 }
+
+export interface ScanSummary {
+  id: string
+  target: string
+  status: JobStatus
+  created_at: number
+  finished_at: number | null
+  error: string | null
+  risk_score: number | null
+  severity: Severity | null
+  recommendation: Recommendation | null
+}
+
+export interface ScanHistoryResponse {
+  items: ScanSummary[]
+  total: number
+}

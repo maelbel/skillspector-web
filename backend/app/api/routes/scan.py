@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
-from app.scanner import Job, JobStatus, LLMConfig, create_job, get_job, schedule
+from app.scanner import Job, JobStatus, LLMConfig, create_job, get_job, list_jobs, schedule
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -38,6 +38,23 @@ class ScanStatusResponse(BaseModel):
     error: str | None
 
 
+class ScanSummaryResponse(BaseModel):
+    id: str
+    target: str
+    status: JobStatus
+    created_at: float
+    finished_at: float | None
+    error: str | None
+    risk_score: float | None
+    severity: str | None
+    recommendation: str | None
+
+
+class ScanHistoryResponse(BaseModel):
+    items: list[ScanSummaryResponse]
+    total: int
+
+
 def _to_response(job: Job) -> ScanStatusResponse:
     return ScanStatusResponse(
         id=job.id,
@@ -57,9 +74,32 @@ async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
     return ScanQueuedResponse(id=job.id, status=job.status)
 
 
+@router.get("", response_model=ScanHistoryResponse)
+async def read_scan_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ScanHistoryResponse:
+    rows, total = list_jobs(limit, offset)
+    items = [
+        ScanSummaryResponse(
+            id=row["id"],
+            target=row["target"],
+            status=row["status"],
+            created_at=row["created_at"],
+            finished_at=row["finished_at"],
+            error=row["error"],
+            risk_score=row["risk_score"],
+            severity=row["severity"],
+            recommendation=row["recommendation"],
+        )
+        for row in rows
+    ]
+    return ScanHistoryResponse(items=items, total=total)
+
+
 @router.get("/{job_id}", response_model=ScanStatusResponse)
 async def read_scan(job_id: str) -> ScanStatusResponse:
     job = get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="scan not found (it may have expired)")
+        raise HTTPException(status_code=404, detail="scan not found")
     return _to_response(job)

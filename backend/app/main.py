@@ -21,12 +21,14 @@ from skillspector.providers.claude_cli import ClaudeCLIProvider
 from app.api.routes import admin, scan
 from app.claude_login import kill_pending
 from app.core.config import get_settings
+from app.db import init_db
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
     yield
     kill_pending()
 

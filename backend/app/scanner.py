@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 import time
 import uuid
 from collections.abc import Iterator
@@ -14,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
+from app import db
 from app.core.config import get_settings
 
 
@@ -61,21 +63,41 @@ class Job:
     error: str | None = None
 
 
-_jobs: dict[str, Job] = {}
 _tasks: set[asyncio.Task] = set()
 _semaphore = asyncio.Semaphore(get_settings().max_concurrent_scans)
 _llm_lock = asyncio.Lock()
 
 
 def create_job(target: str, llm: LLMConfig | None) -> Job:
-    _evict_expired()
     job = Job(id=uuid.uuid4().hex, target=target, llm=llm)
-    _jobs[job.id] = job
+    db.insert_scan(
+        id=job.id,
+        target=job.target,
+        status=job.status,
+        created_at=job.created_at,
+        provider=llm.provider if llm else None,
+    )
     return job
 
 
 def get_job(job_id: str) -> Job | None:
-    return _jobs.get(job_id)
+    row = db.get_scan(job_id)
+    if row is None:
+        return None
+    return Job(
+        id=row["id"],
+        target=row["target"],
+        llm=None,
+        status=JobStatus(row["status"]),
+        created_at=row["created_at"],
+        finished_at=row["finished_at"],
+        result=json.loads(row["result"]) if row["result"] else None,
+        error=row["error"],
+    )
+
+
+def list_jobs(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
+    return db.list_scans(limit, offset)
 
 
 def schedule(job: Job) -> None:
@@ -87,6 +109,7 @@ def schedule(job: Job) -> None:
 async def _run(job: Job) -> None:
     async with _semaphore:
         job.status = JobStatus.RUNNING
+        db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
         loop = asyncio.get_running_loop()
         try:
             if job.llm is not None:
@@ -102,6 +125,13 @@ async def _run(job: Job) -> None:
         finally:
             job.finished_at = time.time()
             job.llm = None
+            db.update_scan(
+                id=job.id,
+                status=job.status,
+                finished_at=job.finished_at,
+                result=job.result,
+                error=job.error,
+            )
 
 
 @contextmanager
@@ -145,15 +175,3 @@ def _invoke_graph(target: str, use_llm: bool) -> dict[str, Any]:
     result = graph.invoke(state, config=config)
     report_body = result.get("report_body") or "{}"
     return json.loads(report_body)
-
-
-def _evict_expired() -> None:
-    ttl = get_settings().job_ttl_seconds
-    now = time.time()
-    expired = [
-        job_id
-        for job_id, job in _jobs.items()
-        if job.finished_at is not None and now - job.finished_at > ttl
-    ]
-    for job_id in expired:
-        del _jobs[job_id]

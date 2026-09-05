@@ -2,11 +2,29 @@
 import type { Severity } from '~~/shared/types/scan'
 
 const route = useRoute()
+const router = useRouter()
 const id = route.params.id as string
+
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push('/')
+  }
+}
 
 const { status, error } = useScanStatus(id)
 
-useSeoMeta({ title: 'Scan result — Skillspector Web' })
+const parsedTarget = computed(() => parseScanTarget(status.value?.target ?? ''))
+const displayTitle = computed(() => {
+  const skillName = status.value?.result?.skill.name
+  if (skillName && skillName !== 'unknown') return skillName
+  return parsedTarget.value.title
+})
+
+useSeoMeta({
+  title: () => status.value ? `${displayTitle.value} — Skillspector Web` : 'Scan result — Skillspector Web'
+})
 
 const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
 
@@ -34,11 +52,11 @@ const errorMessage = computed(() => {
   <UContainer class="py-16">
     <div class="max-w-2xl mx-auto flex flex-col gap-6">
       <UButton
-        to="/"
         icon="i-lucide-arrow-left"
         variant="ghost"
         color="neutral"
         class="self-start"
+        @click="goBack"
       >
         Scan another
       </UButton>
@@ -83,8 +101,13 @@ const errorMessage = computed(() => {
 
       <template v-else-if="status.result">
         <div>
-          <h1 class="text-xl font-bold">
-            {{ status.result.skill.name }}
+          <h1 class="text-xl font-bold flex items-center gap-2">
+            <UIcon
+              v-if="parsedTarget.isGithub"
+              name="i-simple-icons-github"
+              class="size-5 shrink-0"
+            />
+            {{ displayTitle }}
           </h1>
           <p class="text-sm text-muted font-mono break-all">
             {{ status.result.skill.source }}
