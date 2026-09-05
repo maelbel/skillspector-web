@@ -26,6 +26,9 @@ const BORDER_COLOR: Record<Severity, string> = {
             v-if="finding.category"
             class="text-sm text-muted font-mono"
           >{{ finding.category }}</span>
+          <span class="text-xs text-muted">
+            {{ Math.round(finding.confidence * 100) }}% confidence
+          </span>
         </div>
         <span class="text-xs text-muted font-mono">
           {{ finding.location.file }}:{{ finding.location.start_line }}
@@ -35,6 +38,13 @@ const BORDER_COLOR: Record<Severity, string> = {
 
     <p class="font-medium">
       {{ finding.explanation ?? finding.finding }}
+    </p>
+
+    <p
+      v-if="finding.intent"
+      class="mt-2 text-sm text-muted"
+    >
+      <span class="font-semibold text-default">Likely intent:</span> {{ finding.intent }}
     </p>
 
     <p
