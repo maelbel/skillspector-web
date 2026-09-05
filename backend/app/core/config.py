@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     max_concurrent_scans: int = 2
     db_path: str = "data/scans.db"
     admin_token: str | None = None
+    scan_rate_limit: int = 5
+    scan_rate_limit_window_seconds: float = 60.0
 
 
 @lru_cache

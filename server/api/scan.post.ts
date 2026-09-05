@@ -8,10 +8,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const { apiBase } = useRuntimeConfig()
+  const clientIp = getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'
 
   return await $fetch<{ id: string, status: string }>('/scan', {
     baseURL: apiBase,
     method: 'POST',
+    headers: { 'X-Forwarded-For': clientIp },
     body: {
       target,
       llm: llm
