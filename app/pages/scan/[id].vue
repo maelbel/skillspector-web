@@ -88,7 +88,15 @@ const errorMessage = computed(() => {
                 </p>
               </div>
             </div>
-            <UProgress />
+            <div class="flex flex-col gap-1">
+              <UProgress
+                :model-value="status?.completed_steps ?? 0"
+                :max="status?.total_steps ?? 1"
+              />
+              <p class="text-xs text-muted">
+                Step {{ status?.completed_steps ?? 0 }} of {{ status?.total_steps ?? '…' }}
+              </p>
+            </div>
             <ScanLogPanel v-if="logLines.length" :lines="logLines" />
           </div>
         </UCard>

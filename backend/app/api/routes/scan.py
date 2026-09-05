@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
-from app.scan_logs import get_logs
+from app.scan_logs import get_logs, get_progress
 from app.scanner import (
+    TOTAL_GRAPH_STEPS,
     Job,
     JobStatus,
     LLMConfig,
@@ -45,6 +46,8 @@ class ScanStatusResponse(BaseModel):
     finished_at: float | None
     result: dict | None
     error: str | None
+    completed_steps: int
+    total_steps: int
 
 
 class ScanSummaryResponse(BaseModel):
@@ -69,6 +72,7 @@ class ScanLogsResponse(BaseModel):
 
 
 def _to_response(job: Job) -> ScanStatusResponse:
+    completed_steps = TOTAL_GRAPH_STEPS if job.status == JobStatus.DONE else get_progress(job.id)
     return ScanStatusResponse(
         id=job.id,
         target=job.target,
@@ -77,6 +81,8 @@ def _to_response(job: Job) -> ScanStatusResponse:
         finished_at=job.finished_at,
         result=job.result,
         error=job.error,
+        completed_steps=completed_steps,
+        total_steps=TOTAL_GRAPH_STEPS,
     )
 
 

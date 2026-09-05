@@ -18,6 +18,8 @@ from skillspector.graph import graph
 from app import db, scan_logs
 from app.core.config import get_settings
 
+TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
+
 
 class JobStatus(StrEnum):
     PENDING = "pending"
@@ -181,6 +183,7 @@ def _invoke_graph(job_id: str, target: str, use_llm: bool) -> dict[str, Any]:
                 if mode == "updates":
                     for node_name in chunk:
                         scan_logs.append(job_id, f"{node_name} completed")
+                        scan_logs.increment_progress(job_id)
                 elif mode == "values":
                     final_state = chunk
         except Exception as exc:

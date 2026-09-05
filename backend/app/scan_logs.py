@@ -8,20 +8,37 @@ _MAX_LINES_PER_SCAN = 500
 _MAX_TRACKED_SCANS = 50
 
 _buffers: OrderedDict[str, deque[str]] = OrderedDict()
+_progress: dict[str, int] = {}
 _lock = threading.Lock()
 _current_job = threading.local()
 
 
+def _touch(job_id: str) -> None:
+    """Track job_id as most-recently active; evict the oldest scan past the cap."""
+    if job_id in _buffers:
+        _buffers.move_to_end(job_id)
+        return
+    _buffers[job_id] = deque(maxlen=_MAX_LINES_PER_SCAN)
+    while len(_buffers) > _MAX_TRACKED_SCANS:
+        evicted, _ = _buffers.popitem(last=False)
+        _progress.pop(evicted, None)
+
+
 def append(job_id: str, message: str) -> None:
     with _lock:
-        buffer = _buffers.get(job_id)
-        if buffer is None:
-            buffer = deque(maxlen=_MAX_LINES_PER_SCAN)
-            _buffers[job_id] = buffer
-            while len(_buffers) > _MAX_TRACKED_SCANS:
-                _buffers.popitem(last=False)
-        _buffers.move_to_end(job_id)
-        buffer.append(message)
+        _touch(job_id)
+        _buffers[job_id].append(message)
+
+
+def increment_progress(job_id: str) -> None:
+    with _lock:
+        _touch(job_id)
+        _progress[job_id] = _progress.get(job_id, 0) + 1
+
+
+def get_progress(job_id: str) -> int:
+    with _lock:
+        return _progress.get(job_id, 0)
 
 
 class _JobLogHandler(logging.Handler):

@@ -58,6 +58,8 @@ export interface ScanStatus {
   finished_at: number | null
   result: ScanReport | null
   error: string | null
+  completed_steps: number
+  total_steps: number
 }
 
 export interface ScanSummary {
