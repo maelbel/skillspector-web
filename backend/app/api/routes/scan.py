@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
+from app.core.security import require_admin
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
@@ -9,6 +10,7 @@ from app.scanner import (
     JobStatus,
     LLMConfig,
     create_job,
+    delete_job,
     get_job,
     list_jobs,
     schedule,
@@ -127,3 +129,9 @@ async def read_scan(job_id: str) -> ScanStatusResponse:
 @router.get("/{job_id}/logs", response_model=ScanLogsResponse)
 async def read_scan_logs(job_id: str) -> ScanLogsResponse:
     return ScanLogsResponse(lines=get_logs(job_id))
+
+
+@router.delete("/{job_id}", status_code=204, dependencies=[Depends(require_admin)])
+async def delete_scan(job_id: str) -> None:
+    if not delete_job(job_id):
+        raise HTTPException(status_code=404, detail="scan not found")

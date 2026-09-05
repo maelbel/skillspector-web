@@ -102,6 +102,11 @@ def list_jobs(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
     return db.list_scans(limit, offset)
 
 
+def delete_job(job_id: str) -> bool:
+    scan_logs.forget(job_id)
+    return db.delete_scan(job_id)
+
+
 def schedule(job: Job) -> None:
     task = asyncio.create_task(_run(job))
     _tasks.add(task)
