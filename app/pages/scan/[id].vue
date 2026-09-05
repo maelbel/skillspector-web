@@ -77,6 +77,48 @@ const filteredIssues = computed(() => sortedIssues.value.filter((issue) => {
   return true
 }))
 
+const groupBySeverity = ref(false)
+
+const SEVERITY_ORDER: Severity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
+
+const groupedIssues = computed(() => {
+  const groups = new Map<Severity, typeof filteredIssues.value>()
+  for (const issue of filteredIssues.value) {
+    const group = groups.get(issue.severity)
+    if (group) {
+      group.push(issue)
+    } else {
+      groups.set(issue.severity, [issue])
+    }
+  }
+  return SEVERITY_ORDER.filter(severity => groups.has(severity))
+    .map(severity => ({ severity, issues: groups.get(severity)! }))
+})
+
+const collapsedFindingIds = ref(new Set<string>())
+
+function isExpanded(findingId: string) {
+  return !collapsedFindingIds.value.has(findingId)
+}
+
+function toggleExpanded(findingId: string) {
+  const next = new Set(collapsedFindingIds.value)
+  if (next.has(findingId)) {
+    next.delete(findingId)
+  } else {
+    next.add(findingId)
+  }
+  collapsedFindingIds.value = next
+}
+
+function collapseAll() {
+  collapsedFindingIds.value = new Set(sortedIssues.value.map(issue => issue.finding_id))
+}
+
+function expandAll() {
+  collapsedFindingIds.value = new Set()
+}
+
 const errorMessage = computed(() => {
   const err = error.value
   if (!err) return undefined
@@ -245,14 +287,63 @@ const errorMessage = computed(() => {
           >
             {{ status.result.suppressed_count }} additional finding{{ status.result.suppressed_count === 1 ? '' : 's' }} suppressed by baseline.
           </p>
+
           <div
             v-if="filteredIssues.length"
-            class="flex flex-col gap-3 mt-3"
+            class="mb-3 flex flex-wrap items-center gap-3"
+          >
+            <USwitch
+              v-model="groupBySeverity"
+              label="Group by severity"
+            />
+            <div class="flex gap-3 text-sm">
+              <button
+                type="button"
+                class="text-muted hover:text-default underline-offset-2 hover:underline"
+                @click="expandAll"
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                class="text-muted hover:text-default underline-offset-2 hover:underline"
+                @click="collapseAll"
+              >
+                Collapse all
+              </button>
+            </div>
+          </div>
+
+          <div v-if="filteredIssues.length && groupBySeverity" class="flex flex-col gap-5">
+            <div
+              v-for="group in groupedIssues"
+              :key="group.severity"
+            >
+              <h3 class="mb-2 flex items-center gap-2 text-xs font-semibold text-muted uppercase tracking-wide">
+                <SeverityBadge :severity="group.severity" />
+                {{ group.issues.length }} finding{{ group.issues.length === 1 ? '' : 's' }}
+              </h3>
+              <div class="flex flex-col gap-3">
+                <FindingCard
+                  v-for="issue in group.issues"
+                  :key="issue.finding_id"
+                  :finding="issue"
+                  :expanded="isExpanded(issue.finding_id)"
+                  @toggle="toggleExpanded(issue.finding_id)"
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            v-else-if="filteredIssues.length"
+            class="flex flex-col gap-3"
           >
             <FindingCard
               v-for="issue in filteredIssues"
               :key="issue.finding_id"
               :finding="issue"
+              :expanded="isExpanded(issue.finding_id)"
+              @toggle="toggleExpanded(issue.finding_id)"
             />
           </div>
           <UAlert
