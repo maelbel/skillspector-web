@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { site } = useAppConfig()
+const route = useRoute()
 
 useHead({
   htmlAttrs: { lang: 'en' }
@@ -11,6 +12,14 @@ useSeoMeta({
   ogTitle: site.name,
   ogDescription: site.description
 })
+
+function navProps(path: string) {
+  const active = route.path === path
+  return {
+    color: active ? 'primary' as const : 'neutral' as const,
+    variant: active ? 'soft' as const : 'ghost' as const
+  }
+}
 </script>
 
 <template>
@@ -38,8 +47,7 @@ useSeoMeta({
             to="/history"
             icon="i-lucide-history"
             aria-label="Scan history"
-            color="neutral"
-            variant="ghost"
+            v-bind="navProps('/history')"
           />
         </UTooltip>
         <UTooltip text="Admin">
@@ -47,8 +55,7 @@ useSeoMeta({
             to="/admin"
             icon="i-lucide-settings"
             aria-label="Admin"
-            color="neutral"
-            variant="ghost"
+            v-bind="navProps('/admin')"
           />
         </UTooltip>
         <UButton
