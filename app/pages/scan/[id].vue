@@ -33,9 +33,27 @@ useSeoMeta({
 
 const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
 
+type SortKey = 'severity' | 'confidence' | 'file'
+
+const SORT_OPTIONS: { label: string, value: SortKey }[] = [
+  { label: 'Sort: Severity', value: 'severity' },
+  { label: 'Sort: Confidence', value: 'confidence' },
+  { label: 'Sort: File', value: 'file' }
+]
+
+const sortKey = ref<SortKey>('severity')
+
 const sortedIssues = computed(() => {
-  const issues = status.value?.result?.issues ?? []
-  return [...issues].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+  const issues = [...(status.value?.result?.issues ?? [])]
+  switch (sortKey.value) {
+    case 'confidence':
+      return issues.sort((a, b) => b.confidence - a.confidence)
+    case 'file':
+      return issues.sort((a, b) =>
+        a.location.file.localeCompare(b.location.file) || a.location.start_line - b.location.start_line)
+    default:
+      return issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+  }
 })
 
 const severityCounts = computed(() => {
@@ -52,27 +70,31 @@ const categories = computed(() => {
   return [...seen].sort()
 })
 
-const selectedSeverities = ref<Severity[]>([])
+const hiddenSeverities = ref<Severity[]>([])
 const selectedCategory = ref<string | null>(null)
 
 function toggleSeverity(severity: Severity) {
-  const index = selectedSeverities.value.indexOf(severity)
+  const index = hiddenSeverities.value.indexOf(severity)
   if (index === -1) {
-    selectedSeverities.value = [...selectedSeverities.value, severity]
+    hiddenSeverities.value = [...hiddenSeverities.value, severity]
   } else {
-    selectedSeverities.value = selectedSeverities.value.filter(s => s !== severity)
+    hiddenSeverities.value = hiddenSeverities.value.filter(s => s !== severity)
   }
 }
 
+function isSeverityVisible(severity: Severity) {
+  return !hiddenSeverities.value.includes(severity)
+}
+
 function clearFilters() {
-  selectedSeverities.value = []
+  hiddenSeverities.value = []
   selectedCategory.value = null
 }
 
-const hasActiveFilters = computed(() => selectedSeverities.value.length > 0 || !!selectedCategory.value)
+const hasActiveFilters = computed(() => hiddenSeverities.value.length > 0 || !!selectedCategory.value)
 
 const filteredIssues = computed(() => sortedIssues.value.filter((issue) => {
-  if (selectedSeverities.value.length && !selectedSeverities.value.includes(issue.severity)) return false
+  if (hiddenSeverities.value.includes(issue.severity)) return false
   if (selectedCategory.value && issue.category !== selectedCategory.value) return false
   return true
 }))
@@ -117,6 +139,23 @@ function collapseAll() {
 
 function expandAll() {
   collapsedFindingIds.value = new Set()
+}
+
+function isGroupExpanded(issues: { finding_id: string }[]) {
+  return issues.some(issue => isExpanded(issue.finding_id))
+}
+
+function toggleGroup(issues: { finding_id: string }[]) {
+  const next = new Set(collapsedFindingIds.value)
+  const collapse = isGroupExpanded(issues)
+  for (const issue of issues) {
+    if (collapse) {
+      next.add(issue.finding_id)
+    } else {
+      next.delete(issue.finding_id)
+    }
+  }
+  collapsedFindingIds.value = next
 }
 
 const errorMessage = computed(() => {
@@ -249,38 +288,61 @@ const errorMessage = computed(() => {
               finding{{ sortedIssues.length === 1 ? '' : 's' }}
             </h2>
             <div class="flex flex-wrap gap-1.5">
-              <button
+              <UTooltip
                 v-for="[severity, count] in severityCounts"
                 :key="severity"
-                type="button"
-                @click="toggleSeverity(severity)"
+                :text="isSeverityVisible(severity) ? `Hide ${severity}` : `Show ${severity}`"
               >
-                <SeverityBadge
-                  :severity="severity"
-                  :class="selectedSeverities.length && !selectedSeverities.includes(severity) ? 'opacity-40' : ''"
+                <button
+                  type="button"
+                  class="flex items-center gap-1"
+                  @click="toggleSeverity(severity)"
                 >
-                  {{ count }} {{ severity }}
-                </SeverityBadge>
-              </button>
+                  <UIcon
+                    :name="isSeverityVisible(severity) ? 'i-lucide-eye' : 'i-lucide-eye-off'"
+                    class="size-3.5 text-muted"
+                  />
+                  <SeverityBadge
+                    :severity="severity"
+                    :class="isSeverityVisible(severity) ? '' : 'opacity-40'"
+                  >
+                    {{ count }} {{ severity }}
+                  </SeverityBadge>
+                </button>
+              </UTooltip>
             </div>
+          </div>
+
+          <div class="mb-3 flex flex-wrap items-center gap-2">
             <USelect
               v-if="categories.length > 1"
               v-model="selectedCategory"
               :items="categories"
               placeholder="All categories"
+              icon="i-lucide-filter"
               size="xs"
               class="w-44"
+            />
+            <USelect
+              v-model="sortKey"
+              :items="SORT_OPTIONS"
+              value-key="value"
+              icon="i-lucide-arrow-up-down"
+              size="xs"
+              class="w-40"
             />
             <UButton
               v-if="hasActiveFilters"
               variant="link"
               color="neutral"
               size="xs"
+              icon="i-lucide-x"
               @click="clearFilters"
             >
               Clear filters
             </UButton>
           </div>
+
           <p
             v-if="status.result.suppressed_count > 0"
             class="mb-3 text-xs text-muted"
@@ -319,10 +381,18 @@ const errorMessage = computed(() => {
               v-for="group in groupedIssues"
               :key="group.severity"
             >
-              <h3 class="mb-2 flex items-center gap-2 text-xs font-semibold text-muted uppercase tracking-wide">
+              <button
+                type="button"
+                class="mb-2 w-full flex items-center gap-2 text-xs font-semibold text-muted uppercase tracking-wide"
+                @click="toggleGroup(group.issues)"
+              >
+                <UIcon
+                  :name="isGroupExpanded(group.issues) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                  class="size-4"
+                />
                 <SeverityBadge :severity="group.severity" />
                 {{ group.issues.length }} finding{{ group.issues.length === 1 ? '' : 's' }}
-              </h3>
+              </button>
               <div class="flex flex-col gap-3">
                 <FindingCard
                   v-for="issue in group.issues"
