@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScanSummary } from '~~/shared/types/scan'
+import type { ScanSummary, Severity } from '~~/shared/types/scan'
 
 useSeoMeta({ title: 'Scan history — Skillspector Web' })
 
@@ -11,8 +11,41 @@ const RECOMMENDATION_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
   DO_NOT_INSTALL: 'error'
 }
 
+const SEVERITY_BORDER: Record<Severity, string> = {
+  CRITICAL: 'border-l-error',
+  HIGH: 'border-l-error',
+  MEDIUM: 'border-l-warning',
+  LOW: 'border-l-primary'
+}
+
+const SEVERITY_TEXT: Record<Severity, string> = {
+  CRITICAL: 'text-error',
+  HIGH: 'text-error',
+  MEDIUM: 'text-warning',
+  LOW: 'text-primary'
+}
+
+function borderClass(scan: ScanSummary): string {
+  if (scan.status === 'error') return 'border-l-error'
+  if (scan.severity) return SEVERITY_BORDER[scan.severity]
+  return 'border-l-default'
+}
+
 function formatDate(seconds: number) {
   return new Date(seconds * 1000).toLocaleString()
+}
+
+function formatRelativeTime(seconds: number): string {
+  const diffSec = Math.round(Date.now() / 1000 - seconds)
+  if (diffSec < 5) return 'just now'
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHour = Math.round(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}h ago`
+  const diffDay = Math.round(diffHour / 24)
+  if (diffDay < 30) return `${diffDay}d ago`
+  return formatDate(seconds)
 }
 
 const deleteTarget = ref<ScanSummary | null>(null)
@@ -102,9 +135,12 @@ async function confirmDelete() {
           v-for="scan in data.items"
           :key="scan.id"
           :to="`/scan/${scan.id}`"
-          class="block"
+          class="block group"
         >
-          <UCard class="hover:bg-elevated/50 transition-colors">
+          <UCard
+            class="hover:bg-elevated/50 transition-colors border-l-4"
+            :class="borderClass(scan)"
+          >
             <div class="flex items-center justify-between gap-4">
               <div class="min-w-0 flex items-center gap-2">
                 <UIcon
@@ -116,29 +152,61 @@ async function confirmDelete() {
                   <p class="text-sm font-medium truncate">
                     {{ parseScanTarget(scan.target).title }}
                   </p>
-                  <p class="text-xs text-muted mt-1">
-                    {{ formatDate(scan.created_at) }}
+                  <p
+                    v-if="scan.status === 'error' && scan.error"
+                    class="text-xs text-error truncate mt-0.5"
+                  >
+                    {{ scan.error }}
+                  </p>
+                  <p
+                    v-else-if="scan.status === 'running'"
+                    class="text-xs text-muted mt-0.5"
+                  >
+                    Step {{ scan.completed_steps }} of {{ scan.total_steps }}
+                  </p>
+                  <p
+                    v-else
+                    :title="formatDate(scan.created_at)"
+                    class="text-xs text-muted mt-0.5"
+                  >
+                    {{ formatRelativeTime(scan.created_at) }}
                   </p>
                 </div>
               </div>
 
               <div class="flex items-center gap-3 shrink-0">
-                <template v-if="scan.status === 'pending' || scan.status === 'running'">
+                <template v-if="scan.status === 'pending'">
                   <UIcon
                     name="i-lucide-loader-circle"
-                    class="size-4 animate-spin text-primary"
+                    class="size-4 animate-spin text-muted"
                   />
-                  <span class="text-sm text-muted capitalize">{{ scan.status }}</span>
+                  <span class="text-sm text-muted">Queued</span>
+                </template>
+                <template v-else-if="scan.status === 'running'">
+                  <UProgress
+                    :model-value="scan.completed_steps"
+                    :max="scan.total_steps"
+                    size="sm"
+                    class="w-16"
+                  />
                 </template>
                 <template v-else-if="scan.status === 'error'">
                   <UBadge
                     color="error"
                     variant="subtle"
+                    icon="i-lucide-x-circle"
                   >
                     Failed
                   </UBadge>
                 </template>
                 <template v-else>
+                  <span
+                    v-if="scan.risk_score !== null && scan.severity"
+                    class="text-sm font-mono font-semibold tabular-nums"
+                    :class="SEVERITY_TEXT[scan.severity]"
+                  >
+                    {{ scan.risk_score }}
+                  </span>
                   <SeverityBadge
                     v-if="scan.severity"
                     :severity="scan.severity"
@@ -157,6 +225,7 @@ async function confirmDelete() {
                   color="neutral"
                   size="xs"
                   aria-label="Delete scan"
+                  class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                   @click.stop.prevent="openDeleteModal(scan)"
                 />
                 <UIcon

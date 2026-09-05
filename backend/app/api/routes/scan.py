@@ -62,6 +62,8 @@ class ScanSummaryResponse(BaseModel):
     risk_score: float | None
     severity: str | None
     recommendation: str | None
+    completed_steps: int
+    total_steps: int
 
 
 class ScanHistoryResponse(BaseModel):
@@ -112,6 +114,8 @@ async def read_scan_history(
             risk_score=row["risk_score"],
             severity=row["severity"],
             recommendation=row["recommendation"],
+            completed_steps=TOTAL_GRAPH_STEPS if row["status"] == JobStatus.DONE else get_progress(row["id"]),
+            total_steps=TOTAL_GRAPH_STEPS,
         )
         for row in rows
     ]
