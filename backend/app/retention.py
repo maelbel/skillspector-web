@@ -35,7 +35,10 @@ def sweep_once() -> int:
 
 async def _sweep_loop() -> None:
     while True:
-        sweep_once()
+        try:
+            sweep_once()
+        except Exception:
+            logger.exception("Retention sweep failed; will retry on the next interval")
         await asyncio.sleep(_SWEEP_INTERVAL_SECONDS)
 
 
