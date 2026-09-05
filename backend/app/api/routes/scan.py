@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
+from app.scan_logs import get_logs
 from app.scanner import (
     Job,
     JobStatus,
@@ -63,6 +64,10 @@ class ScanHistoryResponse(BaseModel):
     total: int
 
 
+class ScanLogsResponse(BaseModel):
+    lines: list[str]
+
+
 def _to_response(job: Job) -> ScanStatusResponse:
     return ScanStatusResponse(
         id=job.id,
@@ -111,3 +116,8 @@ async def read_scan(job_id: str) -> ScanStatusResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
     return _to_response(job)
+
+
+@router.get("/{job_id}/logs", response_model=ScanLogsResponse)
+async def read_scan_logs(job_id: str) -> ScanLogsResponse:
+    return ScanLogsResponse(lines=get_logs(job_id))

@@ -22,6 +22,7 @@ from app.api.routes import admin, scan
 from app.claude_login import kill_pending
 from app.core.config import get_settings
 from app.db import init_db
+from app.scan_logs import init_logging
 
 settings = get_settings()
 
@@ -29,6 +30,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_logging()
     yield
     kill_pending()
 

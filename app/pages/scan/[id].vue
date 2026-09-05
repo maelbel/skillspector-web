@@ -15,6 +15,11 @@ function goBack() {
 
 const { status, error } = useScanStatus(id)
 
+const isWorking = computed(() => status.value?.status === 'pending' || status.value?.status === 'running')
+
+const { lines: logLines } = useScanLogs(id, isWorking)
+const showLogs = ref(false)
+
 const parsedTarget = computed(() => parseScanTarget(status.value?.target ?? ''))
 const displayTitle = computed(() => {
   const skillName = status.value?.result?.skill.name
@@ -38,8 +43,6 @@ const severityCounts = computed(() => {
   for (const issue of sortedIssues.value) counts[issue.severity]++
   return (Object.entries(counts) as [Severity, number][]).filter(([, count]) => count > 0)
 })
-
-const isWorking = computed(() => status.value?.status === 'pending' || status.value?.status === 'running')
 
 const errorMessage = computed(() => {
   const err = error.value
@@ -86,6 +89,7 @@ const errorMessage = computed(() => {
               </div>
             </div>
             <UProgress />
+            <ScanLogPanel v-if="logLines.length" :lines="logLines" />
           </div>
         </UCard>
       </template>
@@ -97,6 +101,19 @@ const errorMessage = computed(() => {
           title="Scan failed"
           :description="status.error ?? 'Unknown error'"
         />
+        <div v-if="logLines.length">
+          <UButton
+            variant="link"
+            color="neutral"
+            size="sm"
+            class="px-0"
+            :icon="showLogs ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+            @click="showLogs = !showLogs"
+          >
+            {{ showLogs ? 'Hide' : 'View' }} scan log
+          </UButton>
+          <ScanLogPanel v-if="showLogs" :lines="logLines" class="mt-2" />
+        </div>
       </template>
 
       <template v-else-if="status.result">
@@ -112,6 +129,20 @@ const errorMessage = computed(() => {
           <p class="text-sm text-muted font-mono break-all">
             {{ status.result.skill.source }}
           </p>
+        </div>
+
+        <div v-if="logLines.length">
+          <UButton
+            variant="link"
+            color="neutral"
+            size="sm"
+            class="px-0"
+            :icon="showLogs ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+            @click="showLogs = !showLogs"
+          >
+            {{ showLogs ? 'Hide' : 'View' }} scan log
+          </UButton>
+          <ScanLogPanel v-if="showLogs" :lines="logLines" class="mt-2" />
         </div>
 
         <RiskScoreGauge

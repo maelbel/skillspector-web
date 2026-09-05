@@ -76,3 +76,7 @@ export interface ScanHistoryResponse {
   items: ScanSummary[]
   total: number
 }
+
+export interface ScanLogsResponse {
+  lines: string[]
+}
