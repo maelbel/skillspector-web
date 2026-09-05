@@ -15,8 +15,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
-from app import db
+from app import db, scan_logs
 from app.core.config import get_settings
+
+TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
 
 class JobStatus(StrEnum):
@@ -115,9 +117,9 @@ async def _run(job: Job) -> None:
             if job.llm is not None:
                 async with _llm_lock:
                     with _llm_env(job.llm):
-                        job.result = await loop.run_in_executor(None, _invoke_graph, job.target, True)
+                        job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True)
             else:
-                job.result = await loop.run_in_executor(None, _invoke_graph, job.target, False)
+                job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False)
             job.status = JobStatus.DONE
         except Exception as exc:  # noqa: BLE001
             job.error = str(exc)
@@ -161,17 +163,34 @@ def _llm_env(config: LLMConfig) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _invoke_graph(target: str, use_llm: bool) -> dict[str, Any]:
-    state: dict[str, Any] = {
-        "input_path": target,
-        "output_format": "json",
-        "use_llm": use_llm,
-    }
-    config = {
-        "run_name": "skillspector-web-scan",
-        "tags": ["skillspector-web"],
-        "metadata": {"input_path": target, "use_llm": use_llm},
-    }
-    result = graph.invoke(state, config=config)
-    report_body = result.get("report_body") or "{}"
-    return json.loads(report_body)
+def _invoke_graph(job_id: str, target: str, use_llm: bool) -> dict[str, Any]:
+    scan_logs.start_capture(job_id)
+    scan_logs.append(job_id, f"Starting scan of {target}")
+    try:
+        state: dict[str, Any] = {
+            "input_path": target,
+            "output_format": "json",
+            "use_llm": use_llm,
+        }
+        config = {
+            "run_name": "skillspector-web-scan",
+            "tags": ["skillspector-web"],
+            "metadata": {"input_path": target, "use_llm": use_llm},
+        }
+        final_state: dict[str, Any] | None = None
+        try:
+            for mode, chunk in graph.stream(state, config=config, stream_mode=["updates", "values"]):
+                if mode == "updates":
+                    for node_name in chunk:
+                        scan_logs.append(job_id, f"{node_name} completed")
+                        scan_logs.increment_progress(job_id)
+                elif mode == "values":
+                    final_state = chunk
+        except Exception as exc:
+            scan_logs.append(job_id, f"Scan failed: {exc}")
+            raise
+        scan_logs.append(job_id, "Scan complete")
+        report_body = (final_state or {}).get("report_body") or "{}"
+        return json.loads(report_body)
+    finally:
+        scan_logs.stop_capture()
