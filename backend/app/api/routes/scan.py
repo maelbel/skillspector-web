@@ -2,7 +2,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.core.config import get_settings
-from app.scanner import Job, JobStatus, LLMConfig, create_job, get_job, list_jobs, schedule
+from app.scanner import (
+    Job,
+    JobStatus,
+    LLMConfig,
+    create_job,
+    get_job,
+    list_jobs,
+    schedule,
+)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
