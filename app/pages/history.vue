@@ -49,13 +49,11 @@ function formatRelativeTime(seconds: number): string {
 }
 
 const deleteTarget = ref<ScanSummary | null>(null)
-const adminToken = ref('')
 const deleting = ref(false)
 const deleteError = ref('')
 
 function openDeleteModal(scan: ScanSummary) {
   deleteTarget.value = scan
-  adminToken.value = ''
   deleteError.value = ''
 }
 
@@ -64,16 +62,13 @@ function closeDeleteModal() {
 }
 
 async function confirmDelete() {
-  if (!deleteTarget.value || !adminToken.value.trim()) return
+  if (!deleteTarget.value) return
 
   deleting.value = true
   deleteError.value = ''
 
   try {
-    await $fetch(`/api/scan/${deleteTarget.value.id}`, {
-      method: 'DELETE',
-      body: { adminToken: adminToken.value.trim() }
-    })
+    await $fetch(`/api/scan/${deleteTarget.value.id}`, { method: 'DELETE' })
     closeDeleteModal()
     await refresh()
   } catch (err) {
@@ -261,20 +256,6 @@ async function confirmDelete() {
             {{ deleteTarget ? parseScanTarget(deleteTarget.target).title : '' }}
           </p>
 
-          <UFormField
-            label="Admin token"
-            description="Matches SKILLSPECTOR_WEB_ADMIN_TOKEN on the server."
-          >
-            <UInput
-              v-model="adminToken"
-              type="password"
-              icon="i-lucide-key-round"
-              class="w-full"
-              :disabled="deleting"
-              @keyup.enter="confirmDelete"
-            />
-          </UFormField>
-
           <UAlert
             v-if="deleteError"
             color="error"
@@ -298,7 +279,6 @@ async function confirmDelete() {
             color="error"
             icon="i-lucide-trash-2"
             :loading="deleting"
-            :disabled="!adminToken.trim()"
             @click="confirmDelete"
           >
             Delete
