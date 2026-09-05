@@ -96,6 +96,13 @@ def get_scan(id: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM scans WHERE id = ?", (id,)).fetchone()
 
 
+def delete_scan(id: str) -> bool:
+    conn = _connection_or_raise()
+    cursor = conn.execute("DELETE FROM scans WHERE id = ?", (id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def list_scans(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
     conn = _connection_or_raise()
     rows = conn.execute(

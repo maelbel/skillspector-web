@@ -1,19 +1,10 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.claude_login import complete_claude_login, start_claude_login
-from app.core.config import get_settings
+from app.core.security import require_admin
 
-
-def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
-    settings = get_settings()
-    if not settings.admin_token:
-        raise HTTPException(status_code=404, detail="admin actions are not enabled")
-    if x_admin_token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="invalid admin token")
-
-
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(_require_admin)])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 class ClaudeLoginStartResponse(BaseModel):

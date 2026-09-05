@@ -69,3 +69,9 @@ def get_logs(job_id: str) -> list[str]:
     with _lock:
         buffer = _buffers.get(job_id)
         return list(buffer) if buffer is not None else []
+
+
+def forget(job_id: str) -> None:
+    with _lock:
+        _buffers.pop(job_id, None)
+        _progress.pop(job_id, None)

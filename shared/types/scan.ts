@@ -72,6 +72,8 @@ export interface ScanSummary {
   risk_score: number | null
   severity: Severity | null
   recommendation: Recommendation | null
+  completed_steps: number
+  total_steps: number
 }
 
 export interface ScanHistoryResponse {
