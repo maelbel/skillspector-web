@@ -4,10 +4,19 @@ import threading
 import time
 from collections import OrderedDict, deque
 
+from fastapi import Request
+
 _MAX_TRACKED_CLIENTS = 1000
 
 _hits: OrderedDict[str, deque[float]] = OrderedDict()
 _lock = threading.Lock()
+
+
+def client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def check(key: str, limit: int, window_seconds: float) -> bool:

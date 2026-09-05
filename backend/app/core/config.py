@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
     scan_retention_days: float | None = None
+    admin_rate_limit: int = 10
+    admin_rate_limit_window_seconds: float = 300.0
 
 
 @lru_cache
