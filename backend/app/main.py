@@ -18,7 +18,9 @@ from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 from skillspector.providers.claude_cli import ClaudeCLIProvider
 
+from app import retention
 from app.api.routes import admin, scan
+from app.api.routes import settings as settings_routes
 from app.claude_login import kill_pending
 from app.core.config import get_settings
 from app.db import init_db
@@ -31,7 +33,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     init_db()
     init_logging()
+    retention.start()
     yield
+    retention.stop()
     kill_pending()
 
 
@@ -40,12 +44,13 @@ app = FastAPI(title="Skillspector Web API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 app.include_router(scan.router)
 app.include_router(admin.router)
+app.include_router(settings_routes.router)
 
 
 @app.get("/health")

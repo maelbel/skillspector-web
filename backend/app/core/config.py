@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_token: str | None = None
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
+    scan_retention_days: float | None = None
 
 
 @lru_cache
