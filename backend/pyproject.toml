@@ -8,7 +8,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pydantic-settings>=2.6.0",
-    "skillspector @ git+https://github.com/NVIDIA/skillspector.git",
+    "skillspector @ git+https://github.com/NVIDIA/skillspector.git@7805bb94843d91cb9937f57264ca52642164499b",
 ]
 
 [tool.uv]
