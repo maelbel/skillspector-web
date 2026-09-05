@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { SettingsResponse } from '~~/shared/types/settings'
+
 useSeoMeta({ title: 'Admin — Skillspector Web' })
 
 const adminToken = ref('')
+
 const step = ref<'idle' | 'started' | 'done'>('idle')
 const loginUrl = ref('')
 const code = ref('')
@@ -61,6 +64,48 @@ function reset() {
   errorMessage.value = ''
   resultMessage.value = ''
 }
+
+const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
+
+const retentionMode = ref<'forever' | 'days'>('forever')
+const retentionDays = ref(30)
+const savingRetention = ref(false)
+const retentionError = ref('')
+const retentionSaved = ref(false)
+
+watch(settingsData, (value) => {
+  if (!value) return
+  if (value.scan_retention_days === null) {
+    retentionMode.value = 'forever'
+  } else {
+    retentionMode.value = 'days'
+    retentionDays.value = value.scan_retention_days
+  }
+}, { immediate: true })
+
+async function saveRetention() {
+  if (!adminToken.value.trim()) return
+
+  savingRetention.value = true
+  retentionError.value = ''
+  retentionSaved.value = false
+
+  try {
+    const updated = await $fetch<SettingsResponse>('/api/settings', {
+      method: 'PUT',
+      body: {
+        adminToken: adminToken.value.trim(),
+        scanRetentionDays: retentionMode.value === 'forever' ? null : retentionDays.value
+      }
+    })
+    settingsData.value = updated
+    retentionSaved.value = true
+  } catch (err) {
+    retentionError.value = err instanceof Error ? err.message : 'Failed to save'
+  } finally {
+    savingRetention.value = false
+  }
+}
 </script>
 
 <template>
@@ -79,46 +124,51 @@ function reset() {
 
       <div>
         <h1 class="text-xl font-bold">
-          Claude CLI login
+          Admin
         </h1>
-        <p class="mt-1 text-sm text-muted">
-          Re-authenticates the server-wide login every visitor's Claude CLI scans share.
-        </p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <template
-          v-for="n in 3"
-          :key="n"
-        >
-          <div
-            class="flex items-center justify-center size-6 rounded-full text-xs font-semibold shrink-0"
-            :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
-          >
-            {{ n }}
-          </div>
-          <div
-            v-if="n < 3"
-            class="h-px flex-1"
-            :class="n < stepNumber ? 'bg-primary' : 'bg-default'"
-          />
-        </template>
-      </div>
+      <UFormField
+        label="Admin token"
+        description="Matches SKILLSPECTOR_WEB_ADMIN_TOKEN on the server. Used for both actions below."
+      >
+        <UInput
+          v-model="adminToken"
+          type="password"
+          icon="i-lucide-key-round"
+          class="w-full"
+        />
+      </UFormField>
 
       <UCard>
         <div class="flex flex-col gap-4">
-          <UFormField
-            label="Admin token"
-            description="Matches SKILLSPECTOR_WEB_ADMIN_TOKEN on the server."
-          >
-            <UInput
-              v-model="adminToken"
-              type="password"
-              icon="i-lucide-key-round"
-              class="w-full"
-              :disabled="step !== 'idle'"
-            />
-          </UFormField>
+          <div>
+            <h2 class="text-sm font-semibold">
+              Claude CLI login
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Re-authenticates the server-wide login every visitor's Claude CLI scans share.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <template
+              v-for="n in 3"
+              :key="n"
+            >
+              <div
+                class="flex items-center justify-center size-6 rounded-full text-xs font-semibold shrink-0"
+                :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
+              >
+                {{ n }}
+              </div>
+              <div
+                v-if="n < 3"
+                class="h-px flex-1"
+                :class="n < stepNumber ? 'bg-primary' : 'bg-default'"
+              />
+            </template>
+          </div>
 
           <UButton
             v-if="step === 'idle'"
@@ -190,6 +240,67 @@ function reset() {
             color="error"
             variant="subtle"
             :title="errorMessage"
+          />
+        </div>
+      </UCard>
+
+      <UCard>
+        <div class="flex flex-col gap-4">
+          <div>
+            <h2 class="text-sm font-semibold">
+              Scan retention
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Automatically delete scans from history after a set number of days.
+            </p>
+          </div>
+
+          <UFormField label="Keep scans">
+            <USelect
+              v-model="retentionMode"
+              :items="[
+                { label: 'Forever', value: 'forever' },
+                { label: 'For a set number of days', value: 'days' }
+              ]"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            v-if="retentionMode === 'days'"
+            label="Days"
+          >
+            <UInput
+              v-model.number="retentionDays"
+              type="number"
+              min="1"
+              step="1"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UButton
+            icon="i-lucide-save"
+            :loading="savingRetention"
+            :disabled="!adminToken.trim() || (retentionMode === 'days' && (!retentionDays || retentionDays <= 0))"
+            @click="saveRetention"
+          >
+            Save
+          </UButton>
+
+          <UAlert
+            v-if="retentionSaved"
+            color="primary"
+            variant="subtle"
+            icon="i-lucide-check-circle-2"
+            title="Saved"
+          />
+          <UAlert
+            v-if="retentionError"
+            color="error"
+            variant="subtle"
+            :title="retentionError"
           />
         </div>
       </UCard>

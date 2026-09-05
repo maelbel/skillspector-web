@@ -40,6 +40,16 @@ def init_db() -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans (created_at DESC)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            scan_retention_days REAL
+        )
+    """)
+    conn.execute(
+        "INSERT OR IGNORE INTO app_settings (id, scan_retention_days) VALUES (1, ?)",
+        (get_settings().scan_retention_days,),
+    )
     conn.commit()
     _connection = conn
 
@@ -101,6 +111,25 @@ def delete_scan(id: str) -> bool:
     cursor = conn.execute("DELETE FROM scans WHERE id = ?", (id,))
     conn.commit()
     return cursor.rowcount > 0
+
+
+def delete_scans_older_than(cutoff: float) -> int:
+    conn = _connection_or_raise()
+    cursor = conn.execute("DELETE FROM scans WHERE created_at < ?", (cutoff,))
+    conn.commit()
+    return cursor.rowcount
+
+
+def get_retention_days() -> float | None:
+    conn = _connection_or_raise()
+    row = conn.execute("SELECT scan_retention_days FROM app_settings WHERE id = 1").fetchone()
+    return row["scan_retention_days"] if row else None
+
+
+def set_retention_days(value: float | None) -> None:
+    conn = _connection_or_raise()
+    conn.execute("UPDATE app_settings SET scan_retention_days = ? WHERE id = 1", (value,))
+    conn.commit()
 
 
 def list_scans(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:

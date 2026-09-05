@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import type { ScanSummary, Severity } from '~~/shared/types/scan'
+import type { SettingsResponse } from '~~/shared/types/settings'
 
 useSeoMeta({ title: 'Scan history — Skillspector Web' })
 
 const { data, status, error, refresh, hasMore, loadMore } = useScanHistory()
+const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
+
+const retentionLabel = computed(() => {
+  const days = settingsData.value?.scan_retention_days
+  if (!days) return 'Scans are kept forever.'
+  return `Scans older than ${days} day${days === 1 ? '' : 's'} are automatically removed.`
+})
 
 const RECOMMENDATION_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
   SAFE: 'success',
@@ -83,9 +91,14 @@ async function confirmDelete() {
   <UContainer class="py-16">
     <div class="max-w-3xl mx-auto flex flex-col gap-6">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold tracking-tight">
-          Scan history
-        </h1>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">
+            Scan history
+          </h1>
+          <p class="text-sm text-muted mt-1">
+            {{ retentionLabel }}
+          </p>
+        </div>
         <UButton
           to="/"
           icon="i-lucide-plus"
