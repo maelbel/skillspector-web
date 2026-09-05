@@ -19,16 +19,9 @@ from app.scanner import (
 router = APIRouter(prefix="/scan", tags=["scan"])
 
 
-def _client_key(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 def _rate_limit_scan(request: Request) -> None:
     settings = get_settings()
-    key = _client_key(request)
+    key = f"scan:{rate_limit.client_key(request)}"
     if not rate_limit.check(key, settings.scan_rate_limit, settings.scan_rate_limit_window_seconds):
         raise HTTPException(status_code=429, detail="Too many scans from this address — try again shortly")
 
