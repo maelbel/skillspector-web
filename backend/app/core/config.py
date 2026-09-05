@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
     max_concurrent_scans: int = 2
-    job_ttl_seconds: int = 3600
+    db_path: str = "data/scans.db"
     admin_token: str | None = None
 
 

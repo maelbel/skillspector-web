@@ -9,6 +9,23 @@ export default defineAppConfig({
     colors: {
       primary: 'green',
       neutral: 'slate'
+    },
+    button: {
+      slots: {
+        base: 'cursor-pointer'
+      }
+    },
+    select: {
+      slots: {
+        base: 'cursor-pointer',
+        item: 'cursor-pointer'
+      }
+    },
+    switch: {
+      slots: {
+        base: 'cursor-pointer',
+        label: 'cursor-pointer'
+      }
     }
   }
 })

@@ -33,6 +33,15 @@ useSeoMeta({
         <UTooltip text="Toggle theme">
           <UColorModeButton />
         </UTooltip>
+        <UTooltip text="Scan history">
+          <UButton
+            to="/history"
+            icon="i-lucide-history"
+            aria-label="Scan history"
+            color="neutral"
+            variant="ghost"
+          />
+        </UTooltip>
         <UTooltip text="Admin">
           <UButton
             to="/admin"
