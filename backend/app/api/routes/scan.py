@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
+from app import rate_limit
 from app.core.config import get_settings
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
@@ -15,6 +16,20 @@ from app.scanner import (
 )
 
 router = APIRouter(prefix="/scan", tags=["scan"])
+
+
+def _client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit_scan(request: Request) -> None:
+    settings = get_settings()
+    key = _client_key(request)
+    if not rate_limit.check(key, settings.scan_rate_limit, settings.scan_rate_limit_window_seconds):
+        raise HTTPException(status_code=429, detail="Too many scans from this address — try again shortly")
 
 
 class ScanRequest(BaseModel):
@@ -86,7 +101,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
     )
 
 
-@router.post("", response_model=ScanQueuedResponse)
+@router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
     job = create_job(req.target, req.llm)
     schedule(job)
