@@ -77,10 +77,12 @@ For exposing this behind a real domain/TLS (Traefik or otherwise), see
 
 ## Known limitations
 
-- Scan jobs live in the backend's memory (`backend/app/scanner.py`) — restarting the API loses
-  in-flight/queued scans, and this can't run as more than one replica as-is.
-- No auth — same posture as this homelab's other internal tools; put it behind the proxy network
-  only if that's not desired for a given deployment.
+- Scan history is persisted in SQLite (`backend/data/scans.db`), but the jobs themselves run in
+  the API process — restarting it fails any pending/running scans (they're marked as interrupted
+  on startup), and this can't run as more than one replica as-is.
+- No user accounts — anyone who can reach the UI can run scans and browse/delete history. Only
+  the admin page (Claude CLI login, retention) is gated, by `SKILLSPECTOR_WEB_ADMIN_TOKEN`. Put it
+  behind your proxy's auth if that's not desired for a given deployment.
 - `target` is restricted to `http(s)` URLs; local-path/zip-upload scanning isn't wired up (would
   need a file upload endpoint on the backend).
 
