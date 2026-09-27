@@ -60,3 +60,11 @@ networks:
 ```
 
 Then `docker compose up -d --build` — Compose picks up the override automatically.
+
+For a production deployment, also layer [`docker-compose.prod.yml`](../docker-compose.prod.yml),
+which swaps the development servers for the `production` images. Once you pass files explicitly,
+Compose no longer adds the override on its own, so list all three:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.override.yml up -d --build
+```
