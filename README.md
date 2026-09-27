@@ -92,18 +92,18 @@ Open **http://localhost:3000**.
 
 ### Scan service (`api`)
 
+Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTOR_WEB_ADMIN_TOKEN`.
+
 | Variable | Default | Description |
 |---|---|---|
-| `SKILLSPECTOR_WEB_ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
-| `SKILLSPECTOR_WEB_CORS_ORIGINS` | `["http://localhost:3000"]` | Origins allowed to call the API directly. The UI goes through its own proxy, so this rarely matters. |
-| `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` | `2` | Scans that run at the same time. AI-analysed scans additionally run one at a time. |
-| `SKILLSPECTOR_WEB_MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this new scans get `503`. |
-| `SKILLSPECTOR_WEB_SCAN_RATE_LIMIT` | `5` | Scans per client IP per window… |
-| `SKILLSPECTOR_WEB_SCAN_RATE_LIMIT_WINDOW_SECONDS` | `60` | …of this many seconds. |
-| `SKILLSPECTOR_WEB_ADMIN_RATE_LIMIT` | `10` | Admin-token attempts per client IP per window… |
-| `SKILLSPECTOR_WEB_ADMIN_RATE_LIMIT_WINDOW_SECONDS` | `300` | …of this many seconds. |
-| `SKILLSPECTOR_WEB_SCAN_RETENTION_DAYS` | *unset* (keep forever) | Initial retention when the database is first created; change it later from the admin page. |
-| `SKILLSPECTOR_WEB_DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`. |
+| `ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
+| `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
+| `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
+| `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per client IP within the window. |
+| `ADMIN_RATE_LIMIT`<br>`ADMIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Admin-token attempts allowed per client IP within the window. |
+| `SCAN_RETENTION_DAYS` | *unset* | Retention when the database is first created (unset keeps scans forever). Change it later from the admin page. |
+| `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`. |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | Origins allowed to call the API directly. The UI goes through its own proxy, so this rarely matters. |
 
 ### Web app (`web`)
 
@@ -338,8 +338,7 @@ class node_admin_routes,node_claude_login,node_settings_routes,node_retention to
 class node_visitor,node_skillspector,node_llm_provider,node_claude_cli toneIndigo
 ```
 
-GitHub renders diagrams without click-through, so the nodes aren't links here; every file named is
-in the [repository layout](#repository-layout) below.
+Each node links to its source file.
 </details>
 
 ### Repository layout
