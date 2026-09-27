@@ -9,7 +9,7 @@ export function parseScanTarget(target: string): { title: string, isGithub: bool
   const segments = url.pathname.split('/').filter(Boolean)
 
   if (url.hostname === 'github.com' && segments.length >= 2) {
-    const [owner, repoRaw, kind, ...rest] = segments
+    const [owner, repoRaw = '', kind, ...rest] = segments
     const repo = repoRaw.replace(/\.git$/i, '')
     const path = (kind === 'tree' || kind === 'blob') && rest.length > 1 ? rest.slice(1).join('/') : ''
     return { title: path ? `${owner}/${repo}/${path}` : `${owner}/${repo}`, isGithub: true }

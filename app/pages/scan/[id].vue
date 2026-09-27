@@ -71,7 +71,7 @@ const categories = computed(() => {
 })
 
 const hiddenSeverities = ref<Severity[]>([])
-const selectedCategory = ref<string | null>(null)
+const selectedCategory = ref<string>()
 
 function toggleSeverity(severity: Severity) {
   const index = hiddenSeverities.value.indexOf(severity)
@@ -88,7 +88,7 @@ function isSeverityVisible(severity: Severity) {
 
 function clearFilters() {
   hiddenSeverities.value = []
-  selectedCategory.value = null
+  selectedCategory.value = undefined
 }
 
 const hasActiveFilters = computed(() => hiddenSeverities.value.length > 0 || !!selectedCategory.value)
