@@ -24,11 +24,15 @@ function navProps(path: string) {
 
 <template>
   <UApp>
-    <UHeader :ui="{ root: 'border-b border-default backdrop-blur bg-default/80' }">
+    <!-- No mobile menu: every nav item already fits in the header as an icon button. -->
+    <UHeader
+      :toggle="false"
+      :ui="{ root: 'border-b border-default backdrop-blur bg-default/80' }"
+    >
       <template #left>
         <NuxtLink
           to="/"
-          class="flex items-center gap-2 font-semibold"
+          class="flex items-center gap-2 font-semibold whitespace-nowrap"
         >
           <UIcon
             name="i-lucide-shield-check"
