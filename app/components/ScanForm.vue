@@ -38,6 +38,18 @@ const targetProblem = computed(() =>
   targetTouched.value && targetInfo.value && !targetInfo.value.ok ? targetInfo.value.problem : undefined
 )
 
+// Real, stable URLs: a published skill, and a skillspector test fixture that's flagged
+// DO_NOT_INSTALL even without AI analysis.
+const EXAMPLES = [
+  { label: 'Anthropic’s PDF skill', icon: 'i-lucide-file-text', target: 'https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md' },
+  { label: 'A poisoned MCP tool', icon: 'i-lucide-skull', target: 'https://github.com/NVIDIA/skillspector/blob/main/tests/fixtures/mcp_poisoned_tool/SKILL.md' }
+]
+
+function useExample(example: typeof EXAMPLES[number]) {
+  target.value = example.target
+  targetTouched.value = true
+}
+
 const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
   repository: { icon: 'i-lucide-git-branch', label: 'repository' },
   file: { icon: 'i-lucide-file-text', label: 'single file' },
@@ -145,6 +157,23 @@ async function submit() {
             />
             <span class="shrink-0">{{ targetInfo.host }} {{ TARGET_KIND_LABELS[targetInfo.kind].label }}</span>
             <span class="text-highlighted font-medium truncate">{{ targetInfo.title }}</span>
+          </span>
+          <span
+            v-else-if="!target.trim()"
+            class="flex flex-wrap items-center gap-x-1 gap-y-1"
+          >
+            <span>Try an example:</span>
+            <UButton
+              v-for="example in EXAMPLES"
+              :key="example.target"
+              :icon="example.icon"
+              :label="example.label"
+              size="xs"
+              color="neutral"
+              variant="soft"
+              :disabled="submitting"
+              @click="useExample(example)"
+            />
           </span>
         </template>
       </UFormField>
