@@ -70,6 +70,11 @@ _semaphore = asyncio.Semaphore(get_settings().max_concurrent_scans)
 _llm_lock = asyncio.Lock()
 
 
+def queue_is_full() -> bool:
+    """Whether running + waiting scans have reached max_queued_scans."""
+    return len(_tasks) >= get_settings().max_queued_scans
+
+
 def create_job(target: str, llm: LLMConfig | None) -> Job:
     job = Job(id=uuid.uuid4().hex, target=target, llm=llm)
     db.insert_scan(

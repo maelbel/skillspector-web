@@ -13,6 +13,7 @@ from app.scanner import (
     delete_job,
     get_job,
     list_jobs,
+    queue_is_full,
     schedule,
 )
 
@@ -99,6 +100,8 @@ def _to_response(job: Job) -> ScanStatusResponse:
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
+    if queue_is_full():
+        raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
     job = create_job(req.target, req.llm)
     schedule(job)
     return ScanQueuedResponse(id=job.id, status=job.status)
