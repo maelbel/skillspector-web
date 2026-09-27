@@ -43,7 +43,9 @@ const needsApiKey = computed(() => provider.value !== 'ollama' && provider.value
 const claudeCliUnauthenticated = computed(() =>
   provider.value === 'claude_cli' && !healthPending.value && !health.value?.claude_cli_available
 )
+const backendDown = computed(() => health.value?.status === 'down')
 const canSubmit = computed(() => {
+  if (backendDown.value) return false
   if (!target.value.trim()) return false
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
   if (useLlm.value && claudeCliUnauthenticated.value) return false
@@ -95,6 +97,15 @@ async function submit() {
       class="flex flex-col gap-4"
       @submit.prevent="submit"
     >
+      <UAlert
+        v-if="backendDown"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-server-off"
+        title="The scanner is unavailable right now"
+        description="The scan service isn’t responding, so new scans can’t start. Past results in the history are still available."
+      />
+
       <UFormField
         label="Skill source"
         description="A Git repo, zip, or file URL — e.g. https://github.com/some-org/some-skill"
