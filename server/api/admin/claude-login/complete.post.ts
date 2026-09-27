@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   return await $fetch<{ success: boolean, output: string }>('/admin/claude-login/complete', {
     baseURL: apiBase,
     method: 'POST',
-    headers: { 'X-Admin-Token': adminToken },
+    headers: { 'X-Admin-Token': adminToken, 'X-Forwarded-For': getClientIp(event) },
     body: { code }
   }).catch((error) => {
     throw createError({
