@@ -55,6 +55,15 @@ const targetProblem = computed(() =>
   targetTouched.value && targetInfo.value && !targetInfo.value.ok ? targetInfo.value.problem : undefined
 )
 
+// Point at an existing result before starting a duplicate scan of the same URL.
+const { data: recentScans } = useRecentScans()
+const normalizeTarget = (value: string) => value.trim().replace(/\/+$/, '')
+const previousScan = computed(() => {
+  if (!targetInfo.value?.ok) return undefined
+  const wanted = normalizeTarget(target.value)
+  return recentScans.value?.items.find(scan => scan.status !== 'error' && normalizeTarget(scan.target) === wanted)
+})
+
 // Real, stable URLs: a published skill, and a skillspector test fixture that's flagged
 // DO_NOT_INSTALL even without AI analysis.
 const EXAMPLES = [
@@ -258,6 +267,30 @@ async function submit() {
           </span>
         </template>
       </UFormField>
+
+      <UAlert
+        v-if="previousScan"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-history"
+        :description="previousScan.status === 'done' ? 'Open that result, or scan again for a fresh one.' : 'Follow its progress instead of starting another scan.'"
+        :actions="[{ label: previousScan.status === 'done' ? 'View result' : 'Follow scan', to: `/scan/${previousScan.id}`, color: 'neutral', variant: 'outline', trailingIcon: 'i-lucide-arrow-right' }]"
+        orientation="horizontal"
+      >
+        <template #title>
+          <template v-if="previousScan.status === 'done'">
+            Already scanned <NuxtTime
+              :datetime="previousScan.created_at * 1000"
+              relative
+            /><template v-if="previousScan.recommendation">
+              — {{ RECOMMENDATION_LABEL[previousScan.recommendation] }}
+            </template>
+          </template>
+          <template v-else>
+            This skill is being scanned right now
+          </template>
+        </template>
+      </UAlert>
 
       <UFormField>
         <USwitch

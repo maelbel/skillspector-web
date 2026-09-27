@@ -13,12 +13,6 @@ const retentionLabel = computed(() => {
   return `Scans older than ${days} day${days === 1 ? '' : 's'} are automatically removed.`
 })
 
-const RECOMMENDATION_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
-  SAFE: 'success',
-  CAUTION: 'warning',
-  DO_NOT_INSTALL: 'error'
-}
-
 const SEVERITY_BORDER: Record<Severity, string> = {
   CRITICAL: 'border-l-error',
   HIGH: 'border-l-error',
@@ -37,23 +31,6 @@ function borderClass(scan: ScanSummary): string {
   if (scan.status === 'error') return 'border-l-error'
   if (scan.severity) return SEVERITY_BORDER[scan.severity]
   return 'border-l-default'
-}
-
-function formatDate(seconds: number) {
-  return new Date(seconds * 1000).toLocaleString()
-}
-
-function formatRelativeTime(seconds: number): string {
-  const diffSec = Math.round(Date.now() / 1000 - seconds)
-  if (diffSec < 5) return 'just now'
-  if (diffSec < 60) return `${diffSec}s ago`
-  const diffMin = Math.round(diffSec / 60)
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHour = Math.round(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}h ago`
-  const diffDay = Math.round(diffHour / 24)
-  if (diffDay < 30) return `${diffDay}d ago`
-  return formatDate(seconds)
 }
 
 const deleteTarget = ref<ScanSummary | null>(null)
@@ -177,7 +154,10 @@ async function confirmDelete() {
                     :title="formatDate(scan.created_at)"
                     class="text-xs text-muted mt-0.5"
                   >
-                    {{ formatRelativeTime(scan.created_at) }}
+                    <NuxtTime
+                      :datetime="scan.created_at * 1000"
+                      relative
+                    />
                   </p>
                 </div>
               </div>

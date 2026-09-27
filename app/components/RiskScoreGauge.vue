@@ -21,18 +21,6 @@ const RING_STROKE: Record<Severity, string> = {
   LOW: 'stroke-primary'
 }
 
-const RECOMMENDATION_LABEL: Record<Recommendation, string> = {
-  SAFE: 'Safe to install',
-  CAUTION: 'Review before installing',
-  DO_NOT_INSTALL: 'Do not install'
-}
-
-const RECOMMENDATION_ICON: Record<Recommendation, string> = {
-  SAFE: 'i-lucide-check-circle-2',
-  CAUTION: 'i-lucide-alert-triangle',
-  DO_NOT_INSTALL: 'i-lucide-shield-x'
-}
-
 const color = computed(() => COLORS[props.severity])
 
 const RADIUS = 42
