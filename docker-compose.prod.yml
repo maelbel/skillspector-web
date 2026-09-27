@@ -1,0 +1,25 @@
+# Production overlay: prebuilt images instead of dev servers, no source bind mounts.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Add your reverse-proxy settings in docker-compose.override.yml as usual (see
+# docs/REVERSE_PROXY.md) and pass it as a third -f file.
+services:
+  api:
+    build:
+      target: production
+    tty: false
+    volumes: !override
+      - api_data:/app/data
+      - claude_cli_auth:/root
+
+  web:
+    build:
+      target: production
+    tty: false
+    environment:
+      NODE_ENV: production
+    volumes: !reset []
+
+volumes:
+  api_data:
