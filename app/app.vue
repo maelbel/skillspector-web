@@ -24,11 +24,15 @@ function navProps(path: string) {
 
 <template>
   <UApp>
-    <UHeader :ui="{ root: 'border-b border-default backdrop-blur bg-default/80' }">
+    <!-- No mobile menu: every nav item already fits in the header as an icon button. -->
+    <UHeader
+      :toggle="false"
+      :ui="{ root: 'border-b border-default backdrop-blur bg-default/80' }"
+    >
       <template #left>
         <NuxtLink
           to="/"
-          class="flex items-center gap-2 font-semibold"
+          class="flex items-center gap-2 font-semibold whitespace-nowrap"
         >
           <UIcon
             name="i-lucide-shield-check"
@@ -76,11 +80,12 @@ function navProps(path: string) {
     <UFooter>
       <template #left>
         <p class="text-sm text-muted">
-          Runs <a
+          Scans run on this server with <a
             :href="`https://github.com/${site.scannerRepo}`"
             target="_blank"
             class="underline"
-          >{{ site.scannerRepo }}</a>'s own scan pipeline — nothing scanned here leaves this server.
+          >{{ site.scannerRepo }}</a>. A skill's content is only sent to an AI provider when you
+          turn on AI analysis for that scan.
         </p>
       </template>
     </UFooter>

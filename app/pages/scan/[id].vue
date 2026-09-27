@@ -126,7 +126,7 @@ function expandAll() {
 const errorMessage = computed(() => {
   const err = error.value
   if (!err) return undefined
-  return (err.data as { statusMessage?: string } | undefined)?.statusMessage ?? err.message
+  return apiErrorMessage(err, err.message)
 })
 </script>
 

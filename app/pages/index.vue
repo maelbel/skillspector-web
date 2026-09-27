@@ -24,6 +24,10 @@ useSeoMeta({ title: 'Skillspector Web' })
       </div>
 
       <ScanForm />
+
+      <RecentScans />
+
+      <ScanCoverage />
     </div>
   </UContainer>
 </template>
