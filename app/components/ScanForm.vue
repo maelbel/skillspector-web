@@ -74,6 +74,8 @@ const EXAMPLES = [
 function useExample(example: typeof EXAMPLES[number]) {
   target.value = example.target
   targetTouched.value = true
+  // The clicked chip disappears once the field is filled; keep focus in the form so Enter scans.
+  targetInput.value?.inputRef?.focus()
 }
 
 const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
