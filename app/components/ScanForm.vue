@@ -48,6 +48,7 @@ const providerOptions = computed(() => {
 })
 
 const target = ref('')
+const targetInput = useTemplateRef('targetInput')
 const targetTouched = ref(false)
 const targetInfo = computed(() => describeScanTarget(target.value))
 const targetProblem = computed(() =>
@@ -92,6 +93,9 @@ interface ScanPrefs {
 const hasStoredProvider = ref(false)
 
 onMounted(() => {
+  // Skip on touch devices, where focusing pops up the keyboard over the page.
+  if (window.matchMedia('(pointer: fine)').matches) targetInput.value?.inputRef?.focus()
+
   let prefs: ScanPrefs = {}
   try {
     prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as ScanPrefs
@@ -126,6 +130,12 @@ function savePrefs() {
 watch(() => health.value?.claude_cli_available, (available) => {
   if (available && !hasStoredProvider.value) provider.value = 'claude_cli'
 }, { immediate: true })
+
+// Measured on this deployment: static scans of a repo or SKILL.md take about a minute.
+const durationHint = computed(() => useLlm.value
+  ? 'With AI analysis, a scan usually takes a few minutes.'
+  : 'A scan usually takes about a minute.'
+)
 
 const llmDescription = computed(() =>
   `An AI model also reviews what the skill is trying to do, catching issues static rules miss. `
@@ -207,6 +217,7 @@ async function submit() {
         :error="targetProblem"
       >
         <UInput
+          ref="targetInput"
           v-model="target"
           type="url"
           inputmode="url"
@@ -380,6 +391,9 @@ async function submit() {
       >
         Scan
       </UButton>
+      <p class="-mt-2 text-center text-xs text-muted">
+        {{ durationHint }} You can leave the results page and come back from the history.
+      </p>
     </form>
   </UCard>
 </template>
