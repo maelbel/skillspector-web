@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict, deque
+from contextvars import ContextVar
 
 _MAX_LINES_PER_SCAN = 500
 _MAX_TRACKED_SCANS = 50
@@ -10,7 +11,9 @@ _MAX_TRACKED_SCANS = 50
 _buffers: OrderedDict[str, deque[str]] = OrderedDict()
 _progress: dict[str, int] = {}
 _lock = threading.Lock()
-_current_job = threading.local()
+# A ContextVar rather than threading.local: LangGraph runs parallel nodes (the analyzers fanned
+# out from build_context) on worker threads, and copies the caller's context into them.
+_current_job: ContextVar[str | None] = ContextVar("scan_logs_current_job", default=None)
 
 
 def _touch(job_id: str) -> None:
@@ -43,7 +46,7 @@ def get_progress(job_id: str) -> int:
 
 class _JobLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
-        job_id = getattr(_current_job, "job_id", None)
+        job_id = _current_job.get()
         if job_id is None:
             return
         append(job_id, self.format(record))
@@ -58,11 +61,11 @@ def init_logging() -> None:
 
 
 def start_capture(job_id: str) -> None:
-    _current_job.job_id = job_id
+    _current_job.set(job_id)
 
 
 def stop_capture() -> None:
-    _current_job.job_id = None
+    _current_job.set(None)
 
 
 def get_logs(job_id: str) -> list[str]:
