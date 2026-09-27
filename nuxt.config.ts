@@ -12,7 +12,8 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
-    apiBase: process.env.NUXT_API_BASE || 'http://localhost:8000'
+    apiBase: process.env.NUXT_API_BASE || 'http://localhost:8000',
+    trustProxy: false
   },
 
   compatibilityDate: '2026-09-03',

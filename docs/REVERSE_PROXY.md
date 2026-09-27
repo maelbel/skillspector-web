@@ -11,12 +11,17 @@ one. You add it via `docker-compose.override.yml`, a file Docker Compose merges 
 `docker-compose.yml` automatically and that's already gitignored (see `.gitignore`), so proxy
 config with your real domain never risks landing in a commit.
 
-Two things a proxy config needs to set on `web`, whichever proxy you use:
+Three things a proxy config needs to set on `web`, whichever proxy you use:
 
 - **`NUXT_ALLOWED_HOST`** (env var) — your public hostname, e.g. `skillspector.example.com`.
   Vite's dev server (the `development` Docker target runs `nuxt dev`) rejects requests whose
   `Host` header isn't in its allowlist by default; without this you'll get "Blocked request. This
   host is not allowed." The `production` target's plain Node server has no such check.
+- **`NUXT_TRUST_PROXY: "true"`** (env var) — makes the per-IP rate limits (scans, admin-token
+  attempts) key on the client address your proxy appends as the right-most `X-Forwarded-For`
+  entry. Leave it unset when `web` is reached directly: then `X-Forwarded-For` is entirely
+  client-supplied and is ignored in favour of the socket address. With a proxy but without this
+  set, every visitor shares the proxy's address and therefore one rate-limit bucket.
 - **`ports: !reset []`** — drop the published `3005:3000` mapping; the proxy reaches the
   container directly over the Docker network, so there's no need to expose it on the host too.
 
@@ -34,6 +39,7 @@ services:
     ports: !reset []
     environment:
       NUXT_ALLOWED_HOST: skillspector.example.com
+      NUXT_TRUST_PROXY: "true"
     networks:
       - proxy
     labels:

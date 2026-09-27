@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   return await $fetch<SettingsResponse>('/settings', {
     baseURL: apiBase,
     method: 'PUT',
-    headers: { 'X-Admin-Token': adminToken },
+    headers: { 'X-Admin-Token': adminToken, 'X-Forwarded-For': getClientIp(event) },
     body: { scan_retention_days: scanRetentionDays ?? null }
   }).catch((error) => {
     throw createError({
