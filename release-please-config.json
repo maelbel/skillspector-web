@@ -4,7 +4,6 @@
     ".": {
       "release-type": "simple",
       "include-component-in-tag": false,
-      "release-as": "1.0.0",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },
@@ -19,6 +18,15 @@
           "type": "toml",
           "path": "backend/pyproject.toml",
           "jsonpath": "$.project.version"
+        },
+        {
+          "type": "toml",
+          "path": "backend/uv.lock",
+          "jsonpath": "$.package[?(@.name.value==='skillspector-web-api')].version"
+        },
+        {
+          "type": "generic",
+          "path": "backend/app/main.py"
         },
         {
           "type": "json",

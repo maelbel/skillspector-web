@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     kill_pending()
 
 
-app = FastAPI(title="Skillspector Web API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Skillspector Web API", version="1.0.0", lifespan=lifespan)  # x-release-please-version
 
 app.add_middleware(
     CORSMiddleware,
