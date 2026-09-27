@@ -3,6 +3,15 @@ const SHOWN = 5
 
 const { data } = useRecentScans()
 const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
+
+// "org/repo/deep/path/to/SKILL.md" → lead with the distinctive end ("to/SKILL.md") and show
+// "org/repo" underneath; many scans share the same repo prefix, which truncation would keep.
+function splitTitle(target: string): { name: string, source?: string } {
+  const { title } = parseScanTarget(target)
+  const parts = title.split('/')
+  if (title.includes('://') || parts.length <= 3) return { name: title }
+  return { name: parts.slice(-2).join('/'), source: parts.slice(0, 2).join('/') }
+}
 </script>
 
 <template>
@@ -39,13 +48,19 @@ const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
             class="flex items-center gap-3 px-4 py-3 hover:bg-elevated/50 transition-colors"
           >
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium truncate">
-                {{ parseScanTarget(scan.target).title }}
+              <p
+                class="text-sm font-medium truncate"
+                :title="scan.target"
+              >
+                {{ splitTitle(scan.target).name }}
               </p>
               <p
                 :title="formatDate(scan.created_at)"
-                class="text-xs text-muted"
+                class="text-xs text-muted truncate"
               >
+                <template v-if="splitTitle(scan.target).source">
+                  {{ splitTitle(scan.target).source }} ·
+                </template>
                 <NuxtTime
                   :datetime="scan.created_at * 1000"
                   relative
@@ -60,7 +75,7 @@ const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
               icon="i-lucide-loader-circle"
               :ui="{ leadingIcon: 'animate-spin' }"
             >
-              {{ scan.status === 'pending' ? 'Queued' : 'Scanning' }}
+              <span class="sr-only sm:not-sr-only">{{ scan.status === 'pending' ? 'Queued' : 'Scanning' }}</span>
             </UBadge>
             <UBadge
               v-else-if="scan.status === 'error'"
@@ -68,7 +83,7 @@ const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
               variant="subtle"
               icon="i-lucide-x-circle"
             >
-              Failed
+              <span class="sr-only sm:not-sr-only">Failed</span>
             </UBadge>
             <UBadge
               v-else-if="scan.recommendation"
@@ -76,7 +91,7 @@ const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
               :icon="RECOMMENDATION_ICON[scan.recommendation]"
               variant="subtle"
             >
-              {{ RECOMMENDATION_LABEL[scan.recommendation] }}
+              <span class="sr-only sm:not-sr-only">{{ RECOMMENDATION_LABEL[scan.recommendation] }}</span>
             </UBadge>
             <UIcon
               name="i-lucide-chevron-right"
