@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/maelbel/skillspector-web/compare/v1.1.0...v1.1.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* read backend/.env.local when running the API without Docker ([#35](https://github.com/maelbel/skillspector-web/issues/35)) ([ae8bca5](https://github.com/maelbel/skillspector-web/commit/ae8bca599e7b37858aa4db1bfb3f30c0eb673cd6))
+
+
+### Documentation
+
+* rewrite the README and add contributing and security guides ([#37](https://github.com/maelbel/skillspector-web/issues/37)) ([41d594e](https://github.com/maelbel/skillspector-web/commit/41d594eb885841dedc521a5daa3f8c550a5989b7))
+
 ## [1.1.0](https://github.com/maelbel/skillspector-web/compare/v1.0.0...v1.1.0) (2026-09-27)
 
 
