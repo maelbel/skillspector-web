@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import Header, HTTPException, Request
 
 from app import rate_limit
@@ -13,5 +15,5 @@ def require_admin(request: Request, x_admin_token: str | None = Header(default=N
     if not rate_limit.check(key, settings.admin_rate_limit, settings.admin_rate_limit_window_seconds):
         raise HTTPException(status_code=429, detail="Too many admin attempts from this address — try again shortly")
 
-    if x_admin_token != settings.admin_token:
+    if x_admin_token is None or not hmac.compare_digest(x_admin_token.encode(), settings.admin_token.encode()):
         raise HTTPException(status_code=401, detail="invalid admin token")
