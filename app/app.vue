@@ -76,11 +76,12 @@ function navProps(path: string) {
     <UFooter>
       <template #left>
         <p class="text-sm text-muted">
-          Runs <a
+          Scans run on this server with <a
             :href="`https://github.com/${site.scannerRepo}`"
             target="_blank"
             class="underline"
-          >{{ site.scannerRepo }}</a>'s own scan pipeline — nothing scanned here leaves this server.
+          >{{ site.scannerRepo }}</a>. A skill's content is only sent to an AI provider when you
+          turn on AI analysis for that scan.
         </p>
       </template>
     </UFooter>
