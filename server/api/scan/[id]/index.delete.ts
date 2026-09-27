@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
 
   const { apiBase } = useRuntimeConfig()
 
-  await $fetch(`/scan/${id}`, {
+  await $fetch(`/scan/${encodeURIComponent(id)}`, {
     baseURL: apiBase,
     method: 'DELETE'
   }).catch((error) => {
