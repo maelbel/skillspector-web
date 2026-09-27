@@ -83,7 +83,7 @@ async function submit() {
     })
     await navigateTo(`/scan/${id}`)
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to start scan'
+    errorMessage.value = apiErrorMessage(err, 'Failed to start scan')
     submitting.value = false
   }
 }
@@ -200,7 +200,9 @@ async function submit() {
         v-if="errorMessage"
         color="error"
         variant="subtle"
-        :title="errorMessage"
+        icon="i-lucide-circle-alert"
+        title="Couldn’t start the scan"
+        :description="errorMessage"
       />
 
       <UButton

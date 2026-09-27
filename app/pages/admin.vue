@@ -30,7 +30,7 @@ async function startLogin() {
     loginUrl.value = url
     step.value = 'started'
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to start login'
+    errorMessage.value = apiErrorMessage(err, 'Failed to start login')
   } finally {
     starting.value = false
   }
@@ -51,7 +51,7 @@ async function completeLogin() {
     resultMessage.value = output
     step.value = 'done'
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to complete login'
+    errorMessage.value = apiErrorMessage(err, 'Failed to complete login')
   } finally {
     completing.value = false
   }
@@ -101,7 +101,7 @@ async function saveRetention() {
     settingsData.value = updated
     retentionSaved.value = true
   } catch (err) {
-    retentionError.value = err instanceof Error ? err.message : 'Failed to save'
+    retentionError.value = apiErrorMessage(err, 'Failed to save')
   } finally {
     savingRetention.value = false
   }

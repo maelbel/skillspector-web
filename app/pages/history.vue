@@ -80,7 +80,7 @@ async function confirmDelete() {
     closeDeleteModal()
     await refresh()
   } catch (err) {
-    deleteError.value = err instanceof Error ? err.message : 'Failed to delete scan'
+    deleteError.value = apiErrorMessage(err, 'Failed to delete scan')
   } finally {
     deleting.value = false
   }
@@ -114,7 +114,7 @@ async function confirmDelete() {
         color="error"
         variant="subtle"
         title="Failed to load scan history"
-        :description="error.message"
+        :description="apiErrorMessage(error, error.message)"
       />
 
       <UCard v-else-if="status === 'pending'">
