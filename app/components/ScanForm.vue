@@ -2,13 +2,26 @@
 import type { LLMConfig, LLMProvider } from '~~/shared/types/scan'
 import type { ScanTargetKind } from '~~/shared/utils/scan'
 
-const { data: health, pending: healthPending } = useFetch('/api/health')
+// Awaited so the server-rendered default provider matches the client's (see the watch below).
+const { data: health, pending: healthPending } = await useFetch('/api/health')
 
 const PROVIDER_LABELS: Record<LLMProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama (self-hosted)',
-  claude_cli: 'Claude CLI (server login)'
+  claude_cli: 'Claude via this server — no key needed'
+}
+
+const PROVIDER_RECIPIENTS: Record<LLMProvider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI (or the endpoint you set)',
+  ollama: 'your Ollama server',
+  claude_cli: 'Anthropic, through this server’s Claude login'
+}
+
+const API_KEY_LINKS: Partial<Record<LLMProvider, string>> = {
+  anthropic: 'https://console.anthropic.com/settings/keys',
+  openai: 'https://platform.openai.com/api-keys'
 }
 
 const PROVIDER_ICONS: Record<LLMProvider, string> = {
@@ -23,12 +36,15 @@ const providerOptions = computed(() => {
     ? 'Claude CLI (checking availability…)'
     : PROVIDER_LABELS.claude_cli
 
-  return [
+  type ProviderOption = { value: LLMProvider, label: string, icon: string, disabled?: boolean }
+  const claudeCli: ProviderOption = { value: 'claude_cli', label: claudeCliLabel, icon: PROVIDER_ICONS.claude_cli, disabled: healthPending.value }
+  const withKey: ProviderOption[] = [
     { value: 'anthropic', label: PROVIDER_LABELS.anthropic, icon: PROVIDER_ICONS.anthropic },
     { value: 'openai', label: PROVIDER_LABELS.openai, icon: PROVIDER_ICONS.openai },
-    { value: 'ollama', label: PROVIDER_LABELS.ollama, icon: PROVIDER_ICONS.ollama },
-    { value: 'claude_cli', label: claudeCliLabel, icon: PROVIDER_ICONS.claude_cli, disabled: healthPending.value }
-  ] satisfies { value: LLMProvider, label: string, icon: string, disabled?: boolean }[]
+    { value: 'ollama', label: PROVIDER_LABELS.ollama, icon: PROVIDER_ICONS.ollama }
+  ]
+  // The zero-setup option goes first when it works.
+  return health.value?.claude_cli_available ? [claudeCli, ...withKey] : [...withKey, claudeCli]
 })
 
 const target = ref('')
@@ -55,13 +71,66 @@ const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }
   file: { icon: 'i-lucide-file-text', label: 'single file' },
   archive: { icon: 'i-lucide-file-archive', label: 'archive' }
 }
+
 const useLlm = ref(false)
 const provider = ref<LLMProvider>('anthropic')
 const apiKey = ref('')
 const baseUrl = ref('')
 const model = ref('')
+const advancedOpen = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
+
+// Remembered per browser so repeat visitors don't re-pick their setup. The API key never is.
+const PREFS_KEY = 'skillspector:scan-prefs'
+interface ScanPrefs {
+  useLlm?: boolean
+  provider?: LLMProvider
+  baseUrl?: string
+  model?: string
+}
+const hasStoredProvider = ref(false)
+
+onMounted(() => {
+  let prefs: ScanPrefs = {}
+  try {
+    prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as ScanPrefs
+  } catch {
+    return
+  }
+  if (typeof prefs.useLlm === 'boolean') useLlm.value = prefs.useLlm
+  if (prefs.provider && prefs.provider in PROVIDER_LABELS) {
+    provider.value = prefs.provider
+    hasStoredProvider.value = true
+  }
+  baseUrl.value = prefs.baseUrl ?? ''
+  model.value = prefs.model ?? ''
+  advancedOpen.value = !!(baseUrl.value || model.value)
+})
+
+function savePrefs() {
+  const prefs: ScanPrefs = {
+    useLlm: useLlm.value,
+    provider: provider.value,
+    baseUrl: baseUrl.value.trim() || undefined,
+    model: model.value.trim() || undefined
+  }
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    // Storage can be unavailable (private mode, blocked site data); preferences are optional.
+  }
+}
+
+// Default to the server's Claude login when it's available, unless the visitor picked before.
+watch(() => health.value?.claude_cli_available, (available) => {
+  if (available && !hasStoredProvider.value) provider.value = 'claude_cli'
+}, { immediate: true })
+
+const llmDescription = computed(() =>
+  `An AI model also reviews what the skill is trying to do, catching issues static rules miss. `
+  + `Slower, and the skill’s content is sent to ${PROVIDER_RECIPIENTS[provider.value]}.`
+)
 
 const needsApiKey = computed(() => provider.value !== 'ollama' && provider.value !== 'claude_cli')
 const claudeCliUnauthenticated = computed(() =>
@@ -108,6 +177,7 @@ async function submit() {
       method: 'POST',
       body: { target: target.value.trim(), llm }
     })
+    savePrefs()
     await navigateTo(`/scan/${id}`)
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Failed to start scan')
@@ -181,8 +251,8 @@ async function submit() {
       <UFormField>
         <USwitch
           v-model="useLlm"
-          label="Use LLM semantic analysis"
-          description="Slower and uses your own API credits, but catches intent-based issues static rules miss."
+          label="Deep analysis with AI"
+          :description="llmDescription"
           :disabled="submitting"
         />
       </UFormField>
@@ -215,6 +285,18 @@ async function submit() {
             label="API key"
             description="Sent only for this scan, used to call the provider directly, never stored."
           >
+            <template
+              v-if="API_KEY_LINKS[provider]"
+              #hint
+            >
+              <ULink
+                :to="API_KEY_LINKS[provider]"
+                target="_blank"
+                class="text-xs"
+              >
+                Get a key
+              </ULink>
+            </template>
             <UInput
               v-model="apiKey"
               type="password"
@@ -223,12 +305,6 @@ async function submit() {
               :disabled="submitting"
             />
           </UFormField>
-          <p
-            v-else-if="provider === 'claude_cli'"
-            class="text-xs text-muted"
-          >
-            Uses this server's own Claude Code login — no key needed.
-          </p>
 
           <UAlert
             v-if="claudeCliUnauthenticated"
@@ -239,30 +315,49 @@ async function submit() {
             description="This server's Claude CLI hasn't been authenticated yet — an admin needs to complete the login before this provider will work."
           />
 
-          <UFormField
-            v-if="provider !== 'claude_cli'"
-            label="Base URL"
-            description="Optional — override for a proxy or OpenAI-compatible endpoint."
+          <UCollapsible
+            v-model:open="advancedOpen"
+            class="flex flex-col gap-3"
           >
-            <UInput
-              v-model="baseUrl"
-              :placeholder="baseUrlPlaceholder"
-              class="w-full"
-              :disabled="submitting"
+            <UButton
+              label="Advanced options"
+              color="neutral"
+              variant="link"
+              size="xs"
+              trailing-icon="i-lucide-chevron-down"
+              class="self-start px-0"
+              :ui="{ trailingIcon: 'transition-transform group-data-[state=open]:rotate-180' }"
             />
-          </UFormField>
 
-          <UFormField
-            label="Model"
-            description="Optional — defaults to the provider's recommended model."
-          >
-            <UInput
-              v-model="model"
-              placeholder="e.g. claude-opus-4-6"
-              class="w-full"
-              :disabled="submitting"
-            />
-          </UFormField>
+            <template #content>
+              <div class="flex flex-col gap-3">
+                <UFormField
+                  v-if="provider !== 'claude_cli'"
+                  label="Base URL"
+                  description="Override for a proxy or an OpenAI-compatible endpoint."
+                >
+                  <UInput
+                    v-model="baseUrl"
+                    :placeholder="baseUrlPlaceholder"
+                    class="w-full"
+                    :disabled="submitting"
+                  />
+                </UFormField>
+
+                <UFormField
+                  label="Model"
+                  description="Leave empty to use the provider’s recommended model."
+                >
+                  <UInput
+                    v-model="model"
+                    placeholder="Provider default"
+                    class="w-full"
+                    :disabled="submitting"
+                  />
+                </UFormField>
+              </div>
+            </template>
+          </UCollapsible>
         </div>
       </Transition>
 
