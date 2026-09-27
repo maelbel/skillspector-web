@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LLMConfig, LLMProvider } from '~~/shared/types/scan'
+import type { ScanTargetKind } from '~~/shared/utils/scan'
 
 const { data: health, pending: healthPending } = useFetch('/api/health')
 
@@ -31,6 +32,17 @@ const providerOptions = computed(() => {
 })
 
 const target = ref('')
+const targetTouched = ref(false)
+const targetInfo = computed(() => describeScanTarget(target.value))
+const targetProblem = computed(() =>
+  targetTouched.value && targetInfo.value && !targetInfo.value.ok ? targetInfo.value.problem : undefined
+)
+
+const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
+  repository: { icon: 'i-lucide-git-branch', label: 'repository' },
+  file: { icon: 'i-lucide-file-text', label: 'single file' },
+  archive: { icon: 'i-lucide-file-archive', label: 'archive' }
+}
 const useLlm = ref(false)
 const provider = ref<LLMProvider>('anthropic')
 const apiKey = ref('')
@@ -46,7 +58,7 @@ const claudeCliUnauthenticated = computed(() =>
 const backendDown = computed(() => health.value?.status === 'down')
 const canSubmit = computed(() => {
   if (backendDown.value) return false
-  if (!target.value.trim()) return false
+  if (!targetInfo.value?.ok) return false
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
   if (useLlm.value && claudeCliUnauthenticated.value) return false
   return true
@@ -64,6 +76,7 @@ const baseUrlPlaceholder = computed(() => {
 })
 
 async function submit() {
+  targetTouched.value = true
   if (!canSubmit.value) return
 
   submitting.value = true
@@ -108,15 +121,32 @@ async function submit() {
 
       <UFormField
         label="Skill source"
-        description="A Git repo, zip, or file URL — e.g. https://github.com/some-org/some-skill"
+        description="A repository or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face."
+        :error="targetProblem"
       >
         <UInput
           v-model="target"
+          type="url"
+          inputmode="url"
           placeholder="https://github.com/org/repo"
           icon="i-lucide-link"
           class="w-full"
           :disabled="submitting"
+          @blur="targetTouched = true"
         />
+        <template #help>
+          <span
+            v-if="targetInfo?.ok"
+            class="flex items-center gap-1.5 min-w-0"
+          >
+            <UIcon
+              :name="TARGET_KIND_LABELS[targetInfo.kind].icon"
+              class="size-4 shrink-0 text-primary"
+            />
+            <span class="shrink-0">{{ targetInfo.host }} {{ TARGET_KIND_LABELS[targetInfo.kind].label }}</span>
+            <span class="text-highlighted font-medium truncate">{{ targetInfo.title }}</span>
+          </span>
+        </template>
       </UFormField>
 
       <UFormField>
