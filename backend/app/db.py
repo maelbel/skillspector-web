@@ -125,7 +125,11 @@ def delete_scan(id: str) -> bool:
 
 def delete_scans_older_than(cutoff: float) -> int:
     conn = _connection_or_raise()
-    cursor = conn.execute("DELETE FROM scans WHERE created_at < ?", (cutoff,))
+    # Pending/running scans are still owned by a live job; deleting them would lose the result.
+    cursor = conn.execute(
+        "DELETE FROM scans WHERE created_at < ? AND status NOT IN ('pending', 'running')",
+        (cutoff,),
+    )
     conn.commit()
     return cursor.rowcount
 

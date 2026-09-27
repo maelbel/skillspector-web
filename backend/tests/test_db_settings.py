@@ -46,3 +46,16 @@ def test_fail_unfinished_scans_only_touches_pending_and_running(temp_db):
         row = db.get_scan(id)
         assert (row["status"], row["error"], row["finished_at"]) == ("error", "Interrupted", 10.0)
     assert db.get_scan("done")["status"] == "done"
+
+
+def test_delete_scans_older_than_keeps_active_scans(temp_db):
+    for id, status in (("pending", "pending"), ("running", "running"), ("done", "done"), ("error", "error")):
+        db.insert_scan(id=id, target="t", status=status, created_at=1000.0, provider=None)
+
+    deleted = db.delete_scans_older_than(1500.0)
+
+    assert deleted == 2
+    assert db.get_scan("pending") is not None
+    assert db.get_scan("running") is not None
+    assert db.get_scan("done") is None
+    assert db.get_scan("error") is None
