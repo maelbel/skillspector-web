@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0](https://github.com/maelbel/skillspector-web/compare/v1.0.0...v1.1.0) (2026-09-27)
+
+
+### Features
+
+* add a favicon ([#34](https://github.com/maelbel/skillspector-web/issues/34)) ([5346fca](https://github.com/maelbel/skillspector-web/commit/5346fcab4ec760dc1c96eaf78450979523ed3428))
+* home page UX overhaul ([#33](https://github.com/maelbel/skillspector-web/issues/33)) ([8478827](https://github.com/maelbel/skillspector-web/commit/84788278beaea6fff843785983be07aab3312efe))
+
+
+### Bug Fixes
+
+* cap the number of queued scans ([#23](https://github.com/maelbel/skillspector-web/issues/23)) ([424d4f7](https://github.com/maelbel/skillspector-web/commit/424d4f74050fa09d7ee904465dac67e7ee524b38))
+* capture scan logs emitted from LangGraph worker threads ([#30](https://github.com/maelbel/skillspector-web/issues/30)) ([af6ac99](https://github.com/maelbel/skillspector-web/commit/af6ac99942b58590df88136b4123ee7ae0334cd5))
+* compare the admin token in constant time ([#27](https://github.com/maelbel/skillspector-web/issues/27)) ([7e3c96b](https://github.com/maelbel/skillspector-web/commit/7e3c96b72efd4b6b4d1a389a83c7ff79746f568d))
+* derive the rate-limit client IP from a trusted hop only ([#22](https://github.com/maelbel/skillspector-web/issues/22)) ([6360c37](https://github.com/maelbel/skillspector-web/commit/6360c375a6d677292eacaa476d308e8c492f7e85))
+* drop the release-as pin and keep every version string in sync ([#26](https://github.com/maelbel/skillspector-web/issues/26)) ([c96fae8](https://github.com/maelbel/skillspector-web/commit/c96fae84ecf1a75e0be33cea1b12b109481ad1bb))
+* keep pending and running scans out of the retention sweep ([#29](https://github.com/maelbel/skillspector-web/issues/29)) ([4f09ed6](https://github.com/maelbel/skillspector-web/commit/4f09ed64294489d0abb25e180a516eb04ba6a6e2))
+* mark scans interrupted by an API restart as failed ([#24](https://github.com/maelbel/skillspector-web/issues/24)) ([675684c](https://github.com/maelbel/skillspector-web/commit/675684cbecae54d9eebb079c32b287a064f8d139))
+* stop /health from mutating os.environ during scans ([#21](https://github.com/maelbel/skillspector-web/issues/21)) ([bf30f85](https://github.com/maelbel/skillspector-web/commit/bf30f8584b8d0af6cea155f17d5eb705ce2a81c0))
+* URL-encode the scan id when proxying to the backend ([#28](https://github.com/maelbel/skillspector-web/issues/28)) ([c27b835](https://github.com/maelbel/skillspector-web/commit/c27b835d7ee7789be89d5f888a079121caa35e1e))
+
 ## [1.0.0](https://github.com/maelbel/skillspector-web/compare/v0.1.1...v1.0.0) (2026-09-05)
 
 
