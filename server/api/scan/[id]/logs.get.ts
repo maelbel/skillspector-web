@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   const { apiBase } = useRuntimeConfig()
 
-  return await $fetch<ScanLogsResponse>(`/scan/${id}/logs`, { baseURL: apiBase }).catch((error) => {
+  return await $fetch<ScanLogsResponse>(`/scan/${encodeURIComponent(id)}/logs`, { baseURL: apiBase }).catch((error) => {
     throw createError({
       statusCode: error?.response?.status ?? 502,
       statusMessage: error?.data?.detail ?? 'Failed to fetch scan logs'
