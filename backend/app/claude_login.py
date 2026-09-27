@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 
@@ -10,6 +13,7 @@ _START_READ_SECONDS = 15.0
 _COMPLETE_TIMEOUT_SECONDS = 30.0
 _STALE_PENDING_SECONDS = 300.0
 _URL_RE = re.compile(r"https://\S+")
+_AUTH_STATUS_TIMEOUT_SECONDS = 15.0
 
 
 @dataclass
@@ -22,6 +26,35 @@ _pending: PendingLogin | None = None
 _lock = asyncio.Lock()
 
 
+def _env_without_api_key() -> dict[str, str]:
+    # main.py sets a placeholder ANTHROPIC_API_KEY, and scans may set a user's real one; either
+    # would make the CLI report API-key auth instead of its own login.
+    return {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
+
+def is_claude_cli_available() -> bool:
+    """Whether the server's `claude` CLI is logged in, without touching os.environ."""
+    binary = shutil.which("claude")
+    if binary is None:
+        return False
+    try:
+        result = subprocess.run(
+            [binary, "auth", "status"],
+            capture_output=True,
+            check=False,
+            env=_env_without_api_key(),
+            timeout=_AUTH_STATUS_TIMEOUT_SECONDS,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    out = result.stdout.decode(errors="replace").strip()
+    try:
+        logged_in = bool(json.loads(out).get("loggedIn"))
+    except (json.JSONDecodeError, AttributeError):
+        logged_in = result.returncode == 0 and "not logged in" not in out.lower()
+    return result.returncode == 0 and logged_in
+
+
 async def start_claude_login() -> str:
     global _pending
     async with _lock:
@@ -31,7 +64,7 @@ async def start_claude_login() -> str:
             _pending.process.kill()
             _pending = None
 
-        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env = _env_without_api_key()
         process = await asyncio.create_subprocess_exec(
             "claude",
             "auth",

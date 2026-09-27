@@ -16,12 +16,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
-from skillspector.providers.claude_cli import ClaudeCLIProvider
 
 from app import retention
 from app.api.routes import admin, scan
 from app.api.routes import settings as settings_routes
-from app.claude_login import kill_pending
+from app.claude_login import is_claude_cli_available, kill_pending
 from app.core.config import get_settings
 from app.db import init_db
 from app.scan_logs import init_logging
@@ -56,17 +55,9 @@ app.include_router(settings_routes.router)
 @app.get("/health")
 def health() -> dict:
     llm_available, _ = is_llm_available()
-
-    previous_key = os.environ.pop("ANTHROPIC_API_KEY", None)
-    try:
-        claude_cli_available, _ = ClaudeCLIProvider().is_available()
-    finally:
-        if previous_key is not None:
-            os.environ["ANTHROPIC_API_KEY"] = previous_key
-
     return {
         "status": "ok",
         "skillspector_version": skillspector_version,
         "llm_available": llm_available,
-        "claude_cli_available": claude_cli_available,
+        "claude_cli_available": is_claude_cli_available(),
     }
