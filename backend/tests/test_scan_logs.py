@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -97,6 +99,39 @@ def test_capture_scopes_log_handler_records_to_the_current_thread():
     finally:
         scan_logs.stop_capture()
     assert scan_logs.get_logs("job-a") == ["hello"]
+
+
+def test_capture_follows_context_into_worker_threads():
+    # LangGraph runs parallel nodes on a thread pool with a copy of the caller's context.
+    scan_logs.start_capture("job-a")
+    try:
+        context = contextvars.copy_context()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pool.submit(context.run, scan_logs._JobLogHandler().emit, _make_record("from worker")).result()
+    finally:
+        scan_logs.stop_capture()
+    assert scan_logs.get_logs("job-a") == ["from worker"]
+
+
+def test_concurrent_captures_stay_isolated_per_thread():
+    barrier = threading.Barrier(2)
+
+    def scan(job_id: str) -> None:
+        scan_logs.start_capture(job_id)
+        barrier.wait()
+        try:
+            scan_logs._JobLogHandler().emit(_make_record(job_id))
+        finally:
+            scan_logs.stop_capture()
+
+    threads = [threading.Thread(target=scan, args=(job_id,)) for job_id in ("job-a", "job-b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert scan_logs.get_logs("job-a") == ["job-a"]
+    assert scan_logs.get_logs("job-b") == ["job-b"]
 
 
 def test_uncaptured_thread_drops_log_records():
