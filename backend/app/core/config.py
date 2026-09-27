@@ -6,7 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Runtime config for the scan API. All values overridable via env vars."""
 
-    model_config = SettingsConfigDict(env_prefix="SKILLSPECTOR_WEB_", env_file=".env")
+    # .env.local is what `pnpm setup` writes; it overrides .env when both exist.
+    model_config = SettingsConfigDict(env_prefix="SKILLSPECTOR_WEB_", env_file=(".env", ".env.local"))
 
     cors_origins: list[str] = ["http://localhost:3000"]
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
