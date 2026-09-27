@@ -32,3 +32,17 @@ def test_delete_scans_older_than_only_removes_matching_rows(temp_db):
 def test_delete_scans_older_than_returns_zero_when_nothing_matches(temp_db):
     db.insert_scan(id="new", target="t", status="done", created_at=2000.0, provider=None)
     assert db.delete_scans_older_than(1000.0) == 0
+
+
+def test_fail_unfinished_scans_only_touches_pending_and_running(temp_db):
+    db.insert_scan(id="pending", target="t", status="pending", created_at=1.0, provider=None)
+    db.insert_scan(id="running", target="t", status="running", created_at=2.0, provider=None)
+    db.insert_scan(id="done", target="t", status="done", created_at=3.0, provider=None)
+
+    failed = db.fail_unfinished_scans(error="Interrupted", finished_at=10.0)
+
+    assert failed == 2
+    for id in ("pending", "running"):
+        row = db.get_scan(id)
+        assert (row["status"], row["error"], row["finished_at"]) == ("error", "Interrupted", 10.0)
+    assert db.get_scan("done")["status"] == "done"

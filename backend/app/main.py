@@ -10,6 +10,7 @@ if not _known_working:
     os.environ["SKILLSPECTOR_PROVIDER"] = "anthropic"
     os.environ["ANTHROPIC_API_KEY"] = "sk-placeholder-unlocks-llm-analyzer-wiring"
 
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,7 +19,7 @@ from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 from skillspector.providers.claude_cli import ClaudeCLIProvider
 
-from app import retention
+from app import db, retention
 from app.api.routes import admin, scan
 from app.api.routes import settings as settings_routes
 from app.claude_login import kill_pending
@@ -32,6 +33,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Jobs run in this process, so anything still pending/running from a previous one is dead.
+    db.fail_unfinished_scans(error="Interrupted: the API restarted before this scan finished", finished_at=time.time())
     init_logging()
     retention.start()
     yield

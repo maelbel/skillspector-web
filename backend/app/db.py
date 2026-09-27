@@ -101,6 +101,16 @@ def update_scan(
     conn.commit()
 
 
+def fail_unfinished_scans(*, error: str, finished_at: float) -> int:
+    conn = _connection_or_raise()
+    cursor = conn.execute(
+        "UPDATE scans SET status = 'error', error = ?, finished_at = ? WHERE status IN ('pending', 'running')",
+        (error, finished_at),
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
 def get_scan(id: str) -> sqlite3.Row | None:
     conn = _connection_or_raise()
     return conn.execute("SELECT * FROM scans WHERE id = ?", (id,)).fetchone()
