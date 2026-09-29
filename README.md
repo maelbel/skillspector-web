@@ -100,6 +100,9 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
 | `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
+| `SCAN_EXECUTOR` | *by mode* | Where a scan's fetch and analysis happen: `local` (the `self_hosted` default: inside the API) or `sandbox` (the `hosted` default: a fresh Vercel Sandbox microVM per scan). |
+| `SANDBOX_SNAPSHOT_ID` | *unset* | Snapshot sandboxed scans boot from, with skillspector preinstalled. Build it with `uv run python -m app.sandbox_snapshot` (needs Vercel credentials). Required with `SCAN_EXECUTOR=sandbox`. |
+| `SANDBOX_VCPUS`<br>`SANDBOX_TIMEOUT_SECONDS` | `2`<br>`240` | vCPUs per scan sandbox, and how long a sandboxed scan may run before it's stopped and reported as timed out. |
 | `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per client IP within the window. |
@@ -381,6 +384,11 @@ isn't protected:
 - **Scan targets are constrained** by skillspector: https only, an allowlist of Git and download
   hosts, private and internal addresses refused, no redirects followed, and size limits on clones,
   archives and downloads.
+- **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
+  `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
+  microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound
+  traffic limited to the code hosts above with private address ranges blocked, and nothing from
+  the app's environment passed in.
 - **Custom AI base URLs are not restricted.** A visitor-supplied Base URL makes the server send
   requests to that address — another reason not to expose the app without authentication.
 - **API keys** are held in memory only for the duration of the scan that uses them; they are never

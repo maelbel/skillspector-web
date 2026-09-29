@@ -1357,6 +1357,7 @@ dependencies = [
     { name = "skillspector" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "vercel-queue" },
+    { name = "vercel-sandbox" },
 ]
 
 [package.dev-dependencies]
@@ -1374,6 +1375,7 @@ requires-dist = [
     { name = "skillspector", git = "https://github.com/NVIDIA/skillspector.git?rev=7805bb94843d91cb9937f57264ca52642164499b" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "vercel-queue", specifier = ">=0.1" },
+    { name = "vercel-sandbox", specifier = ">=0.7" },
 ]
 
 [package.metadata.requires-dev]
@@ -1689,6 +1691,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ed/7a/8bf7c0da050be00a02c0495117ae371418af897ee836306c6179e7e8abee/vercel_queue-0.9.0.tar.gz", hash = "sha256:24ff5605a4dda374537ad205dc06578732b3d0b2af02ed35b9b436811624d72b", size = 87140, upload-time = "2026-09-15T14:34:00.542Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/a8/fb8e483f5ba14014d0ed3bf98a3a0341e1f627d7916d12af66bd87cf556a/vercel_queue-0.9.0-py3-none-any.whl", hash = "sha256:233d381ac3573f0cc1ece038b14ff0a98d48c681e7a1030dab4b500849bf4569", size = 95460, upload-time = "2026-09-15T14:33:59.391Z" },
+]
+
+[[package]]
+name = "vercel-sandbox"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "httpx2" },
+    { name = "pydantic" },
+    { name = "vercel-internal-core" },
+    { name = "vercel-oidc" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/f7/3427e75b63056f77ed3fd5986818a1b521d86c2c8704d2e929cedcbf70aa/vercel_sandbox-0.7.0.tar.gz", hash = "sha256:07d703790d0141dc75e0962baf35d666a6961bc1de913749137267a2550c81e2", size = 80326, upload-time = "2026-09-23T16:46:22.354Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/39/6d/372055569df9db7c1f5663bf128b914e70ab96f3b480fd9cf9c1be2c5aff/vercel_sandbox-0.7.0-py3-none-any.whl", hash = "sha256:f7eb897a1a5092fe8c38319ce803033b1a9ced8f414564a43a668432f91ffcd9", size = 91791, upload-time = "2026-09-23T16:46:21.169Z" },
 ]
 
 [[package]]

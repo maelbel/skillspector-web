@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     job_runner: Literal["in_process", "vercel_queues"] | None = None
     # Where live scan logs and progress go; unset picks the mode's default (memory, or database when hosted).
     log_store: Literal["memory", "database"] | None = None
+    # Where a scan's fetch and analysis happen: local (this process) or sandbox (a Vercel Sandbox
+    # microVM); unset picks the mode's default (local, or sandbox when hosted).
+    scan_executor: Literal["local", "sandbox"] | None = None
+    # The snapshot sandboxed scans boot from; build it with `python -m app.sandbox_snapshot`.
+    sandbox_snapshot_id: str | None = None
+    sandbox_vcpus: int = 2
+    # Longest a sandboxed scan may run before it's stopped and reported as timed out.
+    sandbox_timeout_seconds: float = 240.0
     cors_origins: list[str] = ["http://localhost:3000"]
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
     max_concurrent_scans: int = 2

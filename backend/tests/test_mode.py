@@ -31,8 +31,8 @@ def test_unknown_mode_is_rejected(tmp_path, monkeypatch):
         Settings()
 
 
-def _settings(mode: Mode, database_url: str | None = None) -> Settings:
-    return Settings(_env_file=None, mode=mode, database_url=database_url)
+def _settings(mode: Mode, database_url: str | None = None, **overrides) -> Settings:
+    return Settings(_env_file=None, mode=mode, database_url=database_url, **overrides)
 
 
 def test_self_hosted_always_starts():
@@ -41,7 +41,7 @@ def test_self_hosted_always_starts():
 
 def test_hosted_refuses_to_start_and_names_what_is_missing():
     with pytest.raises(ModeConfigError) as excinfo:
-        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector"))
+        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
 
     message = str(excinfo.value)
     for piece, issue in HOSTED_NOT_IMPLEMENTED.items():
@@ -60,7 +60,7 @@ def test_hosted_requires_a_database_url(monkeypatch):
 def test_hosted_starts_once_every_piece_exists(monkeypatch):
     monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
 
-    check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector"))
+    check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
 
 
 def test_health_reports_the_mode(monkeypatch):
@@ -71,3 +71,17 @@ def test_health_reports_the_mode(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["mode"] == "self_hosted"
+
+
+def test_hosted_requires_a_sandbox_snapshot(monkeypatch):
+    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
+
+    with pytest.raises(ModeConfigError, match="SANDBOX_SNAPSHOT_ID"):
+        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector"))
+
+
+def test_hosted_refuses_to_scan_outside_the_sandbox(monkeypatch):
+    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
+
+    with pytest.raises(ModeConfigError, match="SCAN_EXECUTOR=local"):
+        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", scan_executor="local"))

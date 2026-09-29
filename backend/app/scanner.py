@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import time
@@ -15,6 +16,8 @@ from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
 from app import db, scan_logs
+from app.core.config import get_settings
+from app.sandbox_executor import SandboxExecutor, executor_kind
 
 TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
@@ -61,6 +64,11 @@ class Job:
     finished_at: float | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+@functools.cache
+def _sandbox_executor() -> SandboxExecutor:
+    return SandboxExecutor(get_settings())
 
 
 # skillspector reads provider credentials from os.environ, so AI scans in one process must not overlap.
@@ -115,7 +123,9 @@ async def run_job(job: Job) -> None:
     db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
     loop = asyncio.get_running_loop()
     try:
-        if job.llm is not None:
+        if executor_kind(get_settings()) == "sandbox":
+            job.result = await _sandbox_executor().run(job.id, job.target, use_llm=job.llm is not None)
+        elif job.llm is not None:
             async with _llm_lock:
                 with _llm_env(job.llm):
                     job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True)
