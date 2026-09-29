@@ -74,6 +74,22 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     handler skips scans that already finished and marks a scan failed after 3 deliveries that
     never completed. The queue limit counts pending and running scans in the database. Messages
     never carry API keys, so AI review is rejected in this runner until per-user keys land (#46).
+- **Sandboxed scans.** With `SKILLSPECTOR_WEB_SCAN_EXECUTOR=sandbox` (the hosted default),
+  `app/sandbox_executor.py` runs each scan in a fresh, non-persistent Vercel Sandbox instead of this
+  process:
+  - The VM boots from `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID`, which has skillspector preinstalled.
+    `uv run python -m app.sandbox_snapshot` builds it from the version pinned in `pyproject.toml`
+    and prints the ID. A scan logs a warning if the snapshot's skillspector differs from the API's.
+  - The API uploads `app/sandbox_runner.py`, a standalone script, and runs it on the target. The
+    script reports each finished step, log record and the final report as tagged JSON lines, which
+    the API relays into the scan's log and progress as they arrive.
+  - Outbound traffic is limited to the code hosts in `SCAN_HOSTS` (TLS, matched on SNI), with
+    private, loopback, link-local and CGNAT ranges denied. No environment variables or
+    credentials from the app are passed in.
+  - The scan is killed after `SKILLSPECTOR_WEB_SANDBOX_TIMEOUT_SECONDS` and fails with a clear
+    message; the VM is destroyed when the scan ends either way.
+  - AI review isn't supported in the sandbox yet: #46 will broker the user's provider key at the
+    sandbox firewall so it never enters the VM.
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.
