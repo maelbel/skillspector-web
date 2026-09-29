@@ -32,7 +32,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    check_mode(settings.mode)
+    check_mode(settings)
     init_db()
     # Jobs run in this process, so anything still pending/running from a previous one is dead.
     db.fail_unfinished_scans(error="Interrupted: the API restarted before this scan finished", finished_at=time.time())

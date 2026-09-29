@@ -8,6 +8,10 @@ picks its implementation from the mode as its hosted version lands.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.config import Settings
 
 
 class Mode(StrEnum):
@@ -18,7 +22,6 @@ class Mode(StrEnum):
 # Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
 # hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
 HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "scan storage": "#41",
     "durable job runner": "#42",
     "shared log and progress store": "#43",
     "sandboxed scan execution": "#44",
@@ -33,11 +36,20 @@ class ModeConfigError(RuntimeError):
     """The configured mode can't run with the current code or settings."""
 
 
-def check_mode(mode: Mode) -> None:
+def check_mode(settings: Settings) -> None:
     """Fail fast at startup when the mode is missing something it needs."""
-    if mode is Mode.HOSTED and HOSTED_NOT_IMPLEMENTED:
+    if settings.mode is not Mode.HOSTED:
+        return
+
+    problems = []
+    if not settings.database_url:
+        # Vercel has no persistent, shared filesystem for the SQLite file.
+        problems.append("set SKILLSPECTOR_WEB_DATABASE_URL to a Postgres database")
+    if HOSTED_NOT_IMPLEMENTED:
         missing = ", ".join(f"{piece} ({issue})" for piece, issue in HOSTED_NOT_IMPLEMENTED.items())
+        problems.append(f"still missing: {missing}")
+    if problems:
         raise ModeConfigError(
-            f"SKILLSPECTOR_WEB_MODE=hosted isn't usable yet. Still missing: {missing}. "
+            f"SKILLSPECTOR_WEB_MODE=hosted isn't usable yet: {'; '.join(problems)}. "
             "Use SKILLSPECTOR_WEB_MODE=self_hosted (the default)."
         )

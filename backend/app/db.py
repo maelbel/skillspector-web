@@ -1,73 +1,36 @@
+"""The scan store the rest of the app talks to. Which engine backs it is picked once, in init_db."""
+
 from __future__ import annotations
 
-import json
-import sqlite3
-from pathlib import Path
 from typing import Any
 
 from app.core.config import get_settings
+from app.storage import ScanRow, ScanStore, create_store
 
-_connection: sqlite3.Connection | None = None
+_store: ScanStore | None = None
 
 
-def _connection_or_raise() -> sqlite3.Connection:
-    if _connection is None:
+def _store_or_raise() -> ScanStore:
+    if _store is None:
         raise RuntimeError("db.init_db() must be called before using the scan store")
-    return _connection
+    return _store
 
 
 def init_db() -> None:
-    global _connection
-    db_path = Path(get_settings().db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS scans (
-            id TEXT PRIMARY KEY,
-            target TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at REAL NOT NULL,
-            finished_at REAL,
-            result TEXT,
-            error TEXT,
-            provider TEXT,
-            risk_score REAL,
-            severity TEXT,
-            recommendation TEXT
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans (created_at DESC)")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS app_settings (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            scan_retention_days REAL
-        )
-    """)
-    conn.execute(
-        "INSERT OR IGNORE INTO app_settings (id, scan_retention_days) VALUES (1, ?)",
-        (get_settings().scan_retention_days,),
-    )
-    conn.commit()
-    _connection = conn
+    global _store
+    close_db()
+    _store = create_store(get_settings())
 
 
-def insert_scan(
-    *,
-    id: str,
-    target: str,
-    status: str,
-    created_at: float,
-    provider: str | None,
-) -> None:
-    conn = _connection_or_raise()
-    conn.execute(
-        "INSERT INTO scans (id, target, status, created_at, provider) VALUES (?, ?, ?, ?, ?)",
-        (id, target, status, created_at, provider),
-    )
-    conn.commit()
+def close_db() -> None:
+    global _store
+    if _store is not None:
+        _store.close()
+        _store = None
+
+
+def insert_scan(*, id: str, target: str, status: str, created_at: float, provider: str | None) -> None:
+    _store_or_raise().insert_scan(id=id, target=target, status=status, created_at=created_at, provider=provider)
 
 
 def update_scan(
@@ -78,84 +41,32 @@ def update_scan(
     result: dict[str, Any] | None,
     error: str | None,
 ) -> None:
-    risk = (result or {}).get("risk_assessment") or {}
-    conn = _connection_or_raise()
-    conn.execute(
-        """
-        UPDATE scans
-        SET status = ?, finished_at = ?, result = ?, error = ?,
-            risk_score = ?, severity = ?, recommendation = ?
-        WHERE id = ?
-        """,
-        (
-            status,
-            finished_at,
-            json.dumps(result) if result is not None else None,
-            error,
-            risk.get("score"),
-            risk.get("severity"),
-            risk.get("recommendation"),
-            id,
-        ),
-    )
-    conn.commit()
+    _store_or_raise().update_scan(id=id, status=status, finished_at=finished_at, result=result, error=error)
 
 
 def fail_unfinished_scans(*, error: str, finished_at: float) -> int:
-    conn = _connection_or_raise()
-    cursor = conn.execute(
-        "UPDATE scans SET status = 'error', error = ?, finished_at = ? WHERE status IN ('pending', 'running')",
-        (error, finished_at),
-    )
-    conn.commit()
-    return cursor.rowcount
+    return _store_or_raise().fail_unfinished_scans(error=error, finished_at=finished_at)
 
 
-def get_scan(id: str) -> sqlite3.Row | None:
-    conn = _connection_or_raise()
-    return conn.execute("SELECT * FROM scans WHERE id = ?", (id,)).fetchone()
+def get_scan(id: str) -> ScanRow | None:
+    return _store_or_raise().get_scan(id)
 
 
 def delete_scan(id: str) -> bool:
-    conn = _connection_or_raise()
-    cursor = conn.execute("DELETE FROM scans WHERE id = ?", (id,))
-    conn.commit()
-    return cursor.rowcount > 0
+    return _store_or_raise().delete_scan(id)
 
 
 def delete_scans_older_than(cutoff: float) -> int:
-    conn = _connection_or_raise()
-    # Pending/running scans are still owned by a live job; deleting them would lose the result.
-    cursor = conn.execute(
-        "DELETE FROM scans WHERE created_at < ? AND status NOT IN ('pending', 'running')",
-        (cutoff,),
-    )
-    conn.commit()
-    return cursor.rowcount
+    return _store_or_raise().delete_scans_older_than(cutoff)
 
 
 def get_retention_days() -> float | None:
-    conn = _connection_or_raise()
-    row = conn.execute("SELECT scan_retention_days FROM app_settings WHERE id = 1").fetchone()
-    return row["scan_retention_days"] if row else None
+    return _store_or_raise().get_retention_days()
 
 
 def set_retention_days(value: float | None) -> None:
-    conn = _connection_or_raise()
-    conn.execute("UPDATE app_settings SET scan_retention_days = ? WHERE id = 1", (value,))
-    conn.commit()
+    _store_or_raise().set_retention_days(value)
 
 
-def list_scans(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
-    conn = _connection_or_raise()
-    rows = conn.execute(
-        """
-        SELECT id, target, status, created_at, finished_at, error, risk_score, severity, recommendation
-        FROM scans
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?
-        """,
-        (limit, offset),
-    ).fetchall()
-    total = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
-    return rows, total
+def list_scans(limit: int, offset: int) -> tuple[list[ScanRow], int]:
+    return _store_or_raise().list_scans(limit, offset)

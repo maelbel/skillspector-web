@@ -9,6 +9,8 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "pydantic-settings>=2.6.0",
     "skillspector @ git+https://github.com/NVIDIA/skillspector.git@7805bb94843d91cb9937f57264ca52642164499b",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
 ]
 
 [tool.uv]
