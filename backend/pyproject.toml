@@ -11,7 +11,12 @@ dependencies = [
     "skillspector @ git+https://github.com/NVIDIA/skillspector.git@7805bb94843d91cb9937f57264ca52642164499b",
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
+    "vercel-queue>=0.1",
 ]
+
+# Hosted mode: Vercel compiles this module's @subscribe handlers into a queue-triggered function.
+[[tool.vercel.subscribers]]
+entrypoint = "app.jobs.queue_worker"
 
 [tool.uv]
 package = false

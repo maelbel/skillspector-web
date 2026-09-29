@@ -53,8 +53,11 @@ class _JobLogHandler(logging.Handler):
 
 
 def init_logging() -> None:
+    """Attach the capture handler to skillspector's logger. Safe to call more than once."""
     logger = logging.getLogger("skillspector")
     logger.setLevel(logging.INFO)
+    if any(isinstance(existing, _JobLogHandler) for existing in logger.handlers):
+        return
     handler = _JobLogHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)

@@ -4,17 +4,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db, rate_limit
-from app.api.routes import scan as scan_routes
 from app.main import app
 
 
 @pytest.fixture
-def client(temp_db, monkeypatch):
-    scheduled = []
-    monkeypatch.setattr(scan_routes, "schedule", scheduled.append)
+def client(temp_db, fake_runner, monkeypatch):
     monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     client = TestClient(app)
-    client.scheduled = scheduled
+    client.scheduled = fake_runner.submitted
     return client
 
 

@@ -22,6 +22,12 @@ def init_db() -> None:
     _store = create_store(get_settings())
 
 
+def ensure_db() -> None:
+    """init_db() unless it already ran, for entry points that skip the API's startup (queue workers)."""
+    if _store is None:
+        init_db()
+
+
 def close_db() -> None:
     global _store
     if _store is not None:
@@ -46,6 +52,11 @@ def update_scan(
 
 def fail_unfinished_scans(*, error: str, finished_at: float) -> int:
     return _store_or_raise().fail_unfinished_scans(error=error, finished_at=finished_at)
+
+
+def count_active_scans() -> int:
+    """Scans still pending or running."""
+    return _store_or_raise().count_active_scans()
 
 
 def get_scan(id: str) -> ScanRow | None:

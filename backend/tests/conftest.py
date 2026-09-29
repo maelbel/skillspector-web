@@ -40,3 +40,36 @@ def temp_db(request, tmp_path, monkeypatch):
     db.init_db()
     yield request.param
     db.close_db()
+
+
+class FakeRunner:
+    """A job runner that records submitted scans instead of running them."""
+
+    def __init__(self) -> None:
+        self.submitted = []
+        self.full = False
+        self.rejection: str | None = None
+
+    def on_startup(self) -> None:
+        return None
+
+    def is_full(self) -> bool:
+        return self.full
+
+    def check(self, llm) -> None:
+        if self.rejection:
+            from app.jobs import JobRejectedError
+
+            raise JobRejectedError(self.rejection)
+
+    async def submit(self, job) -> None:
+        self.submitted.append(job)
+
+
+@pytest.fixture
+def fake_runner(monkeypatch):
+    from app.api.routes import scan as scan_routes
+
+    runner = FakeRunner()
+    monkeypatch.setattr(scan_routes, "get_runner", lambda: runner)
+    return runner
