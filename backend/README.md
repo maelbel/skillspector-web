@@ -18,7 +18,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/scan` | rate-limited | Queue a scan. Returns `{ id, status }`. |
 | `GET` | `/scan` | — | Scan history, newest first: `?limit=` (1–100, default 20) and `?offset=`. Returns `{ items, total }`. |
 | `GET` | `/scan/{id}` | — | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report. |
-| `GET` | `/scan/{id}/logs` | — | Captured log lines for a recent scan (kept in memory). |
+| `GET` | `/scan/{id}/logs` | — | Captured log lines for a scan (in memory, or in the database with `LOG_STORE=database`). |
 | `DELETE` | `/scan/{id}` | — | Delete a scan. `204` on success. |
 | `GET` | `/settings` | — | `{ scan_retention_days }` (`null` = keep forever). |
 | `PUT` | `/settings` | admin | Update retention; runs a sweep immediately. |
@@ -79,7 +79,13 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
   credentials are passed to skillspector through process environment variables.
 - **Restarts.** With the in-process runner, on startup any scan left `pending` or `running` is marked
   failed with an "interrupted" message.
-- **Logs.** The last 500 lines of each of the 50 most recent scans are kept in memory.
+- **Logs.** `SKILLSPECTOR_WEB_LOG_STORE` picks where log lines and step progress go (`app/scan_logs.py`):
+  - `memory` (self-hosted default): the last 500 lines of each of the 50 most recent scans, lost on
+    restart.
+  - `database` (hosted default): the last 500 lines per scan in `scan_log_lines` and the step count
+    on the scan, so any instance can serve a scan another one is running. Lines are deleted with
+    their scan, including by the retention sweep.
+  - A scan that runs again (a queue redelivery) starts its log and progress afresh.
 - **Retention.** An hourly sweep deletes finished scans older than the configured number of days;
   scans still in progress are never swept.
 

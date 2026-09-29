@@ -22,7 +22,6 @@ class Mode(StrEnum):
 # Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
 # hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
 HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "shared log and progress store": "#43",
     "sandboxed scan execution": "#44",
     "user accounts": "#45",
     "per-user Claude connection": "#46",
@@ -44,6 +43,9 @@ def check_mode(settings: Settings) -> None:
     if not settings.database_url:
         # Vercel has no persistent, shared filesystem for the SQLite file.
         problems.append("set SKILLSPECTOR_WEB_DATABASE_URL to a Postgres database")
+    if settings.log_store == "memory":
+        # Scans run in another instance than the one serving their logs.
+        problems.append("SKILLSPECTOR_WEB_LOG_STORE=memory can't work across instances; leave it unset")
     if HOSTED_NOT_IMPLEMENTED:
         missing = ", ".join(f"{piece} ({issue})" for piece, issue in HOSTED_NOT_IMPLEMENTED.items())
         problems.append(f"still missing: {missing}")

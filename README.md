@@ -99,6 +99,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start until its pieces are built; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
 | `ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
+| `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
 | `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per client IP within the window. |

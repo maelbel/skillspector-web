@@ -75,3 +75,26 @@ def test_create_store_defaults_to_sqlite(tmp_path):
 
     assert isinstance(store, SQLiteStore)
     store.close()
+
+
+def test_log_lines_go_away_with_their_scan(temp_db):
+    for id in ("kept", "deleted", "expired"):
+        db.insert_scan(id=id, target="t", status="done", created_at=2000.0 if id == "kept" else 1000.0, provider=None)
+        db.append_log_line(id, f"{id} line", keep=500)
+
+    db.delete_scan("deleted")
+    db.delete_scans_older_than(1500.0)
+
+    assert db.get_log_lines("kept") == ["kept line"]
+    assert db.get_log_lines("deleted") == []
+    assert db.get_log_lines("expired") == []
+
+
+def test_progress_is_stored_on_the_scan(temp_db):
+    db.insert_scan(id="a", target="t", status="running", created_at=1.0, provider=None)
+
+    db.increment_progress("a")
+    db.increment_progress("a")
+
+    assert db.get_progress("a") == 2
+    assert db.get_scan("a")["completed_steps"] == 2

@@ -81,3 +81,23 @@ def set_retention_days(value: float | None) -> None:
 
 def list_scans(limit: int, offset: int) -> tuple[list[ScanRow], int]:
     return _store_or_raise().list_scans(limit, offset)
+
+
+def append_log_line(scan_id: str, line: str, *, keep: int) -> None:
+    _store_or_raise().append_log_line(scan_id, line, keep=keep)
+
+
+def get_log_lines(scan_id: str) -> list[str]:
+    return _store_or_raise().get_log_lines(scan_id)
+
+
+def increment_progress(scan_id: str) -> None:
+    _store_or_raise().increment_progress(scan_id)
+
+
+def get_progress(scan_id: str) -> int:
+    return _store_or_raise().get_progress(scan_id)
+
+
+def clear_logs(scan_id: str) -> None:
+    _store_or_raise().clear_logs(scan_id)
