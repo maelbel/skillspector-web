@@ -43,6 +43,20 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             """,
         ],
     ),
+    (
+        2,
+        [
+            """
+            CREATE TABLE scan_log_lines (
+                id BIGSERIAL PRIMARY KEY,
+                scan_id TEXT NOT NULL,
+                line TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_scan_log_lines_scan ON scan_log_lines (scan_id, id)",
+            "ALTER TABLE scans ADD COLUMN completed_steps INTEGER NOT NULL DEFAULT 0",
+        ],
+    ),
 ]
 
 
@@ -136,14 +150,20 @@ class PostgresStore:
             return conn.execute("SELECT * FROM scans WHERE id = %s", (id,)).fetchone()
 
     def delete_scan(self, id: str) -> bool:
-        return self._execute("DELETE FROM scans WHERE id = %s", (id,)) > 0
+        with self._pool.connection() as conn, conn.transaction():
+            deleted = conn.execute("DELETE FROM scans WHERE id = %s", (id,)).rowcount
+            conn.execute("DELETE FROM scan_log_lines WHERE scan_id = %s", (id,))
+        return deleted > 0
 
     def delete_scans_older_than(self, cutoff: float) -> int:
         # Pending/running scans are still owned by a live job; deleting them would lose the result.
-        return self._execute(
-            "DELETE FROM scans WHERE created_at < %s AND status NOT IN ('pending', 'running')",
-            (cutoff,),
-        )
+        with self._pool.connection() as conn, conn.transaction():
+            deleted = conn.execute(
+                "DELETE FROM scans WHERE created_at < %s AND status NOT IN ('pending', 'running')",
+                (cutoff,),
+            ).rowcount
+            conn.execute("DELETE FROM scan_log_lines WHERE scan_id NOT IN (SELECT id FROM scans)")
+        return deleted
 
     def get_retention_days(self) -> float | None:
         with self._pool.connection() as conn:
@@ -161,3 +181,35 @@ class PostgresStore:
             ).fetchall()
             total = conn.execute("SELECT COUNT(*) AS total FROM scans").fetchone()["total"]
         return rows, total
+
+    def append_log_line(self, scan_id: str, line: str, *, keep: int) -> None:
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute("INSERT INTO scan_log_lines (scan_id, line) VALUES (%s, %s)", (scan_id, line))
+            # Keep only the newest `keep` lines of this scan.
+            conn.execute(
+                """
+                DELETE FROM scan_log_lines
+                WHERE scan_id = %s AND id <= (
+                    SELECT id FROM scan_log_lines WHERE scan_id = %s ORDER BY id DESC LIMIT 1 OFFSET %s
+                )
+                """,
+                (scan_id, scan_id, keep),
+            )
+
+    def get_log_lines(self, scan_id: str) -> list[str]:
+        with self._pool.connection() as conn:
+            rows = conn.execute("SELECT line FROM scan_log_lines WHERE scan_id = %s ORDER BY id", (scan_id,)).fetchall()
+        return [row["line"] for row in rows]
+
+    def increment_progress(self, scan_id: str) -> None:
+        self._execute("UPDATE scans SET completed_steps = completed_steps + 1 WHERE id = %s", (scan_id,))
+
+    def get_progress(self, scan_id: str) -> int:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT completed_steps FROM scans WHERE id = %s", (scan_id,)).fetchone()
+        return row["completed_steps"] if row else 0
+
+    def clear_logs(self, scan_id: str) -> None:
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute("DELETE FROM scan_log_lines WHERE scan_id = %s", (scan_id,))
+            conn.execute("UPDATE scans SET completed_steps = 0 WHERE id = %s", (scan_id,))

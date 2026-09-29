@@ -109,6 +109,8 @@ async def run_job(job: Job) -> None:
 
     Never raises for a failed scan: the error is stored on the scan instead.
     """
+    # A scan can be run again (a queue redelivery after its instance died); start its log afresh.
+    scan_logs.forget(job.id)
     job.status = JobStatus.RUNNING
     db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
     loop = asyncio.get_running_loop()
