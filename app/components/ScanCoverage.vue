@@ -43,9 +43,9 @@ const CHECKS = [
       <li
         v-for="check in CHECKS"
         :key="check.title"
-        class="surface flex flex-col gap-2.5 p-5"
+        class="surface flex flex-col gap-2.5 border-t-[3px] border-t-brand p-5"
       >
-        <span class="mb-2 flex size-10 items-center justify-center rounded-full bg-matcha-100 text-matcha-700 dark:bg-matcha-950 dark:text-matcha-300">
+        <span class="mb-2 flex size-10 items-center justify-center bg-black text-brand">
           <UIcon
             :name="check.icon"
             class="size-5"

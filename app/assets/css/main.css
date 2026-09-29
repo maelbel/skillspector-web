@@ -2,39 +2,39 @@
 @import "@nuxt/ui";
 
 /*
- * "Matcha" theme: an oat-milk ground, green-black ink, ceremonial-matcha accents, soft rounded
- * surfaces and Geist type with the odd serif-italic flourish. Severity colours step in lightness
- * as well as hue, and every colour has a dark-mode twin.
+ * NVIDIA-inspired theme: black and white, neutral greys, NVIDIA green (#76B900) as the one
+ * accent, sharp corners and bold, dense type. Green fills carry black text, as on nvidia.com;
+ * green *text* on white uses a darker step so it stays readable. Severity colours step in
+ * lightness as well as hue, and every colour has a dark-mode twin.
  */
 
 @theme static {
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
-  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --color-oat-50: #FBFAF6;
-  --color-oat-100: #F6F3EC;
-  --color-oat-200: #EEEAE0;
-  --color-oat-300: #E2DDD0;
-  --color-oat-400: #B9B3A4;
-  --color-oat-500: #7C8074;
-  --color-oat-600: #5A5F55;
-  --color-oat-700: #3A3F37;
-  --color-oat-800: #262B24;
-  --color-oat-900: #1B1F1A;
-  --color-oat-950: #111410;
+  --color-graphite-50: #FAFAFA;
+  --color-graphite-100: #F2F2F2;
+  --color-graphite-200: #E5E5E5;
+  --color-graphite-300: #CCCCCC;
+  --color-graphite-400: #999999;
+  --color-graphite-500: #767676;
+  --color-graphite-600: #5E5E5E;
+  --color-graphite-700: #3D3D3D;
+  --color-graphite-800: #262626;
+  --color-graphite-900: #1A1A1A;
+  --color-graphite-950: #0D0D0D;
 
-  --color-matcha-50: #F3F7EC;
-  --color-matcha-100: #E6EFD9;
-  --color-matcha-200: #CFE0B5;
-  --color-matcha-300: #B2CD8C;
-  --color-matcha-400: #95B96A;
-  --color-matcha-500: #7BA05B;
-  --color-matcha-600: #5F8446;
-  --color-matcha-700: #4A6B37;
-  --color-matcha-800: #3A542C;
-  --color-matcha-900: #2C4022;
-  --color-matcha-950: #182414;
+  --color-nv-50: #F3F9E6;
+  --color-nv-100: #E3F2C2;
+  --color-nv-200: #C9E68A;
+  --color-nv-300: #A6D44A;
+  --color-nv-400: #8CC614;
+  --color-nv-500: #76B900;
+  --color-nv-600: #5E9400;
+  --color-nv-700: #4A7500;
+  --color-nv-800: #3A5C00;
+  --color-nv-900: #2C4600;
+  --color-nv-950: #172500;
 
   --animate-scan: scan 2.4s ease-in-out infinite;
 
@@ -72,137 +72,136 @@
   --color-safe-line: var(--sev-safe-line);
   --color-ground: var(--app-ground);
   --color-code: var(--app-code);
-  --color-glow: var(--app-glow);
+  --color-brand: var(--color-nv-500);
+  --color-brand-ink: var(--app-brand-ink);
 }
 
 :root {
-  --ui-radius: 0.5rem;
-  --ui-header-height: 4.5rem;
+  --ui-radius: 0.125rem;
+  --ui-header-height: 4rem;
 
-  /* Nuxt UI's default 500 shades are too light for text on the oat ground. */
+  /* Nuxt UI's default 500 shades are too light for text on white. */
   --ui-primary: var(--ui-color-primary-700);
   --ui-success: var(--ui-color-success-700);
   --ui-warning: var(--ui-color-warning-700);
   --ui-error: var(--ui-color-error-700);
 
-  --app-ground: var(--color-oat-100);
-  --app-code: #161A15;
-  --app-glow: color-mix(in oklab, var(--color-matcha-300) 45%, transparent);
+  --app-ground: var(--color-graphite-100);
+  --app-code: #0D0D0D;
+  /* Green for large text: #5E9400 clears 3:1 on white, the bar for 24px+ type. */
+  --app-brand-ink: var(--color-nv-600);
 
   --ui-bg: #fff;
-  --ui-bg-muted: var(--color-oat-50);
-  --ui-bg-elevated: var(--color-oat-200);
-  --ui-bg-accented: var(--color-oat-300);
-  --ui-bg-inverted: var(--color-oat-900);
-  --ui-border: var(--color-oat-300);
-  --ui-border-muted: var(--color-oat-200);
-  --ui-border-accented: var(--color-oat-400);
-  --ui-border-inverted: var(--color-oat-900);
-  --ui-text-dimmed: var(--color-oat-500);
-  --ui-text-muted: var(--color-oat-600);
-  --ui-text-toned: var(--color-oat-700);
-  --ui-text: var(--color-oat-800);
-  --ui-text-highlighted: var(--color-oat-900);
-  --ui-text-inverted: var(--color-oat-50);
+  --ui-bg-muted: var(--color-graphite-50);
+  --ui-bg-elevated: var(--color-graphite-200);
+  --ui-bg-accented: var(--color-graphite-300);
+  --ui-bg-inverted: #000;
+  --ui-border: var(--color-graphite-300);
+  --ui-border-muted: var(--color-graphite-200);
+  --ui-border-accented: var(--color-graphite-400);
+  --ui-border-inverted: #000;
+  --ui-text-dimmed: var(--color-graphite-500);
+  --ui-text-muted: var(--color-graphite-600);
+  --ui-text-toned: var(--color-graphite-700);
+  --ui-text: var(--color-graphite-800);
+  --ui-text-highlighted: #000;
+  --ui-text-inverted: #fff;
 
-  --sev-critical: #C2453A;
-  --sev-critical-ink: #9B2C22;
-  --sev-critical-tint: #FBE4DF;
-  --sev-critical-line: #F2C6BE;
-  --sev-high: #E07B39;
-  --sev-high-ink: #A64E14;
-  --sev-high-tint: #FCEBDD;
-  --sev-high-line: #F4CFB0;
-  --sev-medium: #D9A93A;
-  --sev-medium-ink: #7D5B06;
-  --sev-medium-tint: #F8EFD4;
-  --sev-medium-line: #EEDBA3;
-  --sev-low: #8A97A8;
-  --sev-low-ink: #4B5768;
-  --sev-low-tint: #EAEDF1;
-  --sev-low-line: #D2D8E0;
-  --sev-safe: #7BA05B;
-  --sev-safe-ink: #3F6130;
-  --sev-safe-tint: #E6EFD9;
-  --sev-safe-line: #C9DCB0;
+  --sev-critical: #D32F2F;
+  --sev-critical-ink: #A51D1D;
+  --sev-critical-tint: #FDECEC;
+  --sev-critical-line: #F3C2C2;
+  --sev-high: #EF6C00;
+  --sev-high-ink: #A94700;
+  --sev-high-tint: #FFF1E3;
+  --sev-high-line: #F8CFA6;
+  --sev-medium: #F2B600;
+  --sev-medium-ink: #7A5800;
+  --sev-medium-tint: #FFF8DC;
+  --sev-medium-line: #F0DC96;
+  --sev-low: #8B95A3;
+  --sev-low-ink: #4A5361;
+  --sev-low-tint: #EEF0F3;
+  --sev-low-line: #D3D8DF;
+  --sev-safe: #76B900;
+  --sev-safe-ink: #3F6400;
+  --sev-safe-tint: #EEF7DC;
+  --sev-safe-line: #C9E68A;
 }
 
 .dark {
-  --ui-primary: var(--ui-color-primary-300);
-  --ui-success: var(--ui-color-success-300);
-  --ui-warning: var(--ui-color-warning-300);
-  --ui-error: var(--ui-color-error-300);
+  --ui-primary: var(--ui-color-primary-500);
+  --ui-success: var(--ui-color-success-500);
+  --ui-warning: var(--ui-color-warning-400);
+  --ui-error: var(--ui-color-error-400);
 
-  --app-ground: #0E120E;
-  --app-code: #0A0D0A;
-  --app-glow: color-mix(in oklab, var(--color-matcha-600) 30%, transparent);
+  --app-ground: #000;
+  --app-code: #0D0D0D;
+  --app-brand-ink: var(--color-nv-500);
 
-  --ui-bg: #151A15;
-  --ui-bg-muted: #121712;
-  --ui-bg-elevated: #1D231D;
-  --ui-bg-accented: #283028;
-  --ui-bg-inverted: var(--color-oat-100);
-  --ui-border: #243024;
-  --ui-border-muted: #1D251D;
-  --ui-border-accented: #3A463A;
-  --ui-border-inverted: var(--color-oat-100);
-  --ui-text-dimmed: #7E8878;
-  --ui-text-muted: #9AA394;
-  --ui-text-toned: #C3CABD;
-  --ui-text: #DCE3D6;
-  --ui-text-highlighted: #F3F6EE;
-  --ui-text-inverted: var(--color-oat-900);
+  --ui-bg: #111111;
+  --ui-bg-muted: #0A0A0A;
+  --ui-bg-elevated: #1A1A1A;
+  --ui-bg-accented: #262626;
+  --ui-bg-inverted: #fff;
+  --ui-border: #2A2A2A;
+  --ui-border-muted: #1F1F1F;
+  --ui-border-accented: #3D3D3D;
+  --ui-border-inverted: #fff;
+  --ui-text-dimmed: #8C8C8C;
+  --ui-text-muted: #A6A6A6;
+  --ui-text-toned: #CCCCCC;
+  --ui-text: #E0E0E0;
+  --ui-text-highlighted: #fff;
+  --ui-text-inverted: #000;
 
-  --sev-critical: #E0685C;
-  --sev-critical-ink: #F4A198;
-  --sev-critical-tint: #2A1614;
-  --sev-critical-line: #4A2420;
-  --sev-high: #EC9153;
-  --sev-high-ink: #F6B887;
-  --sev-high-tint: #2A1C12;
-  --sev-high-line: #4A3019;
-  --sev-medium: #E2BA55;
-  --sev-medium-ink: #EDD08A;
-  --sev-medium-tint: #28220F;
-  --sev-medium-line: #463B18;
-  --sev-low: #97A3B3;
-  --sev-low-ink: #B8C2CF;
-  --sev-low-tint: #1C2128;
-  --sev-low-line: #313844;
-  --sev-safe: #95B96A;
-  --sev-safe-ink: #B9D597;
-  --sev-safe-tint: #172014;
-  --sev-safe-line: #2C3E22;
+  --sev-critical: #F0544F;
+  --sev-critical-ink: #FF8A85;
+  --sev-critical-tint: #2B0F0F;
+  --sev-critical-line: #551C1B;
+  --sev-high: #FF8A2A;
+  --sev-high-ink: #FFB06B;
+  --sev-high-tint: #2B1809;
+  --sev-high-line: #5A3312;
+  --sev-medium: #F5C400;
+  --sev-medium-ink: #FFD84D;
+  --sev-medium-tint: #292106;
+  --sev-medium-line: #54440C;
+  --sev-low: #98A3B3;
+  --sev-low-ink: #BAC3D0;
+  --sev-low-tint: #181C22;
+  --sev-low-line: #313843;
+  --sev-safe: #76B900;
+  --sev-safe-ink: #9BD13A;
+  --sev-safe-tint: #121C04;
+  --sev-safe-line: #2C4600;
 }
 
-/* A soft matcha glow behind the top of every page. */
 body {
-  background:
-    radial-gradient(64rem 28rem at 50% -8rem, var(--app-glow), transparent 70%) no-repeat,
-    var(--app-ground);
+  background-color: var(--app-ground);
 }
 
-/* The small label above headings: mono, uppercase, loosely tracked. */
+/* Section label: bold, uppercase, tracked, led by a small green square. */
 @utility eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
   line-height: 1rem;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-/* Page and section titles: tight, confident Geist. */
+/* Page and section titles: heavy and tight. */
 @utility display {
   font-family: var(--font-sans);
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
 }
 
-/* The white cards everything sits on: hairline edge, soft layered shadow. */
+/* The flat panels everything sits on: square corners, hairline edge, no shadow. */
 @utility surface {
   background-color: var(--ui-bg);
-  border: 1px solid var(--ui-border-muted);
-  border-radius: 1.5rem;
-  box-shadow: 0 1px 2px rgb(27 31 26 / 0.04), 0 12px 32px -20px rgb(27 31 26 / 0.18);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.125rem;
 }

@@ -132,7 +132,7 @@ async function saveRetention() {
         />
       </UFormField>
 
-      <UCard :ui="{ root: 'rounded-2xl', body: 'p-5 sm:p-6' }">
+      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
             <h2 class="text-lg font-semibold tracking-tight text-highlighted">
@@ -149,7 +149,7 @@ async function saveRetention() {
               :key="n"
             >
               <div
-                class="flex items-center justify-center size-6 rounded-full text-xs font-semibold shrink-0"
+                class="flex items-center justify-center size-6 rounded-xs text-xs font-semibold shrink-0"
                 :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
               >
                 {{ n }}
@@ -217,7 +217,7 @@ async function saveRetention() {
               :icon="resultSuccess ? 'i-lucide-check-circle-2' : 'i-lucide-circle-x'"
               :title="resultSuccess ? 'Logged in' : 'Login failed'"
             />
-            <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
+            <pre class="overflow-x-auto rounded-xs bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
             <UButton
               variant="outline"
               icon="i-lucide-rotate-ccw"
@@ -236,7 +236,7 @@ async function saveRetention() {
         </div>
       </UCard>
 
-      <UCard :ui="{ root: 'rounded-2xl', body: 'p-5 sm:p-6' }">
+      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
             <h2 class="text-lg font-semibold tracking-tight text-highlighted">

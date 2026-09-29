@@ -41,7 +41,7 @@ function isWorking(scan: ScanSummary) {
       >
         <NuxtLink
           :to="`/scan/${scan.id}`"
-          class="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-[1.1rem] px-3.5 py-3 transition-colors hover:bg-muted"
+          class="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-xs px-3.5 py-3 transition-colors hover:bg-muted"
         >
           <span
             v-if="isWorking(scan)"
@@ -54,11 +54,11 @@ function isWorking(scan: ScanSummary) {
           </span>
           <span
             v-else-if="scan.status === 'error' || !scan.recommendation"
-            class="size-2.5 rounded-full border-2 border-accented"
+            class="size-2.5 rounded-xs border-2 border-accented"
           />
           <span
             v-else
-            class="size-2.5 rounded-full ring-4 ring-default"
+            class="size-2.5 rounded-xs ring-4 ring-default"
             :class="RECOMMENDATION_CLASSES[scan.recommendation].dot"
           />
 

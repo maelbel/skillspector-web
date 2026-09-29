@@ -198,9 +198,8 @@ const errorMessage = computed(() => {
         </UButton>
         <UButton
           to="/"
-          color="neutral"
+          color="primary"
           size="lg"
-          class="font-semibold"
         >
           New scan
         </UButton>
@@ -222,7 +221,7 @@ const errorMessage = computed(() => {
     />
 
     <template v-else-if="status.status === 'error'">
-      <section class="flex flex-col gap-4 rounded-[2rem] border border-critical-line bg-critical-tint p-6 sm:p-10">
+      <section class="flex flex-col gap-4 rounded-xs border border-critical-line bg-critical-tint p-6 sm:p-10">
         <p class="eyebrow text-critical-ink">
           Scan failed
         </p>
@@ -338,7 +337,7 @@ const errorMessage = computed(() => {
                 >
                 <span
                   v-if="group.legend === 'Severity'"
-                  class="size-2.5 shrink-0 rounded-full"
+                  class="size-2.5 shrink-0 rounded-xs"
                   :class="SEVERITY_CLASSES[item.value as Severity].dot"
                 />
                 <span
@@ -406,7 +405,7 @@ const errorMessage = computed(() => {
               :class="SEVERITY_CLASSES[group.severity].ink"
             >
               <span
-                class="size-2 rounded-full"
+                class="size-2 rounded-xs"
                 :class="SEVERITY_CLASSES[group.severity].dot"
               />
               {{ SEVERITY_LABEL[group.severity] }} · {{ group.issues.length }}

@@ -7,20 +7,26 @@ export default defineAppConfig({
   },
   ui: {
     colors: {
-      primary: 'matcha',
-      neutral: 'oat',
-      success: 'matcha',
+      primary: 'nv',
+      neutral: 'graphite',
+      success: 'nv',
       warning: 'amber',
       error: 'red'
     },
     button: {
       slots: {
-        base: 'cursor-pointer rounded-full'
-      }
+        base: 'cursor-pointer rounded-xs font-semibold'
+      },
+      // NVIDIA-style call to action: green fill with black text, in both themes.
+      compoundVariants: [{
+        color: 'primary',
+        variant: 'solid',
+        class: 'bg-brand text-black hover:bg-nv-400 active:bg-nv-400 disabled:bg-brand aria-disabled:bg-brand focus-visible:outline-brand'
+      }]
     },
     input: {
       slots: {
-        base: 'rounded-xl'
+        base: 'rounded-xs'
       }
     },
     select: {

@@ -43,13 +43,13 @@ interface LogLine {
 function parseLine(line: string): LogLine {
   const stageMatch = line.match(/^(.+) completed$/)
   if (stageMatch) {
-    return { icon: 'i-lucide-check', class: 'text-oat-300', text: humanizeStage(stageMatch[1]!) }
+    return { icon: 'i-lucide-check', class: 'text-graphite-300', text: humanizeStage(stageMatch[1]!) }
   }
   if (line.startsWith('Starting scan of')) {
-    return { icon: 'i-lucide-play', class: 'text-oat-50 font-medium', text: line }
+    return { icon: 'i-lucide-play', class: 'text-graphite-50 font-medium', text: line }
   }
   if (line === 'Scan complete') {
-    return { icon: 'i-lucide-check-circle-2', class: 'text-matcha-300 font-medium', text: line }
+    return { icon: 'i-lucide-check-circle-2', class: 'text-nv-300 font-medium', text: line }
   }
   if (line.startsWith('Scan failed:')) {
     return { icon: 'i-lucide-x-circle', class: 'text-red-300 font-medium', text: line }
@@ -61,9 +61,9 @@ function parseLine(line: string): LogLine {
     return { icon: 'i-lucide-alert-circle', class: 'text-red-300', text: line.slice('ERROR '.length) }
   }
   if (line.startsWith('INFO ')) {
-    return { icon: 'i-lucide-info', class: 'text-oat-400', text: line.slice('INFO '.length) }
+    return { icon: 'i-lucide-info', class: 'text-graphite-400', text: line.slice('INFO '.length) }
   }
-  return { icon: 'i-lucide-minus', class: 'text-oat-400', text: line }
+  return { icon: 'i-lucide-minus', class: 'text-graphite-400', text: line }
 }
 
 const parsedLines = computed(() => props.lines.map(parseLine))
@@ -72,7 +72,7 @@ const parsedLines = computed(() => props.lines.map(parseLine))
 <template>
   <div
     ref="container"
-    class="flex flex-col gap-1 overflow-y-auto rounded-xl bg-code p-4 font-mono text-xs"
+    class="flex flex-col gap-1 overflow-y-auto rounded-xs bg-code p-4 font-mono text-xs"
     :class="tall ? 'max-h-[26rem]' : 'max-h-64'"
   >
     <div

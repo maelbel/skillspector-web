@@ -8,7 +8,7 @@ defineProps<{
 
 <template>
   <span
-    class="inline-flex items-center rounded-full px-2.5 py-1 font-mono text-[11px] font-medium leading-none tracking-wider"
+    class="inline-flex items-center rounded-xs px-2.5 py-1 font-mono text-[11px] font-medium leading-none tracking-wider"
     :class="SEVERITY_CLASSES[severity].chip"
   >
     <slot>{{ severity }}</slot>

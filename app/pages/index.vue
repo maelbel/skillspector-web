@@ -12,16 +12,16 @@ const online = computed(() => health.value && health.value.status !== 'down')
         <div class="flex flex-col items-start gap-5">
           <p
             v-if="health"
-            class="flex items-center gap-2 rounded-full border border-default/70 bg-default/60 py-1 pr-3 pl-2 font-mono text-xs text-muted backdrop-blur"
+            class="flex items-center gap-2 border-l-[3px] border-brand bg-default py-1.5 pr-3 pl-2.5 font-mono text-xs text-muted"
           >
             <span class="relative flex size-2">
               <span
                 v-if="online"
-                class="absolute inline-flex size-full animate-ping rounded-full bg-matcha-400 opacity-60"
+                class="absolute inline-flex size-full animate-ping rounded-xs bg-nv-400 opacity-60"
               />
               <span
-                class="relative inline-flex size-2 rounded-full"
-                :class="online ? 'bg-matcha-500' : 'bg-critical'"
+                class="relative inline-flex size-2 rounded-xs"
+                :class="online ? 'bg-nv-500' : 'bg-critical'"
               />
             </span>
             <template v-if="online">
@@ -32,7 +32,7 @@ const online = computed(() => health.value && health.value.status !== 'down')
             </template>
           </p>
           <h1 class="display text-5xl text-highlighted text-balance sm:text-6xl lg:text-[5.25rem]">
-            Is this skill <em class="font-serif font-normal tracking-normal text-primary">safe</em> to install?
+            Is this skill <span class="text-brand-ink">safe</span> to install?
           </h1>
           <p class="max-w-xl text-lg text-muted text-pretty">
             Scan a Claude Code, Codex or MCP skill for prompt injection, data exfiltration and

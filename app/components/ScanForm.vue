@@ -227,7 +227,7 @@ async function submit() {
 
 <template>
   <form
-    class="surface flex flex-col gap-5 rounded-[1.75rem] p-4 sm:p-5"
+    class="surface flex flex-col gap-5 rounded-xs p-4 sm:p-5"
     @submit.prevent="submit"
   >
     <UAlert
@@ -244,7 +244,7 @@ async function submit() {
       :error="targetProblem"
       :ui="{ label: 'font-semibold text-highlighted' }"
     >
-      <div class="flex gap-2 rounded-[1.5rem] bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-primary/60 max-sm:flex-col sm:rounded-full">
+      <div class="flex gap-2 rounded-xs bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-brand max-sm:flex-col">
         <UInput
           ref="targetInput"
           v-model="target"
@@ -261,7 +261,7 @@ async function submit() {
         />
         <UButton
           type="submit"
-          color="neutral"
+          color="primary"
           size="xl"
           trailing-icon="i-lucide-arrow-right"
           class="h-12 justify-center px-6 font-semibold shadow-sm"
@@ -322,7 +322,7 @@ async function submit() {
       :ui="{
         legend: 'mb-2.5 font-semibold text-highlighted',
         fieldset: 'grid gap-3 sm:grid-cols-2',
-        item: 'rounded-2xl border-default p-4 has-data-[state=checked]:border-primary/70 has-data-[state=checked]:bg-matcha-50 dark:has-data-[state=checked]:bg-matcha-950/60 has-data-[state=checked]:ring-4 has-data-[state=checked]:ring-primary/10',
+        item: 'rounded-xs border-default p-4 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
         label: 'font-semibold text-highlighted',
         description: 'mt-1 leading-snug'
       }"
@@ -338,7 +338,7 @@ async function submit() {
     >
       <div
         v-if="useLlm"
-        class="flex flex-col gap-3 rounded-2xl bg-muted p-4 ring ring-default"
+        class="flex flex-col gap-3 rounded-xs bg-muted p-4 ring ring-default"
       >
         <UFormField label="Provider">
           <USelect
@@ -452,7 +452,7 @@ async function submit() {
           size="sm"
           color="neutral"
           variant="outline"
-          class="rounded-full"
+          class="rounded-xs"
           :disabled="submitting"
           @click="useExample(example)"
         />

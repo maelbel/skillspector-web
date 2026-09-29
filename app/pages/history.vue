@@ -98,7 +98,7 @@ async function confirmDelete() {
       <UButton
         to="/"
         icon="i-lucide-plus"
-        color="neutral"
+        color="primary"
         size="lg"
         class="font-semibold"
       >
@@ -151,18 +151,18 @@ async function confirmDelete() {
             :key="filter.value"
             type="button"
             :aria-pressed="verdictFilter === filter.value"
-            class="flex h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors"
+            class="flex h-10 cursor-pointer items-center gap-2 rounded-xs border px-3.5 text-sm font-medium transition-colors"
             :class="verdictFilter === filter.value ? 'border-inverted bg-inverted text-inverted' : 'border-default bg-default text-highlighted hover:bg-muted'"
             @click="verdictFilter = filter.value"
           >
             <span
               v-if="filter.dot"
-              class="size-2 rounded-full"
+              class="size-2 rounded-xs"
               :class="filter.dot"
             />
             <span
               v-else-if="filter.value === 'error'"
-              class="size-2 rounded-full border-2 border-accented"
+              class="size-2 rounded-xs border-2 border-accented"
             />
             {{ filter.label }}
             <span
@@ -179,7 +179,7 @@ async function confirmDelete() {
           aria-label="Filter by skill or repo"
           size="lg"
           class="md:w-80"
-          :ui="{ base: 'rounded-full' }"
+          :ui="{ base: 'rounded-xs' }"
         />
       </div>
 
@@ -270,7 +270,7 @@ async function confirmDelete() {
                 </span>
                 <span
                   v-else-if="scan.recommendation"
-                  class="inline-flex rounded-full px-3 py-1 font-medium"
+                  class="inline-flex rounded-xs px-3 py-1 font-medium"
                   :class="RECOMMENDATION_CLASSES[scan.recommendation].chip"
                 >
                   {{ RECOMMENDATION_SHORT_LABEL[scan.recommendation] }}
@@ -301,9 +301,9 @@ async function confirmDelete() {
                   v-else-if="scan.risk_score !== null && scan.severity"
                   class="flex items-center gap-2.5"
                 >
-                  <div class="h-1.5 w-24 overflow-hidden rounded-full bg-elevated">
+                  <div class="h-1.5 w-24 overflow-hidden rounded-xs bg-elevated">
                     <div
-                      class="h-full rounded-full"
+                      class="h-full rounded-xs"
                       :class="SEVERITY_CLASSES[scan.severity].dot"
                       :style="{ width: `${Math.max(scan.risk_score, 2)}%` }"
                     />

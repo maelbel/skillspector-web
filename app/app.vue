@@ -22,71 +22,82 @@ const NAV = [
 
 <template>
   <UApp>
-    <header class="sticky top-3 z-40 px-3 sm:top-4 sm:px-4">
-      <div class="mx-auto flex h-14 max-w-(--ui-container) items-center justify-between gap-3 rounded-full border border-default/70 bg-default/70 py-1.5 pr-1.5 pl-2 shadow-[0_8px_30px_-12px_rgb(27_31_26/0.18)] backdrop-blur-xl backdrop-saturate-150">
+    <!-- Black in both themes, as on nvidia.com. -->
+    <header class="sticky top-0 z-40 bg-black text-white">
+      <UContainer class="flex h-(--ui-header-height) items-stretch justify-between gap-2 sm:gap-4">
         <NuxtLink
           to="/"
-          class="flex items-center gap-2.5 rounded-full py-1 pr-3 pl-1 text-highlighted"
+          class="flex min-w-0 items-center gap-2.5 sm:gap-3"
         >
-          <span class="relative flex size-9 items-center justify-center overflow-hidden rounded-full bg-matcha-500 text-white shadow-inner">
+          <span class="flex size-8 shrink-0 items-center justify-center bg-brand text-black">
             <UIcon
               name="i-lucide-scan-eye"
-              class="size-[18px]"
+              class="size-5"
             />
           </span>
-          <span class="text-[17px] font-semibold tracking-[-0.03em]">skillspector</span>
+          <span class="text-base font-extrabold tracking-tight sm:text-lg">SKILLSPECTOR<span class="ml-1.5 font-medium text-graphite-400 max-sm:hidden">web</span></span>
         </NuxtLink>
 
         <nav
           aria-label="Main"
-          class="flex items-center gap-0.5"
+          class="flex items-stretch"
         >
           <NuxtLink
             v-for="item in NAV"
             :key="item.to"
             :to="item.to"
             :aria-current="route.path === item.to ? 'page' : undefined"
-            class="flex h-11 min-w-11 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition-colors sm:px-4"
-            :class="route.path === item.to ? 'bg-inverted text-inverted' : 'text-muted hover:bg-elevated hover:text-highlighted'"
+            class="relative flex min-w-10 items-center justify-center gap-2 px-2 text-sm font-bold transition-colors sm:min-w-11 sm:px-4"
+            :class="route.path === item.to ? 'text-white' : 'text-graphite-400 hover:text-white'"
           >
             <UIcon
               :name="item.icon"
               class="size-5 sm:hidden"
             />
             <span class="max-sm:sr-only">{{ item.label }}</span>
+            <span
+              v-if="route.path === item.to"
+              aria-hidden="true"
+              class="absolute inset-x-2 bottom-0 h-[3px] bg-brand sm:inset-x-4"
+            />
           </NuxtLink>
 
-          <UColorModeButton
-            color="neutral"
-            variant="ghost"
-            class="size-11 justify-center text-muted"
-          />
-          <UButton
-            :to="`https://github.com/${site.repo}`"
-            target="_blank"
-            icon="i-simple-icons-github"
-            aria-label="skillspector-web on GitHub"
-            color="neutral"
-            variant="ghost"
-            class="size-11 justify-center text-muted max-sm:hidden"
-          />
+          <span class="flex items-center gap-0.5 sm:pl-2">
+            <UColorModeButton
+              color="neutral"
+              variant="ghost"
+              class="size-10 justify-center text-graphite-400 hover:bg-white/10 hover:text-white sm:size-11"
+            />
+            <UButton
+              :to="`https://github.com/${site.repo}`"
+              target="_blank"
+              icon="i-simple-icons-github"
+              aria-label="skillspector-web on GitHub"
+              color="neutral"
+              variant="ghost"
+              class="size-11 justify-center text-graphite-400 hover:bg-white/10 hover:text-white max-sm:hidden"
+            />
+          </span>
         </nav>
-      </div>
+      </UContainer>
     </header>
 
-    <main class="min-h-[calc(100vh-10rem)]">
+    <main class="min-h-[calc(100vh-var(--ui-header-height)-6rem)]">
       <NuxtPage />
     </main>
 
-    <footer class="mt-8 border-t border-default/70">
-      <UContainer class="py-6 text-sm text-muted">
+    <footer class="mt-12 bg-black text-graphite-400">
+      <UContainer class="flex flex-col gap-1.5 py-8 text-sm">
         <p>
           Scans run on this server with <ULink
             :to="`https://github.com/${site.scannerRepo}`"
             target="_blank"
-            class="font-medium text-highlighted underline underline-offset-2"
+            class="font-semibold text-white underline underline-offset-2 hover:text-brand"
           >{{ site.scannerRepo }}</ULink>. Skill content reaches an AI provider only when you pick AI
           review for a scan.
+        </p>
+        <p class="text-xs text-graphite-500">
+          An independent web UI for skillspector. Not affiliated with or endorsed by NVIDIA.
         </p>
       </UContainer>
     </footer>

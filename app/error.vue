@@ -40,7 +40,7 @@ function goHome() {
         </p>
         <UButton
           icon="i-lucide-arrow-left"
-          color="neutral"
+          color="primary"
           size="lg"
           class="font-semibold"
           @click="goHome"

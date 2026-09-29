@@ -39,16 +39,21 @@ const summary = computed(() => {
 <template>
   <section
     aria-labelledby="verdict-heading"
-    class="relative grid gap-8 overflow-hidden rounded-[2rem] border p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12 lg:px-12"
+    class="relative grid gap-8 overflow-hidden rounded-xs border p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12 lg:px-12"
     :class="tone.panel"
   >
+    <span
+      aria-hidden="true"
+      class="absolute inset-x-0 top-0 h-1"
+      :class="tone.dot"
+    />
     <div class="flex min-w-0 flex-col gap-5">
       <p
         class="eyebrow flex items-center gap-2"
         :class="tone.ink"
       >
         <span
-          class="size-1.5 rounded-full"
+          class="size-1.5 rounded-xs"
           :class="tone.dot"
         />
         Verdict
@@ -67,12 +72,12 @@ const summary = computed(() => {
       <p class="max-w-2xl text-base text-highlighted text-pretty sm:text-lg">
         {{ summary }}
       </p>
-      <div class="mt-1 flex min-w-0 flex-col gap-1.5 rounded-2xl bg-default/60 p-4 ring-1 ring-default/60 backdrop-blur">
+      <div class="mt-1 flex min-w-0 flex-col gap-1.5 rounded-xs bg-default/70 p-4">
         <slot />
       </div>
     </div>
 
-    <div class="flex flex-col items-center justify-center gap-6 rounded-[1.5rem] bg-default/70 p-6 ring-1 ring-default/60 backdrop-blur">
+    <div class="flex flex-col items-center justify-center gap-6 rounded-xs bg-default/80 p-6">
       <div
         role="meter"
         aria-label="Risk score"
@@ -92,7 +97,7 @@ const summary = computed(() => {
             :r="RADIUS"
             fill="none"
             stroke-width="10"
-            stroke-linecap="round"
+            stroke-linecap="butt"
             class="stroke-(--ui-bg-accented)"
             :stroke-dasharray="`${ARC} ${2 * Math.PI * RADIUS}`"
           />
@@ -102,7 +107,7 @@ const summary = computed(() => {
             :r="RADIUS"
             fill="none"
             stroke-width="10"
-            stroke-linecap="round"
+            stroke-linecap="butt"
             class="transition-[stroke-dashoffset] duration-1000 ease-out"
             :class="SEVERITY_CLASSES[severity].stroke"
             :stroke-dasharray="`${ARC} ${2 * Math.PI * RADIUS}`"
@@ -133,7 +138,7 @@ const summary = computed(() => {
             <span
               v-for="{ severity: level, count } in counts"
               :key="level"
-              class="rounded-full"
+              class="rounded-xs"
               :class="SEVERITY_CLASSES[level].dot"
               :style="{ flexGrow: count }"
             />

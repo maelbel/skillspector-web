@@ -70,26 +70,26 @@ const matched = computed(() => {
         class="flex min-w-0 flex-col gap-1 text-sm"
       >
         <span class="font-semibold text-highlighted">Matched</span>
-        <code class="line-clamp-3 rounded-lg bg-muted px-2.5 py-1.5 font-mono text-xs break-all text-default">{{ matched }}</code>
+        <code class="line-clamp-3 rounded-xs bg-muted px-2.5 py-1.5 font-mono text-xs break-all text-default">{{ matched }}</code>
       </p>
 
       <figure
         v-if="snippet"
-        class="overflow-hidden rounded-2xl bg-code"
+        class="overflow-hidden rounded-xs bg-code"
       >
-        <figcaption class="flex justify-between gap-4 border-b border-white/10 px-4 py-2.5 font-mono text-xs text-oat-400">
+        <figcaption class="flex justify-between gap-4 border-b border-white/10 px-4 py-2.5 font-mono text-xs text-graphite-400">
           <span class="truncate">{{ finding.location.file }}</span>
           <span
             v-if="finding.location.start_line"
             class="shrink-0"
           >line {{ finding.location.start_line }}</span>
         </figcaption>
-        <pre class="max-h-80 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-oat-200">{{ snippet }}</pre>
+        <pre class="max-h-80 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-graphite-200">{{ snippet }}</pre>
       </figure>
 
       <div
         v-if="finding.remediation"
-        class="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 rounded-2xl bg-safe-tint px-4 py-3.5 ring-1 ring-safe-line"
+        class="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 rounded-xs bg-safe-tint px-4 py-3.5 ring-1 ring-safe-line"
       >
         <UIcon
           name="i-lucide-check"
@@ -108,7 +108,7 @@ const matched = computed(() => {
         <li
           v-for="tag in finding.tags"
           :key="tag"
-          class="rounded-full border border-default px-2 py-0.5 font-mono text-[11px] text-muted"
+          class="rounded-xs border border-default px-2 py-0.5 font-mono text-[11px] text-muted"
         >
           {{ tag }}
         </li>
