@@ -2,7 +2,6 @@
 import type { Finding, Severity } from '~~/shared/types/scan'
 
 const route = useRoute()
-const toast = useToast()
 const id = route.params.id as string
 
 const { status, error } = useScanStatus(id)
@@ -24,15 +23,6 @@ const scanAgainLink = computed(() => status.value ? `/?target=${encodeURICompone
 useSeoMeta({
   title: () => status.value ? `${displayTitle.value} — Skillspector Web` : 'Scan result — Skillspector Web'
 })
-
-async function copyLink() {
-  try {
-    await navigator.clipboard.writeText(window.location.href)
-    toast.add({ title: 'Link copied', icon: 'i-lucide-check', color: 'success' })
-  } catch {
-    toast.add({ title: 'Couldn’t copy the link', description: window.location.href, color: 'error' })
-  }
-}
 
 type SortKey = 'severity' | 'confidence' | 'file'
 
@@ -124,14 +114,11 @@ const groupedIssues = computed(() => {
     .filter(group => group.issues.length)
 })
 
-// The most important finding starts open and the rest collapsed, so the list stays scannable.
-// Derived rather than set in a watcher, so the server and client render the same state.
-const defaultOpenKey = computed(() => sortedIssues.value[0] && findingKey(sortedIssues.value[0]))
+// Every finding starts open; the map only records the ones someone has toggled.
 const expandedOverrides = ref(new Map<string, boolean>())
 
 function isExpanded(issue: Finding) {
-  const key = findingKey(issue)
-  return expandedOverrides.value.get(key) ?? key === defaultOpenKey.value
+  return expandedOverrides.value.get(findingKey(issue)) ?? true
 }
 
 function toggleExpanded(issue: Finding) {
@@ -177,16 +164,6 @@ const errorMessage = computed(() => {
         v-if="status && !isWorking"
         class="flex flex-wrap gap-2"
       >
-        <UButton
-          v-if="status.status === 'done'"
-          icon="i-lucide-copy"
-          color="neutral"
-          variant="outline"
-          size="lg"
-          @click="copyLink"
-        >
-          Copy link
-        </UButton>
         <UButton
           :to="scanAgainLink"
           icon="i-lucide-rotate-cw"
