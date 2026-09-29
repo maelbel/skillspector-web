@@ -1,2 +1,176 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/*
+ * "Field report" theme: a warm paper ground, ink text, one green accent, and a severity scale
+ * whose steps differ in lightness as well as hue. Every colour below has a dark-mode twin.
+ */
+
+@theme static {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-serif: "Instrument Serif", Georgia, serif;
+
+  --color-bone-50: #FAF9F5;
+  --color-bone-100: #F3F1EB;
+  --color-bone-200: #ECE9E1;
+  --color-bone-300: #DCD8CE;
+  --color-bone-400: #A5A29A;
+  --color-bone-500: #6B6F77;
+  --color-bone-600: #4F535B;
+  --color-bone-700: #2A2D33;
+  --color-bone-800: #1E2025;
+  --color-bone-900: #15171C;
+  --color-bone-950: #0E0F12;
+
+  --color-forest-50: #EEF5F0;
+  --color-forest-100: #E3F0E7;
+  --color-forest-200: #C3DFCC;
+  --color-forest-300: #93C5A5;
+  --color-forest-400: #6BB58D;
+  --color-forest-500: #3E9C6C;
+  --color-forest-600: #2A8057;
+  --color-forest-700: #1F6F4A;
+  --color-forest-800: #15523A;
+  --color-forest-900: #0F3D2B;
+  --color-forest-950: #08241A;
+}
+
+/*
+ * Severity and verdict colours, switched per theme below. The bare name fills bars and dots,
+ * `-ink` is text, `-tint` a background and `-line` a border on that background.
+ */
+@theme inline {
+  --color-critical: var(--sev-critical);
+  --color-critical-ink: var(--sev-critical-ink);
+  --color-critical-tint: var(--sev-critical-tint);
+  --color-critical-line: var(--sev-critical-line);
+  --color-high: var(--sev-high);
+  --color-high-ink: var(--sev-high-ink);
+  --color-high-tint: var(--sev-high-tint);
+  --color-high-line: var(--sev-high-line);
+  --color-medium: var(--sev-medium);
+  --color-medium-ink: var(--sev-medium-ink);
+  --color-medium-tint: var(--sev-medium-tint);
+  --color-medium-line: var(--sev-medium-line);
+  --color-low: var(--sev-low);
+  --color-low-ink: var(--sev-low-ink);
+  --color-low-tint: var(--sev-low-tint);
+  --color-low-line: var(--sev-low-line);
+  --color-safe: var(--sev-safe);
+  --color-safe-ink: var(--sev-safe-ink);
+  --color-safe-tint: var(--sev-safe-tint);
+  --color-safe-line: var(--sev-safe-line);
+  --color-ground: var(--app-ground);
+  --color-code: var(--app-code);
+}
+
+:root {
+  --ui-radius: 0.375rem;
+  --ui-header-height: 4.5rem;
+  /* Nuxt UI's default 500 shades are too light for text on the paper ground. */
+  --ui-primary: var(--ui-color-primary-700);
+  --ui-success: var(--ui-color-success-700);
+  --ui-warning: var(--ui-color-warning-700);
+  --ui-error: var(--ui-color-error-700);
+
+  --app-ground: var(--color-bone-100);
+  --app-code: var(--color-bone-900);
+
+  --ui-bg: #fff;
+  --ui-bg-muted: var(--color-bone-50);
+  --ui-bg-elevated: var(--color-bone-200);
+  --ui-bg-accented: var(--color-bone-300);
+  --ui-bg-inverted: var(--color-bone-900);
+  --ui-border: var(--color-bone-300);
+  --ui-border-muted: var(--color-bone-200);
+  --ui-border-accented: var(--color-bone-400);
+  --ui-border-inverted: var(--color-bone-900);
+  --ui-text-dimmed: var(--color-bone-500);
+  --ui-text-muted: var(--color-bone-600);
+  --ui-text-toned: var(--color-bone-700);
+  --ui-text: var(--color-bone-800);
+  --ui-text-highlighted: var(--color-bone-900);
+  --ui-text-inverted: var(--color-bone-100);
+
+  --sev-critical: #8E1616;
+  --sev-critical-ink: #8E1616;
+  --sev-critical-tint: #F6E1DE;
+  --sev-critical-line: #E6BDB7;
+  --sev-high: #C2410C;
+  --sev-high-ink: #A8380A;
+  --sev-high-tint: #FBE6D8;
+  --sev-high-line: #EDC2A5;
+  --sev-medium: #D4A12A;
+  --sev-medium-ink: #7A5A00;
+  --sev-medium-tint: #F7EDCF;
+  --sev-medium-line: #E6D196;
+  --sev-low: #6A7A92;
+  --sev-low-ink: #46546A;
+  --sev-low-tint: #E5E9EF;
+  --sev-low-line: #C7CFDB;
+  --sev-safe: #1F6F4A;
+  --sev-safe-ink: #15523A;
+  --sev-safe-tint: #E3F0E7;
+  --sev-safe-line: #B9D8C4;
+}
+
+.dark {
+  --ui-primary: var(--ui-color-primary-400);
+  --ui-success: var(--ui-color-success-400);
+  --ui-warning: var(--ui-color-warning-400);
+  --ui-error: var(--ui-color-error-400);
+
+  --app-ground: #121316;
+  --app-code: #0B0C0E;
+
+  --ui-bg: #1B1C20;
+  --ui-bg-muted: #17181B;
+  --ui-bg-elevated: #24262B;
+  --ui-bg-accented: #2F3137;
+  --ui-bg-inverted: var(--color-bone-100);
+  --ui-border: #2F3137;
+  --ui-border-muted: #24262B;
+  --ui-border-accented: #43464D;
+  --ui-border-inverted: var(--color-bone-100);
+  --ui-text-dimmed: #8A8D94;
+  --ui-text-muted: #A5A29A;
+  --ui-text-toned: #C4C1B9;
+  --ui-text: #D9D6CE;
+  --ui-text-highlighted: #F3F1EB;
+  --ui-text-inverted: var(--color-bone-900);
+
+  --sev-critical: #D9534A;
+  --sev-critical-ink: #F2968C;
+  --sev-critical-tint: #3A1714;
+  --sev-critical-line: #5C2520;
+  --sev-high: #E0712F;
+  --sev-high-ink: #F4A06E;
+  --sev-high-tint: #3A2012;
+  --sev-high-line: #5E3419;
+  --sev-medium: #D4A12A;
+  --sev-medium-ink: #E6C069;
+  --sev-medium-tint: #33290F;
+  --sev-medium-line: #5A4718;
+  --sev-low: #7D8CA3;
+  --sev-low-ink: #A9B6C8;
+  --sev-low-tint: #232A34;
+  --sev-low-line: #3A4553;
+  --sev-safe: #3E9C6C;
+  --sev-safe-ink: #7FC8A0;
+  --sev-safe-tint: #13291E;
+  --sev-safe-line: #24503A;
+}
+
+body {
+  background-color: var(--app-ground);
+}
+
+/* The small uppercase mono label used for section headings. */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

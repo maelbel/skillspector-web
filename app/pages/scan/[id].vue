@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import type { Severity } from '~~/shared/types/scan'
+import type { Finding, Severity } from '~~/shared/types/scan'
 
 const route = useRoute()
-const router = useRouter()
+const toast = useToast()
 const id = route.params.id as string
-
-function goBack() {
-  if (window.history.state?.back) {
-    router.back()
-  } else {
-    router.push('/')
-  }
-}
 
 const { status, error } = useScanStatus(id)
 
@@ -26,101 +18,132 @@ const displayTitle = computed(() => {
   if (skillName && skillName !== 'unknown') return skillName
   return parsedTarget.value.title
 })
+const duration = computed(() => status.value ? scanDurationSeconds(status.value) : null)
+const scanAgainLink = computed(() => status.value ? `/?target=${encodeURIComponent(status.value.target)}` : '/')
 
 useSeoMeta({
   title: () => status.value ? `${displayTitle.value} — Skillspector Web` : 'Scan result — Skillspector Web'
 })
 
-const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    toast.add({ title: 'Link copied', icon: 'i-lucide-check', color: 'success' })
+  } catch {
+    toast.add({ title: 'Couldn’t copy the link', description: window.location.href, color: 'error' })
+  }
+}
 
 type SortKey = 'severity' | 'confidence' | 'file'
 
 const SORT_OPTIONS: { label: string, value: SortKey }[] = [
-  { label: 'Sort: Severity', value: 'severity' },
-  { label: 'Sort: Confidence', value: 'confidence' },
-  { label: 'Sort: File', value: 'file' }
+  { label: 'Severity', value: 'severity' },
+  { label: 'Confidence', value: 'confidence' },
+  { label: 'File', value: 'file' }
 ]
 
 const sortKey = ref<SortKey>('severity')
 
+const issues = computed(() => status.value?.result?.issues ?? [])
+
 const sortedIssues = computed(() => {
-  const issues = [...(status.value?.result?.issues ?? [])]
+  const list = [...issues.value]
   switch (sortKey.value) {
     case 'confidence':
-      return issues.sort((a, b) => b.confidence - a.confidence)
+      return list.sort((a, b) => b.confidence - a.confidence)
     case 'file':
-      return issues.sort((a, b) =>
+      return list.sort((a, b) =>
         a.location.file.localeCompare(b.location.file) || a.location.start_line - b.location.start_line)
     default:
-      return issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+      return list.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.confidence - a.confidence)
   }
 })
 
-const severityCounts = computed(() => {
-  const counts: Record<Severity, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }
-  for (const issue of sortedIssues.value) counts[issue.severity]++
-  return (Object.entries(counts) as [Severity, number][]).filter(([, count]) => count > 0)
-})
-
-const categories = computed(() => {
-  const seen = new Set<string>()
-  for (const issue of sortedIssues.value) {
-    if (issue.category) seen.add(issue.category)
+function countBy(key: (issue: Finding) => string | null) {
+  const counts = new Map<string, number>()
+  for (const issue of issues.value) {
+    const value = key(issue)
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1)
   }
-  return [...seen].sort()
-})
-
-const hiddenSeverities = ref<Severity[]>([])
-const selectedCategory = ref<string>()
-
-function toggleSeverity(severity: Severity) {
-  const index = hiddenSeverities.value.indexOf(severity)
-  if (index === -1) {
-    hiddenSeverities.value = [...hiddenSeverities.value, severity]
-  } else {
-    hiddenSeverities.value = hiddenSeverities.value.filter(s => s !== severity)
-  }
+  return counts
 }
 
-function isSeverityVisible(severity: Severity) {
-  return !hiddenSeverities.value.includes(severity)
+const severityCounts = computed(() => {
+  const counts = countBy(issue => issue.severity)
+  return SEVERITIES.filter(severity => counts.has(severity)).map(severity => ({ value: severity, count: counts.get(severity)! }))
+})
+const categoryCounts = computed(() =>
+  [...countBy(issue => issue.category)].sort(([a], [b]) => a.localeCompare(b)).map(([value, count]) => ({ value, count }))
+)
+const fileCounts = computed(() =>
+  [...countBy(issue => issue.location.file)].sort(([a], [b]) => a.localeCompare(b)).map(([value, count]) => ({ value, count }))
+)
+
+// Filters hold what's hidden, so a new value (or a fresh scan) is shown by default.
+const hiddenSeverities = ref(new Set<string>())
+const hiddenCategories = ref(new Set<string>())
+const hiddenFiles = ref(new Set<string>())
+const filtersOpen = ref(false)
+
+function toggle(set: Ref<Set<string>>, value: string) {
+  const next = new Set(set.value)
+  if (next.has(value)) {
+    next.delete(value)
+  } else {
+    next.add(value)
+  }
+  set.value = next
 }
 
 function clearFilters() {
-  hiddenSeverities.value = []
-  selectedCategory.value = undefined
+  hiddenSeverities.value = new Set()
+  hiddenCategories.value = new Set()
+  hiddenFiles.value = new Set()
 }
 
-const hasActiveFilters = computed(() => hiddenSeverities.value.length > 0 || !!selectedCategory.value)
+const activeFilterCount = computed(() =>
+  hiddenSeverities.value.size + hiddenCategories.value.size + hiddenFiles.value.size)
 
-const filteredIssues = computed(() => sortedIssues.value.filter((issue) => {
-  if (hiddenSeverities.value.includes(issue.severity)) return false
-  if (selectedCategory.value && issue.category !== selectedCategory.value) return false
-  return true
-}))
+const filteredIssues = computed(() => sortedIssues.value.filter(issue =>
+  !hiddenSeverities.value.has(issue.severity)
+  && !(issue.category && hiddenCategories.value.has(issue.category))
+  && !hiddenFiles.value.has(issue.location.file)
+))
 
-const collapsedFindingIds = ref(new Set<string>())
+const filterGroups = computed(() => [
+  { legend: 'Severity', hidden: hiddenSeverities, items: severityCounts.value, mono: false },
+  { legend: 'Category', hidden: hiddenCategories, items: categoryCounts.value, mono: true },
+  { legend: 'File', hidden: hiddenFiles, items: fileCounts.value, mono: true }
+].filter(group => group.items.length > 1 || group.hidden.value.size > 0))
 
-function isExpanded(findingId: string) {
-  return !collapsedFindingIds.value.has(findingId)
+// Sorted by severity, findings sit under one heading per level; other sorts are one flat list.
+const groupedIssues = computed(() => {
+  if (sortKey.value !== 'severity') return [{ severity: null, issues: filteredIssues.value }]
+  return SEVERITIES
+    .map(severity => ({ severity: severity as Severity | null, issues: filteredIssues.value.filter(issue => issue.severity === severity) }))
+    .filter(group => group.issues.length)
+})
+
+// The most important finding starts open and the rest collapsed, so the list stays scannable.
+// Derived rather than set in a watcher, so the server and client render the same state.
+const defaultOpenKey = computed(() => sortedIssues.value[0] && findingKey(sortedIssues.value[0]))
+const expandedOverrides = ref(new Map<string, boolean>())
+
+function isExpanded(issue: Finding) {
+  const key = findingKey(issue)
+  return expandedOverrides.value.get(key) ?? key === defaultOpenKey.value
 }
 
-function toggleExpanded(findingId: string) {
-  const next = new Set(collapsedFindingIds.value)
-  if (next.has(findingId)) {
-    next.delete(findingId)
-  } else {
-    next.add(findingId)
-  }
-  collapsedFindingIds.value = next
+function toggleExpanded(issue: Finding) {
+  expandedOverrides.value = new Map(expandedOverrides.value).set(findingKey(issue), !isExpanded(issue))
 }
 
-function collapseAll() {
-  collapsedFindingIds.value = new Set(sortedIssues.value.map(issue => issue.finding_id))
-}
+const allExpanded = computed(() =>
+  filteredIssues.value.length > 0 && filteredIssues.value.every(issue => isExpanded(issue)))
 
-function expandAll() {
-  collapsedFindingIds.value = new Set()
+function toggleAll() {
+  const open = !allExpanded.value
+  expandedOverrides.value = new Map(sortedIssues.value.map(issue => [findingKey(issue), open]))
 }
 
 const errorMessage = computed(() => {
@@ -131,239 +154,290 @@ const errorMessage = computed(() => {
 </script>
 
 <template>
-  <UContainer class="py-16">
-    <div class="max-w-2xl mx-auto flex flex-col gap-6">
-      <UButton
-        icon="i-lucide-arrow-left"
-        variant="ghost"
-        color="neutral"
-        class="self-start"
-        @click="goBack"
+  <UContainer class="flex flex-col gap-7 py-8 sm:py-10">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <nav
+        aria-label="Breadcrumb"
+        class="flex min-w-0 items-center gap-2 text-sm text-muted"
       >
-        Scan another
-      </UButton>
+        <ULink
+          to="/history"
+          class="font-medium text-muted hover:text-highlighted"
+        >
+          History
+        </ULink>
+        <UIcon
+          name="i-lucide-chevron-right"
+          class="size-3.5 shrink-0"
+        />
+        <span class="truncate text-highlighted">{{ status ? displayTitle : 'Scan' }}</span>
+      </nav>
 
-      <UAlert
-        v-if="errorMessage"
-        color="error"
-        variant="subtle"
-        :title="errorMessage"
+      <div
+        v-if="status && !isWorking"
+        class="flex flex-wrap gap-2"
+      >
+        <UButton
+          v-if="status.status === 'done'"
+          icon="i-lucide-copy"
+          color="neutral"
+          variant="outline"
+          size="lg"
+          @click="copyLink"
+        >
+          Copy link
+        </UButton>
+        <UButton
+          :to="scanAgainLink"
+          icon="i-lucide-rotate-cw"
+          color="neutral"
+          variant="outline"
+          size="lg"
+        >
+          Scan again
+        </UButton>
+        <UButton
+          to="/"
+          color="neutral"
+          size="lg"
+          class="font-semibold"
+        >
+          New scan
+        </UButton>
+      </div>
+    </div>
+
+    <UAlert
+      v-if="errorMessage"
+      color="error"
+      variant="subtle"
+      :title="errorMessage"
+    />
+
+    <ScanProgress
+      v-else-if="isWorking || !status"
+      :status="status"
+      :title="status ? displayTitle : 'Loading scan…'"
+      :lines="logLines"
+    />
+
+    <template v-else-if="status.status === 'error'">
+      <section class="flex flex-col gap-4 rounded-3xl border border-critical-line bg-critical-tint p-6 sm:p-10">
+        <p class="eyebrow text-critical-ink">
+          Scan failed
+        </p>
+        <h1 class="font-serif text-4xl leading-tight break-words text-highlighted sm:text-6xl">
+          {{ displayTitle }}
+        </h1>
+        <p class="font-mono text-sm break-all text-muted">
+          {{ status.target }}
+        </p>
+        <p class="max-w-2xl text-base text-highlighted sm:text-lg">
+          {{ status.error ?? 'Unknown error' }}
+        </p>
+      </section>
+      <ScanLogPanel
+        v-if="logLines.length"
+        :lines="logLines"
+        tall
+      />
+    </template>
+
+    <template v-else-if="status.result">
+      <VerdictPanel :report="status.result">
+        <p class="flex items-center gap-2 font-semibold text-highlighted">
+          <UIcon
+            v-if="parsedTarget.isGithub"
+            name="i-simple-icons-github"
+            class="size-4 shrink-0"
+          />
+          <span class="truncate">{{ displayTitle }}</span>
+        </p>
+        <p class="font-mono text-sm break-all text-muted">
+          {{ status.target }}
+        </p>
+        <p class="text-sm text-muted">
+          Scanned <NuxtTime
+            :datetime="status.created_at * 1000"
+            relative
+            :title="formatDate(status.created_at)"
+          /><template v-if="duration !== null">
+            · took {{ formatDuration(duration) }}
+          </template><template v-if="logLines.length">
+            · <button
+              type="button"
+              class="cursor-pointer font-medium text-highlighted underline underline-offset-2"
+              :aria-expanded="showLogs"
+              @click="showLogs = !showLogs"
+            >
+              {{ showLogs ? 'Hide' : 'View' }} scan log
+            </button>
+          </template>
+        </p>
+      </VerdictPanel>
+
+      <ScanLogPanel
+        v-if="showLogs"
+        :lines="logLines"
+        tall
       />
 
-      <template v-else-if="isWorking || !status">
-        <UCard>
-          <div class="flex flex-col gap-4 py-2">
-            <div class="flex items-center gap-3">
-              <UIcon
-                name="i-lucide-loader-circle"
-                class="size-5 animate-spin text-primary shrink-0"
-              />
-              <div>
-                <p class="font-medium">
-                  Scanning{{ status ? ` ${status.target}` : '…' }}
-                </p>
-                <p class="text-sm text-muted">
-                  Static analysis usually finishes in a few seconds; can take up to ~60s.
-                </p>
-              </div>
-            </div>
-            <div class="flex flex-col gap-1">
-              <UProgress
-                :model-value="status?.completed_steps ?? 0"
-                :max="status?.total_steps ?? 1"
-              />
-              <p class="text-xs text-muted">
-                Step {{ status?.completed_steps ?? 0 }} of {{ status?.total_steps ?? '…' }}
-              </p>
-            </div>
-            <ScanLogPanel v-if="logLines.length" :lines="logLines" />
-          </div>
-        </UCard>
-      </template>
+      <UAlert
+        v-if="!status.result.execution_successful"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-alert-triangle"
+        title="Analysis was incomplete"
+        description="One or more analyzers didn't finish, so the findings below may be partial."
+      />
 
-      <template v-else-if="status.status === 'error'">
-        <UAlert
-          color="error"
-          variant="subtle"
-          title="Scan failed"
-          :description="status.error ?? 'Unknown error'"
-        />
-        <div v-if="logLines.length">
+      <div
+        v-if="issues.length"
+        class="grid items-start gap-6 lg:gap-10"
+        :class="{ 'lg:grid-cols-[17rem_minmax(0,1fr)]': filterGroups.length }"
+      >
+        <aside
+          v-if="filterGroups.length"
+          aria-label="Filter findings"
+          class="flex flex-col gap-4 lg:sticky lg:top-[calc(var(--ui-header-height)+1.5rem)] lg:gap-7 lg:pt-1"
+        >
           <UButton
-            variant="link"
             color="neutral"
-            size="sm"
-            class="px-0"
-            :icon="showLogs ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-            @click="showLogs = !showLogs"
+            variant="outline"
+            icon="i-lucide-filter"
+            class="self-start lg:hidden"
+            :trailing-icon="filtersOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+            :aria-expanded="filtersOpen"
+            @click="filtersOpen = !filtersOpen"
           >
-            {{ showLogs ? 'Hide' : 'View' }} scan log
+            Filter{{ activeFilterCount ? ` · ${activeFilterCount} hidden` : '' }}
           </UButton>
-          <ScanLogPanel v-if="showLogs" :lines="logLines" class="mt-2" />
-        </div>
-      </template>
 
-      <template v-else-if="status.result">
-        <div>
-          <h1 class="text-xl font-bold flex items-center gap-2">
-            <UIcon
-              v-if="parsedTarget.isGithub"
-              name="i-simple-icons-github"
-              class="size-5 shrink-0"
-            />
-            {{ displayTitle }}
-          </h1>
-          <p class="text-sm text-muted font-mono break-all">
-            {{ status.result.skill.source }}
-          </p>
-        </div>
-
-        <div v-if="logLines.length">
-          <UButton
-            variant="link"
-            color="neutral"
-            size="sm"
-            class="px-0"
-            :icon="showLogs ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-            @click="showLogs = !showLogs"
+          <div
+            class="flex-col gap-7 lg:flex"
+            :class="filtersOpen ? 'flex' : 'hidden'"
           >
-            {{ showLogs ? 'Hide' : 'View' }} scan log
-          </UButton>
-          <ScanLogPanel v-if="showLogs" :lines="logLines" class="mt-2" />
-        </div>
-
-        <RiskScoreGauge
-          :score="status.result.risk_assessment.score"
-          :severity="status.result.risk_assessment.severity"
-          :recommendation="status.result.risk_assessment.recommendation"
-        />
-
-        <UAlert
-          v-if="!status.result.execution_successful"
-          color="warning"
-          variant="subtle"
-          title="Analysis was incomplete"
-          description="One or more analyzers didn't finish — findings below may be partial."
-        />
-
-        <div v-if="sortedIssues.length">
-          <div class="mb-1 flex flex-wrap items-center gap-2">
-            <h2 class="text-sm font-semibold text-muted uppercase tracking-wide">
-              {{ hasActiveFilters ? `${filteredIssues.length} of ${sortedIssues.length}` : sortedIssues.length }}
-              finding{{ sortedIssues.length === 1 ? '' : 's' }}
-            </h2>
-            <div class="flex flex-wrap gap-1.5">
-              <UTooltip
-                v-for="[severity, count] in severityCounts"
-                :key="severity"
-                :text="isSeverityVisible(severity) ? `Hide ${severity}` : `Show ${severity}`"
+            <fieldset
+              v-for="group in filterGroups"
+              :key="group.legend"
+              class="flex flex-col"
+            >
+              <legend class="eyebrow mb-2.5 text-muted">
+                {{ group.legend }}
+              </legend>
+              <label
+                v-for="item in group.items"
+                :key="item.value"
+                class="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm"
               >
-                <button
-                  type="button"
-                  class="flex items-center gap-1"
-                  @click="toggleSeverity(severity)"
+                <input
+                  type="checkbox"
+                  class="size-4 shrink-0 accent-(--ui-text-highlighted)"
+                  :checked="!group.hidden.value.has(item.value)"
+                  @change="toggle(group.hidden, item.value)"
                 >
-                  <UIcon
-                    :name="isSeverityVisible(severity) ? 'i-lucide-eye' : 'i-lucide-eye-off'"
-                    class="size-3.5 text-muted"
-                  />
-                  <SeverityBadge
-                    :severity="severity"
-                    :class="isSeverityVisible(severity) ? '' : 'opacity-40'"
-                  >
-                    {{ count }} {{ severity }}
-                  </SeverityBadge>
-                </button>
-              </UTooltip>
+                <span
+                  v-if="group.legend === 'Severity'"
+                  class="size-2.5 shrink-0 rounded-xs"
+                  :class="SEVERITY_CLASSES[item.value as Severity].dot"
+                />
+                <span
+                  class="min-w-0 flex-1 truncate"
+                  :class="[group.mono ? 'font-mono text-[13px]' : '', group.hidden.value.has(item.value) ? 'text-muted' : 'text-highlighted']"
+                  :title="item.value"
+                >{{ group.legend === 'Severity' ? SEVERITY_LABEL[item.value as Severity] : item.value }}</span>
+                <span class="font-mono text-[13px] text-muted tabular-nums">{{ item.count }}</span>
+              </label>
+            </fieldset>
+
+            <p class="text-sm text-muted">
+              Showing {{ filteredIssues.length }} of {{ issues.length }}.
+              <button
+                v-if="activeFilterCount"
+                type="button"
+                class="cursor-pointer font-medium text-highlighted underline underline-offset-2"
+                @click="clearFilters"
+              >
+                Show all
+              </button>
+            </p>
+          </div>
+        </aside>
+
+        <section
+          aria-labelledby="findings-heading"
+          class="flex min-w-0 flex-col gap-4"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2
+              id="findings-heading"
+              class="font-serif text-3xl text-highlighted"
+            >
+              Findings
+            </h2>
+            <div class="flex items-center gap-4 text-sm">
+              <label class="flex items-center gap-2 text-muted">
+                Sort
+                <USelect
+                  v-model="sortKey"
+                  :items="SORT_OPTIONS"
+                  value-key="value"
+                  class="w-36"
+                />
+              </label>
+              <button
+                v-if="filteredIssues.length"
+                type="button"
+                class="h-10 cursor-pointer text-muted underline underline-offset-3 hover:text-highlighted"
+                @click="toggleAll"
+              >
+                {{ allExpanded ? 'Collapse all' : 'Expand all' }}
+              </button>
             </div>
           </div>
 
-          <div class="mb-3 flex flex-wrap items-center gap-2">
-            <USelect
-              v-if="categories.length > 1"
-              v-model="selectedCategory"
-              :items="categories"
-              placeholder="All categories"
-              icon="i-lucide-filter"
-              size="xs"
-              class="w-44"
-            />
-            <USelect
-              v-model="sortKey"
-              :items="SORT_OPTIONS"
-              value-key="value"
-              icon="i-lucide-arrow-up-down"
-              size="xs"
-              class="w-40"
-            />
-            <UButton
-              v-if="hasActiveFilters"
-              variant="link"
-              color="neutral"
-              size="xs"
-              icon="i-lucide-x"
-              @click="clearFilters"
-            >
-              Clear filters
-            </UButton>
-          </div>
-
-          <p
-            v-if="status.result.suppressed_count > 0"
-            class="mb-3 text-xs text-muted"
+          <template
+            v-for="group in groupedIssues"
+            :key="group.severity ?? 'all'"
           >
-            {{ status.result.suppressed_count }} additional finding{{ status.result.suppressed_count === 1 ? '' : 's' }} suppressed by baseline.
-          </p>
-
-          <div
-            v-if="filteredIssues.length"
-            class="mb-3 flex gap-3 text-sm"
-          >
-            <button
-              type="button"
-              class="text-muted hover:text-default underline-offset-2 hover:underline"
-              @click="expandAll"
+            <h3
+              v-if="group.severity"
+              class="eyebrow flex items-center gap-2.5 pt-2"
+              :class="SEVERITY_CLASSES[group.severity].ink"
             >
-              Expand all
-            </button>
-            <button
-              type="button"
-              class="text-muted hover:text-default underline-offset-2 hover:underline"
-              @click="collapseAll"
-            >
-              Collapse all
-            </button>
-          </div>
-
-          <div
-            v-if="filteredIssues.length"
-            class="flex flex-col gap-3"
-          >
+              <span
+                class="size-2.5 rounded-xs"
+                :class="SEVERITY_CLASSES[group.severity].dot"
+              />
+              {{ SEVERITY_LABEL[group.severity] }} · {{ group.issues.length }}
+            </h3>
             <FindingCard
-              v-for="issue in filteredIssues"
-              :key="issue.finding_id"
+              v-for="issue in group.issues"
+              :key="findingKey(issue)"
               :finding="issue"
-              :expanded="isExpanded(issue.finding_id)"
-              @toggle="toggleExpanded(issue.finding_id)"
+              :expanded="isExpanded(issue)"
+              @toggle="toggleExpanded(issue)"
             />
-          </div>
+          </template>
+
           <UAlert
-            v-else
+            v-if="!filteredIssues.length"
             color="neutral"
             variant="subtle"
             icon="i-lucide-filter-x"
             title="No findings match your filters"
-            class="mt-3"
+            :actions="[{ label: 'Show all', color: 'neutral', variant: 'outline', onClick: clearFilters }]"
           />
-        </div>
-        <UAlert
-          v-else
-          color="primary"
-          variant="subtle"
-          icon="i-lucide-check"
-          title="No issues found"
-        />
-      </template>
-    </div>
+
+          <p
+            v-if="status.result.suppressed_count > 0"
+            class="text-sm text-muted"
+          >
+            {{ status.result.suppressed_count }} more finding{{ status.result.suppressed_count === 1 ? '' : 's' }}
+            suppressed by baseline.
+          </p>
+        </section>
+      </div>
+    </template>
   </UContainer>
 </template>

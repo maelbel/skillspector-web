@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   lines: string[]
+  tall?: boolean
 }>()
 
 const container = ref<HTMLElement>()
@@ -38,30 +39,31 @@ interface LogLine {
   text: string
 }
 
+// The panel is always dark, in both themes, so these are fixed shades rather than theme tokens.
 function parseLine(line: string): LogLine {
   const stageMatch = line.match(/^(.+) completed$/)
   if (stageMatch) {
-    return { icon: 'i-lucide-check', class: 'text-gray-400', text: humanizeStage(stageMatch[1]!) }
+    return { icon: 'i-lucide-check', class: 'text-bone-300', text: humanizeStage(stageMatch[1]!) }
   }
   if (line.startsWith('Starting scan of')) {
-    return { icon: 'i-lucide-play', class: 'text-gray-200 font-medium', text: line }
+    return { icon: 'i-lucide-play', class: 'text-bone-50 font-medium', text: line }
   }
   if (line === 'Scan complete') {
-    return { icon: 'i-lucide-check-circle-2', class: 'text-green-400 font-medium', text: line }
+    return { icon: 'i-lucide-check-circle-2', class: 'text-forest-300 font-medium', text: line }
   }
   if (line.startsWith('Scan failed:')) {
-    return { icon: 'i-lucide-x-circle', class: 'text-red-400 font-medium', text: line }
+    return { icon: 'i-lucide-x-circle', class: 'text-red-300 font-medium', text: line }
   }
   if (line.startsWith('WARNING ')) {
-    return { icon: 'i-lucide-alert-triangle', class: 'text-yellow-400', text: line.slice('WARNING '.length) }
+    return { icon: 'i-lucide-alert-triangle', class: 'text-amber-300', text: line.slice('WARNING '.length) }
   }
   if (line.startsWith('ERROR ')) {
-    return { icon: 'i-lucide-alert-circle', class: 'text-red-400', text: line.slice('ERROR '.length) }
+    return { icon: 'i-lucide-alert-circle', class: 'text-red-300', text: line.slice('ERROR '.length) }
   }
   if (line.startsWith('INFO ')) {
-    return { icon: 'i-lucide-info', class: 'text-gray-500', text: line.slice('INFO '.length) }
+    return { icon: 'i-lucide-info', class: 'text-bone-400', text: line.slice('INFO '.length) }
   }
-  return { icon: 'i-lucide-minus', class: 'text-gray-500', text: line }
+  return { icon: 'i-lucide-minus', class: 'text-bone-400', text: line }
 }
 
 const parsedLines = computed(() => props.lines.map(parseLine))
@@ -70,19 +72,20 @@ const parsedLines = computed(() => props.lines.map(parseLine))
 <template>
   <div
     ref="container"
-    class="rounded-md bg-gray-950 font-mono text-xs p-3 max-h-56 overflow-y-auto flex flex-col gap-1"
+    class="flex flex-col gap-1 overflow-y-auto rounded-xl bg-code p-4 font-mono text-xs"
+    :class="tall ? 'max-h-[26rem]' : 'max-h-64'"
   >
     <div
       v-for="(line, index) in parsedLines"
       :key="index"
-      class="flex items-start gap-1.5"
+      class="flex items-start gap-2"
       :class="line.class"
     >
       <UIcon
         :name="line.icon"
-        class="size-3.5 shrink-0 mt-0.5"
+        class="mt-0.5 size-3.5 shrink-0"
       />
-      <span class="whitespace-pre-wrap break-all leading-relaxed">{{ line.text }}</span>
+      <span class="leading-relaxed break-all whitespace-pre-wrap">{{ line.text }}</span>
     </div>
   </div>
 </template>

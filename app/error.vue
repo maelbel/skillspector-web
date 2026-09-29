@@ -24,25 +24,25 @@ function goHome() {
 <template>
   <UApp>
     <UContainer class="py-24">
-      <div class="max-w-lg mx-auto flex flex-col items-center text-center gap-4">
-        <div class="flex items-center justify-center size-14 rounded-full bg-error/10">
+      <div class="mx-auto flex max-w-lg flex-col items-start gap-5">
+        <p class="eyebrow flex items-center gap-2 text-critical-ink">
           <UIcon
             :name="isNotFound ? 'i-lucide-file-question' : 'i-lucide-shield-alert'"
-            class="size-7 text-error"
+            class="size-4"
           />
-        </div>
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight">
-            {{ statusCode }}
-          </h1>
-          <p class="mt-2 text-muted">
-            {{ message }}
-          </p>
-        </div>
+          Error {{ statusCode }}
+        </p>
+        <h1 class="font-serif text-5xl leading-none text-highlighted sm:text-6xl">
+          {{ isNotFound ? 'Nothing here' : 'Something broke' }}
+        </h1>
+        <p class="text-lg text-muted">
+          {{ message }}
+        </p>
         <UButton
           icon="i-lucide-arrow-left"
-          variant="soft"
           color="neutral"
+          size="lg"
+          class="font-semibold"
           @click="goHome"
         >
           Back home

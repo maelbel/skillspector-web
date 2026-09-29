@@ -41,5 +41,12 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
+  },
+
+  fonts: {
+    defaults: {
+      weights: [400, 500, 600],
+      styles: ['normal']
+    }
   }
 })

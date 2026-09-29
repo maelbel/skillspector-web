@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeScanTarget, parseScanTarget } from '../shared/utils/scan'
+import { describeScanTarget, parseScanTarget, splitScanTitle } from '../shared/utils/scan'
 
 describe('parseScanTarget', () => {
   it('shortens a GitHub repo URL to owner/repo', () => {
@@ -50,5 +50,16 @@ describe('describeScanTarget', () => {
     const info = describeScanTarget(target)
     expect(info?.ok).toBe(false)
     expect(info && !info.ok && info.problem).toContain(problem)
+  })
+})
+
+describe('splitScanTitle', () => {
+  it('leads with the end of a deep path and keeps the repo as the source', () => {
+    expect(splitScanTitle('https://github.com/acme/skills/blob/main/tools/pdf/SKILL.md')).toEqual({ name: 'pdf/SKILL.md', source: 'acme/skills' })
+  })
+
+  it('keeps short titles whole', () => {
+    expect(splitScanTitle('https://github.com/acme/skills')).toEqual({ name: 'acme/skills' })
+    expect(splitScanTitle('https://example.com/skill.zip')).toEqual({ name: 'https://example.com/skill.zip' })
   })
 })

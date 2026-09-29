@@ -1,0 +1,68 @@
+import type { Finding, ScanStatus } from '../types/scan'
+
+// Families of skillspector graph nodes, in the order a scan roughly runs them. Matched on the
+// node name each "<node> completed" log line carries.
+const STAGE_GROUPS: { label: string, match: (node: string) => boolean }[] = [
+  { label: 'Fetch & prepare', match: node => ['resolve_input', 'build_context', 'structured_skill_roles'].includes(node) },
+  { label: 'Static patterns', match: node => node.startsWith('static_patterns_') },
+  { label: 'YARA signatures', match: node => node === 'static_yara' },
+  { label: 'Behavioral analysis', match: node => node.startsWith('behavioral_') || node === 'bundled_execution_surface' },
+  { label: 'MCP tool checks', match: node => node.startsWith('mcp_') },
+  { label: 'AI review', match: node => node.startsWith('semantic_') },
+  { label: 'Integrity & scoring', match: () => true }
+]
+
+export interface StageGroup {
+  label: string
+  completed: number
+}
+
+/** Counts completed graph steps per analyzer family, keeping only families that have started. */
+export function groupCompletedStages(lines: string[]): StageGroup[] {
+  const counts = new Map<string, number>()
+  for (const line of lines) {
+    const node = line.match(/^(\S+) completed$/)?.[1]
+    if (!node) continue
+    const group = STAGE_GROUPS.find(g => g.match(node))!
+    counts.set(group.label, (counts.get(group.label) ?? 0) + 1)
+  }
+  return STAGE_GROUPS
+    .filter(group => counts.has(group.label))
+    .map(group => ({ label: group.label, completed: counts.get(group.label)! }))
+}
+
+/**
+ * A finding's headline. skillspector puts the matched text in `finding` and a generic
+ * description in `explanation`, so the rule name (`pattern`) or `category` reads best.
+ */
+export function findingTitle(finding: Finding): string {
+  return finding.pattern ?? finding.category ?? finding.explanation ?? 'Finding'
+}
+
+/**
+ * A stable key per finding. skillspector repeats the same `finding_id` for each occurrence of a
+ * rule, so the location tells occurrences apart.
+ */
+export function findingKey(finding: Finding): string {
+  const { file, start_line: line } = finding.location
+  return `${finding.finding_id}@${file}:${line}`
+}
+
+export function findingLocation(finding: Finding): string {
+  const { file, start_line: start, end_line: end } = finding.location
+  if (!start) return file
+  return end && end !== start ? `${file}:${start}–${end}` : `${file}:${start}`
+}
+
+/** Wall-clock seconds the scan took, or null while it's still running. */
+export function scanDurationSeconds(status: Pick<ScanStatus, 'created_at' | 'finished_at'>): number | null {
+  if (status.finished_at === null) return null
+  return Math.max(0, Math.round(status.finished_at - status.created_at))
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return rest ? `${minutes} min ${rest} s` : `${minutes} min`
+}
