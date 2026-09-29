@@ -103,7 +103,8 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per client IP within the window. |
 | `ADMIN_RATE_LIMIT`<br>`ADMIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Admin-token attempts allowed per client IP within the window. |
 | `SCAN_RETENTION_DAYS` | *unset* | Retention when the database is first created (unset keeps scans forever). Change it later from the admin page. |
-| `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`. |
+| `DATABASE_URL` | *unset* | A `postgres://` or `postgresql://` URL stores scans in Postgres instead of SQLite. Required in hosted mode. The schema is created and migrated on startup. |
+| `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`, used when `DATABASE_URL` is unset. |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Origins allowed to call the API directly. The UI goes through its own proxy, so this rarely matters. |
 
 ### Web app (`web`)

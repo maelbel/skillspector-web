@@ -3,7 +3,8 @@
 The FastAPI service behind [Skillspector Web](../README.md). It imports
 [skillspector](https://github.com/NVIDIA/skillspector) as a library and streams its compiled
 LangGraph pipeline (`skillspector.graph.graph`) for each scan — no CLI subprocess, no output
-parsing. Scan history and settings are stored in SQLite; progress and logs are captured live.
+parsing. Scan history and settings are stored in SQLite by default, or in Postgres when
+`SKILLSPECTOR_WEB_DATABASE_URL` is set; progress and logs are captured live.
 
 The service is meant to sit on an internal network behind the web app's Nitro proxy
 (`server/api/*`), which maps `/api/<path>` to `/<path>` here. Interactive OpenAPI docs are served at
@@ -60,6 +61,10 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
 - **Deployment mode.** `SKILLSPECTOR_WEB_MODE` is `self_hosted` by default, which is everything
   described here. `hosted` (Vercel) is being built piece by piece; until every piece exists, the
   service refuses to start in that mode and lists what's missing.
+- **Storage.** `app/db.py` is the only module the app calls; it delegates to a SQLite or Postgres
+  store (`app/storage/`). Each store applies its versioned migrations on startup and records them in
+  `schema_migrations`; existing SQLite databases are adopted as they are. Scans aren't copied
+  between engines when you switch.
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.
@@ -76,7 +81,7 @@ Configuration options are listed in the [main README](../README.md#configuration
 ```bash
 uv sync
 uv run uvicorn app.main:app --reload   # http://localhost:8000, docs at /docs
-uv run pytest
+uv run pytest                          # add TEST_DATABASE_URL=postgresql://… to also test Postgres
 uv run ruff check .
 ```
 

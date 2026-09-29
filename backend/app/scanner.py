@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sqlite3
 import time
 import uuid
 from collections.abc import Iterator
@@ -98,12 +97,12 @@ def get_job(job_id: str) -> Job | None:
         status=JobStatus(row["status"]),
         created_at=row["created_at"],
         finished_at=row["finished_at"],
-        result=json.loads(row["result"]) if row["result"] else None,
+        result=row["result"],
         error=row["error"],
     )
 
 
-def list_jobs(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
+def list_jobs(limit: int, offset: int) -> tuple[list[db.ScanRow], int]:
     return db.list_scans(limit, offset)
 
 

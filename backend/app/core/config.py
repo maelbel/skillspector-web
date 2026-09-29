@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
     max_concurrent_scans: int = 2
     max_queued_scans: int = 20
+    # SQLite file used when database_url is unset.
     db_path: str = "data/scans.db"
+    # A postgres:// URL switches scan storage to Postgres. Required in hosted mode.
+    database_url: str | None = None
     admin_token: str | None = None
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
