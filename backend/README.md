@@ -13,7 +13,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/health` | — | Service status, skillspector version, and whether the server's Claude login is usable. |
+| `GET` | `/health` | — | Service status, deployment mode, skillspector version, and whether the server's Claude login is usable. |
 | `POST` | `/scan` | rate-limited | Queue a scan. Returns `{ id, status }`. |
 | `GET` | `/scan` | — | Scan history, newest first: `?limit=` (1–100, default 20) and `?offset=`. Returns `{ items, total }`. |
 | `GET` | `/scan/{id}` | — | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report. |
@@ -57,6 +57,9 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
 
 ## Behaviour worth knowing
 
+- **Deployment mode.** `SKILLSPECTOR_WEB_MODE` is `self_hosted` by default, which is everything
+  described here. `hosted` (Vercel) is being built piece by piece; until every piece exists, the
+  service refuses to start in that mode and lists what's missing.
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.

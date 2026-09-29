@@ -23,6 +23,7 @@ from app.api.routes import admin, scan
 from app.api.routes import settings as settings_routes
 from app.claude_login import is_claude_cli_available, kill_pending
 from app.core.config import get_settings
+from app.core.mode import check_mode
 from app.db import init_db
 from app.scan_logs import init_logging
 
@@ -31,6 +32,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    check_mode(settings.mode)
     init_db()
     # Jobs run in this process, so anything still pending/running from a previous one is dead.
     db.fail_unfinished_scans(error="Interrupted: the API restarted before this scan finished", finished_at=time.time())
@@ -60,6 +62,7 @@ def health() -> dict:
     llm_available, _ = is_llm_available()
     return {
         "status": "ok",
+        "mode": settings.mode.value,
         "skillspector_version": skillspector_version,
         "llm_available": llm_available,
         "claude_cli_available": is_claude_cli_available(),

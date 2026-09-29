@@ -96,6 +96,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 
 | Variable | Default | Description |
 |---|---|---|
+| `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start until its pieces are built; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
 | `ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
 | `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
