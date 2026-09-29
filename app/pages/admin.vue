@@ -3,7 +3,7 @@ import type { SettingsResponse } from '~~/shared/types/settings'
 
 useSeoMeta({ title: 'Admin — Skillspector Web' })
 
-const adminToken = ref('')
+const { accounts } = useAuth()
 
 const step = ref<'idle' | 'started' | 'done'>('idle')
 const loginUrl = ref('')
@@ -17,16 +17,11 @@ const resultSuccess = ref(false)
 const stepNumber = computed(() => ({ idle: 1, started: 2, done: 3 })[step.value])
 
 async function startLogin() {
-  if (!adminToken.value.trim()) return
-
   starting.value = true
   errorMessage.value = ''
 
   try {
-    const { url } = await $fetch<{ url: string }>('/api/admin/claude-login/start', {
-      method: 'POST',
-      body: { adminToken: adminToken.value.trim() }
-    })
+    const { url } = await $fetch<{ url: string }>('/api/admin/claude-login/start', { method: 'POST' })
     loginUrl.value = url
     step.value = 'started'
   } catch (err) {
@@ -45,7 +40,7 @@ async function completeLogin() {
   try {
     const { success, output } = await $fetch<{ success: boolean, output: string }>(
       '/api/admin/claude-login/complete',
-      { method: 'POST', body: { adminToken: adminToken.value.trim(), code: code.value.trim() } }
+      { method: 'POST', body: { code: code.value.trim() } }
     )
     resultSuccess.value = success
     resultMessage.value = output
@@ -84,8 +79,6 @@ watch(settingsData, (value) => {
 }, { immediate: true })
 
 async function saveRetention() {
-  if (!adminToken.value.trim()) return
-
   savingRetention.value = true
   retentionError.value = ''
   retentionSaved.value = false
@@ -94,7 +87,6 @@ async function saveRetention() {
     const updated = await $fetch<SettingsResponse>('/api/settings', {
       method: 'PUT',
       body: {
-        adminToken: adminToken.value.trim(),
         scanRetentionDays: retentionMode.value === 'forever' ? null : retentionDays.value
       }
     })
@@ -116,21 +108,20 @@ async function saveRetention() {
           Admin
         </h1>
         <p class="text-[15px] text-muted">
-          Server-wide settings. Every action needs the admin token.
+          Server-wide settings{{ accounts ? ' and accounts' : '' }}.
         </p>
       </div>
 
-      <UFormField
-        label="Admin token"
-        description="Matches SKILLSPECTOR_WEB_ADMIN_TOKEN on the server. Used for both actions below."
-      >
-        <UInput
-          v-model="adminToken"
-          type="password"
-          icon="i-lucide-key-round"
-          class="w-full"
-        />
-      </UFormField>
+      <UAlert
+        v-if="!accounts"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-shield-alert"
+        title="This server has no authentication"
+        description="Anyone who can reach it can use this page, including the Claude login below. Keep it on a private network or behind your reverse proxy's login, or set SKILLSPECTOR_WEB_AUTH=accounts."
+      />
+
+      <AdminUsers v-else />
 
       <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
@@ -166,7 +157,6 @@ async function saveRetention() {
             v-if="step === 'idle'"
             icon="i-lucide-play"
             :loading="starting"
-            :disabled="!adminToken.trim()"
             @click="startLogin"
           >
             Start login
@@ -194,6 +184,7 @@ async function saveRetention() {
               description="Paste the code Anthropic shows you after signing in."
             >
               <UInput
+                id="claude-login-code"
                 v-model="code"
                 icon="i-lucide-clipboard-paste"
                 class="w-full"
@@ -249,6 +240,7 @@ async function saveRetention() {
 
           <UFormField label="Keep scans">
             <USelect
+              id="retention-mode"
               v-model="retentionMode"
               :items="[
                 { label: 'Forever', value: 'forever' },
@@ -264,6 +256,7 @@ async function saveRetention() {
             label="Days"
           >
             <UInput
+              id="retention-days"
               v-model.number="retentionDays"
               type="number"
               min="1"
@@ -275,7 +268,7 @@ async function saveRetention() {
           <UButton
             icon="i-lucide-save"
             :loading="savingRetention"
-            :disabled="!adminToken.trim() || (retentionMode === 'days' && (!retentionDays || retentionDays <= 0))"
+            :disabled="retentionMode === 'days' && (!retentionDays || retentionDays <= 0)"
             @click="saveRetention"
           >
             Save

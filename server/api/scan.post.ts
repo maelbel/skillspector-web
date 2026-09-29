@@ -7,12 +7,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing "target" in request body' })
   }
 
-  const { apiBase } = useRuntimeConfig()
-
-  return await $fetch<{ id: string, status: string }>('/scan', {
-    baseURL: apiBase,
+  return await backendFetch<{ id: string, status: string }>(event, '/scan', {
     method: 'POST',
-    headers: { 'X-Forwarded-For': getClientIp(event) },
     body: {
       target,
       llm: llm
@@ -23,11 +19,7 @@ export default defineEventHandler(async (event) => {
             model: llm.model
           }
         : null
-    }
-  }).catch((error) => {
-    throw createError({
-      statusCode: error?.response?.status ?? 502,
-      statusMessage: error?.data?.detail?.[0]?.msg ?? error?.data?.detail ?? 'Failed to queue scan'
-    })
+    },
+    fallbackMessage: 'Failed to queue scan'
   })
 })

@@ -13,11 +13,32 @@ useSeoMeta({
   ogDescription: site.description
 })
 
-const NAV = [
+const { accounts, user, isAdmin, signOut } = useAuth()
+const colorMode = useColorMode()
+
+// With accounts on, signed-out visitors only see the sign-in page, and only admins see Admin.
+const signedIn = computed(() => !accounts.value || !!user.value)
+const nav = computed(() => [
   { to: '/', label: 'Scan', icon: 'i-lucide-scan-search' },
   { to: '/history', label: 'History', icon: 'i-lucide-history' },
-  { to: '/admin', label: 'Admin', icon: 'i-lucide-settings' }
-]
+  ...(isAdmin.value ? [{ to: '/admin', label: 'Admin', icon: 'i-lucide-settings' }] : [])
+])
+
+const accountMenu = computed(() => [
+  [{ label: user.value?.email ?? '', type: 'label' as const }],
+  [
+    // On phones the header has no room for the theme button, so it lives here.
+    {
+      label: colorMode.value === 'dark' ? 'Light theme' : 'Dark theme',
+      icon: colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon',
+      class: 'sm:hidden',
+      onSelect: () => {
+        colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
+      }
+    },
+    { label: 'Sign out', icon: 'i-lucide-log-out', onSelect: signOut }
+  ]
+])
 </script>
 
 <template>
@@ -43,7 +64,7 @@ const NAV = [
           class="flex items-stretch"
         >
           <NuxtLink
-            v-for="item in NAV"
+            v-for="item in signedIn ? nav : []"
             :key="item.to"
             :to="item.to"
             :aria-current="route.path === item.to ? 'page' : undefined"
@@ -67,7 +88,21 @@ const NAV = [
               color="neutral"
               variant="ghost"
               class="size-10 justify-center text-graphite-400 hover:bg-white/10 hover:text-white sm:size-11"
+              :class="{ 'max-sm:hidden': user }"
             />
+            <UDropdownMenu
+              v-if="user"
+              :items="accountMenu"
+              :content="{ align: 'end' }"
+            >
+              <UButton
+                icon="i-lucide-circle-user-round"
+                color="neutral"
+                variant="ghost"
+                :aria-label="`Account: ${user.email}`"
+                class="size-10 justify-center text-graphite-400 hover:bg-white/10 hover:text-white sm:size-11"
+              />
+            </UDropdownMenu>
             <UButton
               :to="`https://github.com/${site.repo}`"
               target="_blank"

@@ -1,24 +1,13 @@
 export default defineEventHandler(async (event) => {
-  const { adminToken, code } = await readBody<{ adminToken?: string, code?: string }>(event)
+  const { code } = await readBody<{ code?: string }>(event)
 
-  if (!adminToken) {
-    throw createError({ statusCode: 400, statusMessage: 'Missing "adminToken" in request body' })
-  }
   if (!code) {
     throw createError({ statusCode: 400, statusMessage: 'Missing "code" in request body' })
   }
 
-  const { apiBase } = useRuntimeConfig()
-
-  return await $fetch<{ success: boolean, output: string }>('/admin/claude-login/complete', {
-    baseURL: apiBase,
+  return await backendFetch<{ success: boolean, output: string }>(event, '/admin/claude-login/complete', {
     method: 'POST',
-    headers: { 'X-Admin-Token': adminToken, 'X-Forwarded-For': getClientIp(event) },
-    body: { code }
-  }).catch((error) => {
-    throw createError({
-      statusCode: error?.response?.status ?? 502,
-      statusMessage: error?.data?.detail ?? 'Failed to complete login'
-    })
+    body: { code },
+    fallbackMessage: 'Failed to complete login'
   })
 })

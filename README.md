@@ -66,7 +66,8 @@ pnpm setup          # interactive: writes backend/.env.local, then starts the st
 ```
 
 Open **http://localhost:3005**. Prefer to skip the wizard? `docker compose up --build` works too —
-the API then runs with defaults and the admin page stays disabled until you set an admin token.
+the API then runs with defaults: no sign-in, so keep it on a private network or behind your
+reverse proxy's login, or set `SKILLSPECTOR_WEB_AUTH=accounts`.
 
 <details>
 <summary><b>Run without Docker</b></summary>
@@ -92,12 +93,14 @@ Open **http://localhost:3000**.
 
 ### Scan service (`api`)
 
-Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTOR_WEB_ADMIN_TOKEN`.
+Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTOR_WEB_AUTH`.
 
 | Variable | Default | Description |
 |---|---|---|
 | `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start until its pieces are built; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
-| `ADMIN_TOKEN` | *unset* | Enables the admin page (Claude login, retention). Unset disables every admin action. |
+| `AUTH` | *by mode* | Who can use the server: `none` (the `self_hosted` default: no sign-in, every visitor has full access, admin page included) or `accounts` (sign-in required; the first account becomes the admin, users see only their own scans, admins see all and manage the server). Always `accounts` when hosted. |
+| `ALLOW_SIGNUP` | *by mode* | With accounts, whether anyone may create one. Off when self-hosted (admins add users from the admin page), on when hosted. |
+| `SESSION_DAYS` | `30` | How long a sign-in lasts. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
 | `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
 | `SCAN_EXECUTOR` | *by mode* | Where a scan's fetch and analysis happen: `local` (the `self_hosted` default: inside the API) or `sandbox` (the `hosted` default: a fresh Vercel Sandbox microVM per scan). |
@@ -106,7 +109,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per client IP within the window. |
-| `ADMIN_RATE_LIMIT`<br>`ADMIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Admin-token attempts allowed per client IP within the window. |
+| `LOGIN_RATE_LIMIT`<br>`LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Sign-in, first-run setup and sign-up attempts allowed per client IP within the window. |
 | `SCAN_RETENTION_DAYS` | *unset* | Retention when the database is first created (unset keeps scans forever). Change it later from the admin page. |
 | `DATABASE_URL` | *unset* | A `postgres://` or `postgresql://` URL stores scans in Postgres instead of SQLite. Required in hosted mode. The schema is created and migrated on startup. |
 | `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`, used when `DATABASE_URL` is unset. |
@@ -374,13 +377,19 @@ The scan service's endpoints are documented in [backend/README.md](./backend/REA
 Skillspector Web is designed for a trusted audience — yourself, a team, a homelab. What is and
 isn't protected:
 
-- **No user accounts.** Anyone who can reach the UI can run scans, read every scan in the history
-  and delete scans. For anything public, put it behind your reverse proxy's authentication
-  (for example Authentik or Authelia forward-auth).
+- **Authentication is your choice.** With `AUTH=none` (the self-hosted default) there's no
+  sign-in: anyone who can reach the UI can run, read and delete every scan and use the admin page,
+  including the server's Claude login. Keep it on a private network or behind your reverse proxy's
+  authentication (for example Authentik or Authelia forward-auth). With `AUTH=accounts`:
+  - Every page needs a sign-in. Scans belong to the user who ran them, and a user can't see,
+    open or delete anyone else's (the API answers `404`). Admins see every scan, including ones
+    from before accounts were turned on, and manage users, retention and the Claude login.
+  - Passwords are hashed with scrypt. Sessions are random tokens stored only as SHA-256 hashes,
+    kept in an `httpOnly`, `SameSite=Lax` cookie that page scripts can't read, and expire after
+    `SESSION_DAYS`.
+  - Sign-in attempts are rate-limited per client IP.
 - **The server's Claude login is shared.** When it's signed in, every visitor can run
   Claude-backed scans on it.
-- **Admin actions** (Claude login, retention) require `SKILLSPECTOR_WEB_ADMIN_TOKEN`, compared in
-  constant time and rate-limited per client IP.
 - **Scan targets are constrained** by skillspector: https only, an allowlist of Git and download
   hosts, private and internal addresses refused, no redirects followed, and size limits on clones,
   archives and downloads.

@@ -82,8 +82,5 @@ def test_delete_scan_removes_it(client):
     assert db.get_scan("abc") is None
 
 
-def test_logs_for_unknown_scan_are_empty(client):
-    response = client.get("/scan/missing/logs")
-
-    assert response.status_code == 200
-    assert response.json() == {"lines": []}
+def test_logs_for_unknown_scan_are_not_found(client):
+    assert client.get("/scan/missing/logs").status_code == 404

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
 from app import retention
-from app.core.security import require_admin
+from app.auth.deps import require_admin
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 

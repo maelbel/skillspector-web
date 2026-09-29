@@ -1,21 +1,44 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.core.config import Settings
+from app.core.mode import Mode
 
 
 def test_env_local_is_read_and_overrides_env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".env").write_text("SKILLSPECTOR_WEB_ADMIN_TOKEN=from-env\nSKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS=3\n")
-    (tmp_path / ".env.local").write_text("SKILLSPECTOR_WEB_ADMIN_TOKEN=from-env-local\n")
+    (tmp_path / ".env").write_text("SKILLSPECTOR_WEB_AUTH=none\nSKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS=3\n")
+    (tmp_path / ".env.local").write_text("SKILLSPECTOR_WEB_AUTH=accounts\n")
 
     settings = Settings()
 
-    assert settings.admin_token == "from-env-local"
+    assert settings.auth == "accounts"
     assert settings.max_concurrent_scans == 3
 
 
 def test_env_local_alone_is_enough(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".env.local").write_text("SKILLSPECTOR_WEB_ADMIN_TOKEN=wizard-token\n")
+    (tmp_path / ".env.local").write_text("SKILLSPECTOR_WEB_AUTH=accounts\n")
 
-    assert Settings().admin_token == "wizard-token"
+    assert Settings().auth == "accounts"
+
+
+def test_settings_files_from_older_versions_still_load(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env.local").write_text("SKILLSPECTOR_WEB_ADMIN_TOKEN=left-over\nSKILLSPECTOR_WEB_MAX_QUEUED_SCANS=7\n")
+
+    assert Settings().max_queued_scans == 7
+
+
+def test_the_example_settings_file_loads_as_the_defaults(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    example = Path(__file__).resolve().parents[1] / ".env.example"
+    (tmp_path / ".env").write_text(example.read_text())
+
+    settings = Settings()
+
+    assert settings.mode is Mode.SELF_HOSTED
+    assert settings.auth is None
+    assert settings.job_runner is None
+    assert settings.database_url is None

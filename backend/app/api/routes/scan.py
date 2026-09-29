@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
 from app import db, rate_limit
+from app.auth import Viewer
+from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
 from app.jobs import JobRejectedError, get_runner
 from app.scan_logs import get_logs, get_progress
@@ -100,7 +102,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
 
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
-async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
+async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
     runner = get_runner()
     try:
         runner.check(req.llm)
@@ -108,7 +110,7 @@ async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if runner.is_full():
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
-    job = create_job(req.target, req.llm)
+    job = create_job(req.target, req.llm, owner_id=viewer.user_id)
     try:
         await runner.submit(job)
     except Exception as exc:
@@ -120,10 +122,12 @@ async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
 
 @router.get("", response_model=ScanHistoryResponse)
 async def read_scan_history(
+    viewer: CurrentViewer,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ScanHistoryResponse:
-    rows, total = list_jobs(limit, offset)
+    # Admins see every scan, including ones from before accounts existed; users only their own.
+    rows, total = list_jobs(limit, offset, owner_id=None if viewer.is_admin else viewer.user_id)
     items = [
         ScanSummaryResponse(
             id=row["id"],
@@ -143,8 +147,16 @@ async def read_scan_history(
     return ScanHistoryResponse(items=items, total=total)
 
 
+def _visible_scan(job_id: str, viewer: Viewer) -> None:
+    """404, not 403, for someone else's scan, so ids can't be probed."""
+    scan = db.get_scan(job_id)
+    if scan is None or not viewer.can_see(scan):
+        raise HTTPException(status_code=404, detail="scan not found")
+
+
 @router.get("/{job_id}", response_model=ScanStatusResponse)
-async def read_scan(job_id: str) -> ScanStatusResponse:
+async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
+    _visible_scan(job_id, viewer)
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
@@ -152,11 +164,13 @@ async def read_scan(job_id: str) -> ScanStatusResponse:
 
 
 @router.get("/{job_id}/logs", response_model=ScanLogsResponse)
-async def read_scan_logs(job_id: str) -> ScanLogsResponse:
+async def read_scan_logs(job_id: str, viewer: CurrentViewer) -> ScanLogsResponse:
+    _visible_scan(job_id, viewer)
     return ScanLogsResponse(lines=get_logs(job_id))
 
 
 @router.delete("/{job_id}", status_code=204)
-async def delete_scan(job_id: str) -> None:
+async def delete_scan(job_id: str, viewer: CurrentViewer) -> None:
+    _visible_scan(job_id, viewer)
     if not delete_job(job_id):
         raise HTTPException(status_code=404, detail="scan not found")

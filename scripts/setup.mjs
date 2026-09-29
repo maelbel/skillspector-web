@@ -2,7 +2,6 @@
 // Interactive project setup: `pnpm setup`. Wires up backend/.env.local and,
 // depending on the chosen mode, either `uv sync`s the backend or brings up
 // docker compose.
-import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -81,36 +80,37 @@ async function main() {
     })
     if (p.isCancel(maxConcurrentScans)) return p.cancel('Setup cancelled.')
 
-    const adminTokenChoice = await p.select({
-      message: 'Admin token (gates the Claude CLI login endpoint)',
+    const auth = await p.select({
+      message: 'Who can use this server?',
       options: [
-        { value: 'generate', label: 'Generate a random token' },
-        { value: 'blank', label: 'Leave blank', hint: 'disables the login endpoint' },
-        { value: 'custom', label: 'Enter my own' }
-      ]
+        {
+          value: 'none',
+          label: 'Anyone who can reach it — no sign-in',
+          hint: 'including the admin page and Claude login; only for a private network or behind a proxy login'
+        },
+        {
+          value: 'accounts',
+          label: 'Only people with an account',
+          hint: 'the first visitor creates the admin account; scans are private to their user'
+        }
+      ],
+      initialValue: 'none'
     })
-    if (p.isCancel(adminTokenChoice)) return p.cancel('Setup cancelled.')
-
-    let adminToken = ''
-    if (adminTokenChoice === 'generate') {
-      adminToken = randomBytes(24).toString('hex')
-    } else if (adminTokenChoice === 'custom') {
-      const custom = await p.text({ message: 'Admin token' })
-      if (p.isCancel(custom)) return p.cancel('Setup cancelled.')
-      adminToken = custom
-    }
+    if (p.isCancel(auth)) return p.cancel('Setup cancelled.')
 
     const envContents = [
       `SKILLSPECTOR_WEB_CORS_ORIGINS=${corsOrigins}`,
       `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS=${maxConcurrentScans}`,
-      `SKILLSPECTOR_WEB_ADMIN_TOKEN=${adminToken}`,
+      `SKILLSPECTOR_WEB_AUTH=${auth}`,
       ''
     ].join('\n')
     writeFileSync(envLocalPath, envContents)
     p.log.success('Wrote backend/.env.local')
 
-    if (adminTokenChoice === 'generate') {
-      p.note(adminToken, 'Admin token (save this — needed for the /admin/claude-login flow)')
+    if (auth === 'none') {
+      p.log.warn('No sign-in: anyone who can reach this server can use every page, including /admin.')
+    } else {
+      p.note('Open the app and create the admin account: the first account becomes the admin.', 'Accounts')
     }
   } else {
     p.log.info('Keeping existing backend/.env.local')

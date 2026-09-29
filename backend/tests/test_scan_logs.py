@@ -37,7 +37,7 @@ def store(request, tmp_path, monkeypatch):
             import psycopg
 
             with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as conn:
-                conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines")
+                conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines, users, sessions")
             monkeypatch.setattr(settings, "database_url", TEST_DATABASE_URL)
         else:
             monkeypatch.setattr(settings, "database_url", None)

@@ -14,7 +14,14 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/health` | — | Service status, deployment mode, skillspector version, and whether the server's Claude login is usable. |
+| `GET` | `/health` | — | Service status, deployment mode, auth mode, skillspector version, and whether the server's Claude login is usable. |
+| `GET` | `/auth/session` | — | `{ auth, user, needs_setup, signup_allowed }` for the bearer token, if any. |
+| `POST` | `/auth/setup` | accounts | Create the first account, as admin; `409` once any account exists. Returns `{ token, expires_at, user }`. |
+| `POST` | `/auth/login` | accounts | Sign in with `{ email, password }`. Returns `{ token, expires_at, user }`. |
+| `POST` | `/auth/signup` | accounts | Create an account when sign-up is allowed. |
+| `POST` | `/auth/logout` | — | End the bearer token's session. |
+| `GET` · `POST` | `/admin/users` | admin | List users, or add one with `{ email, password, role }`. |
+| `DELETE` | `/admin/users/{id}` | admin | Remove a user and end their sessions; their scans stay. Not yourself, not the last admin. |
 | `POST` | `/scan` | rate-limited | Queue a scan. Returns `{ id, status }`. |
 | `GET` | `/scan` | — | Scan history, newest first: `?limit=` (1–100, default 20) and `?offset=`. Returns `{ items, total }`. |
 | `GET` | `/scan/{id}` | — | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report. |
@@ -25,9 +32,18 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/admin/claude-login/start` | admin | Start `claude auth login`; returns the URL to open. |
 | `POST` | `/admin/claude-login/complete` | admin | Finish the login with `{ code }`. |
 
-**Admin** endpoints need an `X-Admin-Token` header matching `SKILLSPECTOR_WEB_ADMIN_TOKEN`; with no
-token configured they return `404`. Admin attempts and scan submissions are rate-limited per
-client IP (`429`), keyed on the `X-Forwarded-For` value the web proxy sets.
+**Access** follows `SKILLSPECTOR_WEB_AUTH` (`app/auth/`):
+
+- **`none`:** every request has full access, admin endpoints included, and the `/auth/*` account
+  endpoints return `404`.
+- **`accounts`:** every scan, settings and admin endpoint needs `Authorization: Bearer <token>`
+  from a sign-in (`401` without one).
+  - Scan endpoints only show a user their own scans, and answer `404` for anyone else's.
+  - `admin` endpoints need the admin role (`403`).
+
+The web app keeps the token in an `httpOnly` cookie and adds the header when it proxies a request.
+Sign-in attempts and scan submissions are rate-limited per client IP (`429`), keyed on the
+`X-Forwarded-For` value the web proxy sets.
 
 ### Starting a scan
 

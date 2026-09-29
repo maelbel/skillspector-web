@@ -246,6 +246,7 @@ async function submit() {
     >
       <div class="flex gap-2 rounded-xs bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-brand max-sm:flex-col">
         <UInput
+          id="scan-target"
           ref="targetInput"
           v-model="target"
           type="url"
@@ -342,6 +343,7 @@ async function submit() {
       >
         <UFormField label="Provider">
           <USelect
+            id="scan-provider"
             v-model="provider"
             :items="providerOptions"
             value-key="value"
@@ -369,6 +371,7 @@ async function submit() {
             </ULink>
           </template>
           <UInput
+            id="scan-api-key"
             v-model="apiKey"
             type="password"
             placeholder="sk-..."
@@ -408,6 +411,7 @@ async function submit() {
                 description="Override for a proxy or an OpenAI-compatible endpoint."
               >
                 <UInput
+                  id="scan-base-url"
                   v-model="baseUrl"
                   :placeholder="baseUrlPlaceholder"
                   class="w-full"
@@ -420,6 +424,7 @@ async function submit() {
                 description="Leave empty to use the provider’s recommended model."
               >
                 <UInput
+                  id="scan-model"
                   v-model="model"
                   placeholder="Provider default"
                   class="w-full"
