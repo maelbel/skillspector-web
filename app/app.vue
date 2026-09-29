@@ -13,81 +13,93 @@ useSeoMeta({
   ogDescription: site.description
 })
 
-function navProps(path: string) {
-  const active = route.path === path
-  return {
-    color: active ? 'primary' as const : 'neutral' as const,
-    variant: active ? 'soft' as const : 'ghost' as const
-  }
-}
+const NAV = [
+  { to: '/', label: 'Scan', icon: 'i-lucide-scan-search' },
+  { to: '/history', label: 'History', icon: 'i-lucide-history' },
+  { to: '/admin', label: 'Admin', icon: 'i-lucide-settings' }
+]
 </script>
 
 <template>
   <UApp>
-    <!-- No mobile menu: every nav item already fits in the header as an icon button. -->
-    <UHeader
-      :toggle="false"
-      :ui="{ root: 'border-b border-default backdrop-blur bg-default/80' }"
-    >
-      <template #left>
+    <!-- Black in both themes, as on nvidia.com. -->
+    <header class="sticky top-0 z-40 bg-black text-white">
+      <UContainer class="flex h-(--ui-header-height) items-stretch justify-between gap-2 sm:gap-4">
         <NuxtLink
           to="/"
-          class="flex items-center gap-2 font-semibold whitespace-nowrap"
+          class="flex min-w-0 items-center gap-2.5 sm:gap-3"
         >
-          <UIcon
-            name="i-lucide-shield-check"
-            class="size-5 text-primary"
-          />
-          {{ site.name }}
+          <span class="flex size-8 shrink-0 items-center justify-center bg-brand text-black">
+            <UIcon
+              name="i-lucide-scan-eye"
+              class="size-5"
+            />
+          </span>
+          <span class="text-base font-extrabold tracking-tight sm:text-lg">SKILLSPECTOR<span class="ml-1.5 font-medium text-graphite-400 max-sm:hidden">web</span></span>
         </NuxtLink>
-      </template>
 
-      <template #right>
-        <UTooltip text="Toggle theme">
-          <UColorModeButton />
-        </UTooltip>
-        <UTooltip text="Scan history">
-          <UButton
-            to="/history"
-            icon="i-lucide-history"
-            aria-label="Scan history"
-            v-bind="navProps('/history')"
-          />
-        </UTooltip>
-        <UTooltip text="Admin">
-          <UButton
-            to="/admin"
-            icon="i-lucide-settings"
-            aria-label="Admin"
-            v-bind="navProps('/admin')"
-          />
-        </UTooltip>
-        <UButton
-          :to="`https://github.com/${site.repo}`"
-          target="_blank"
-          icon="i-simple-icons-github"
-          aria-label="skillspector-web on GitHub"
-          color="neutral"
-          variant="ghost"
-        />
-      </template>
-    </UHeader>
+        <nav
+          aria-label="Main"
+          class="flex items-stretch"
+        >
+          <NuxtLink
+            v-for="item in NAV"
+            :key="item.to"
+            :to="item.to"
+            :aria-current="route.path === item.to ? 'page' : undefined"
+            class="relative flex min-w-10 items-center justify-center gap-2 px-2 text-sm font-bold transition-colors sm:min-w-11 sm:px-4"
+            :class="route.path === item.to ? 'text-white' : 'text-graphite-400 hover:text-white'"
+          >
+            <UIcon
+              :name="item.icon"
+              class="size-5 sm:hidden"
+            />
+            <span class="max-sm:sr-only">{{ item.label }}</span>
+            <span
+              v-if="route.path === item.to"
+              aria-hidden="true"
+              class="absolute inset-x-2 bottom-0 h-[3px] bg-brand sm:inset-x-4"
+            />
+          </NuxtLink>
 
-    <UMain>
+          <span class="flex items-center gap-0.5 sm:pl-2">
+            <UColorModeButton
+              color="neutral"
+              variant="ghost"
+              class="size-10 justify-center text-graphite-400 hover:bg-white/10 hover:text-white sm:size-11"
+            />
+            <UButton
+              :to="`https://github.com/${site.repo}`"
+              target="_blank"
+              icon="i-simple-icons-github"
+              aria-label="skillspector-web on GitHub"
+              color="neutral"
+              variant="ghost"
+              class="size-11 justify-center text-graphite-400 hover:bg-white/10 hover:text-white max-sm:hidden"
+            />
+          </span>
+        </nav>
+      </UContainer>
+    </header>
+
+    <main class="min-h-[calc(100vh-var(--ui-header-height)-6rem)]">
       <NuxtPage />
-    </UMain>
+    </main>
 
-    <UFooter>
-      <template #left>
-        <p class="text-sm text-muted">
-          Scans run on this server with <a
-            :href="`https://github.com/${site.scannerRepo}`"
+    <footer class="mt-12 bg-black text-graphite-400">
+      <UContainer class="flex flex-col gap-1.5 py-8 text-sm">
+        <p>
+          Scans run on this server with <ULink
+            :to="`https://github.com/${site.scannerRepo}`"
             target="_blank"
-            class="underline"
-          >{{ site.scannerRepo }}</a>. A skill's content is only sent to an AI provider when you
-          turn on AI analysis for that scan.
+            class="font-semibold text-white underline underline-offset-2 hover:text-brand"
+          >{{ site.scannerRepo }}</ULink>. Skill content reaches an AI provider only when you pick AI
+          review for a scan.
         </p>
-      </template>
-    </UFooter>
+        <p class="text-xs text-graphite-500">
+          An independent web UI for skillspector. Not affiliated with or endorsed by NVIDIA.
+        </p>
+      </UContainer>
+    </footer>
   </UApp>
 </template>

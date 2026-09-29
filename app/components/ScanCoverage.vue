@@ -30,43 +30,43 @@ const CHECKS = [
 <template>
   <section
     aria-labelledby="scan-coverage-heading"
-    class="flex flex-col gap-3"
+    class="flex flex-col gap-5"
   >
     <h2
       id="scan-coverage-heading"
-      class="text-sm font-semibold text-highlighted"
+      class="eyebrow text-muted"
     >
       What a scan checks
     </h2>
 
-    <ul class="grid gap-3 sm:grid-cols-2">
+    <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <li
         v-for="check in CHECKS"
         :key="check.title"
-        class="flex gap-3 rounded-lg border border-default p-4"
+        class="surface flex flex-col gap-2.5 border-t-[3px] border-t-brand p-5"
       >
-        <UIcon
-          :name="check.icon"
-          class="size-5 shrink-0 text-primary mt-0.5"
-        />
-        <div>
-          <p class="text-sm font-medium text-highlighted">
-            {{ check.title }}
-          </p>
-          <p class="mt-1 text-xs text-muted">
-            {{ check.description }}
-          </p>
-        </div>
+        <span class="mb-2 flex size-10 items-center justify-center bg-black text-brand">
+          <UIcon
+            :name="check.icon"
+            class="size-5"
+          />
+        </span>
+        <h3 class="text-base font-semibold tracking-tight text-highlighted">
+          {{ check.title }}
+        </h3>
+        <p class="text-sm text-muted">
+          {{ check.description }}
+        </p>
       </li>
     </ul>
 
-    <p class="text-xs text-muted">
+    <p class="text-sm text-muted">
       Every scan runs more than 20 static analyzers from
       <ULink
         :to="`https://github.com/${site.scannerRepo}`"
         target="_blank"
-        class="underline"
-      >{{ site.scannerRepo }}</ULink>. Deep analysis adds an AI review of what the skill is trying
+        class="font-medium text-highlighted underline underline-offset-2"
+      >{{ site.scannerRepo }}</ULink>. AI review adds a semantic read of what the skill is trying
       to do.
     </p>
   </section>

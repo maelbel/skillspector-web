@@ -1,27 +1,16 @@
 <script setup lang="ts">
 import type { Severity } from '~~/shared/types/scan'
 
-const props = defineProps<{
+defineProps<{
   severity: Severity
-  size?: 'sm' | 'md'
 }>()
-
-const COLORS: Record<Severity, 'error' | 'warning' | 'primary'> = {
-  CRITICAL: 'error',
-  HIGH: 'error',
-  MEDIUM: 'warning',
-  LOW: 'primary'
-}
-
-const color = computed(() => COLORS[props.severity])
 </script>
 
 <template>
-  <UBadge
-    :color="color"
-    variant="subtle"
-    :size="size ?? 'sm'"
+  <span
+    class="inline-flex items-center rounded-xs px-2.5 py-1 font-mono text-[11px] font-medium leading-none tracking-wider"
+    :class="SEVERITY_CLASSES[severity].chip"
   >
     <slot>{{ severity }}</slot>
-  </UBadge>
+  </span>
 </template>

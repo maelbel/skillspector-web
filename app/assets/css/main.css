@@ -1,2 +1,207 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/*
+ * NVIDIA-inspired theme: black and white, neutral greys, NVIDIA green (#76B900) as the one
+ * accent, sharp corners and bold, dense type. Green fills carry black text, as on nvidia.com;
+ * green *text* on white uses a darker step so it stays readable. Severity colours step in
+ * lightness as well as hue, and every colour has a dark-mode twin.
+ */
+
+@theme static {
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-graphite-50: #FAFAFA;
+  --color-graphite-100: #F2F2F2;
+  --color-graphite-200: #E5E5E5;
+  --color-graphite-300: #CCCCCC;
+  --color-graphite-400: #999999;
+  --color-graphite-500: #767676;
+  --color-graphite-600: #5E5E5E;
+  --color-graphite-700: #3D3D3D;
+  --color-graphite-800: #262626;
+  --color-graphite-900: #1A1A1A;
+  --color-graphite-950: #0D0D0D;
+
+  --color-nv-50: #F3F9E6;
+  --color-nv-100: #E3F2C2;
+  --color-nv-200: #C9E68A;
+  --color-nv-300: #A6D44A;
+  --color-nv-400: #8CC614;
+  --color-nv-500: #76B900;
+  --color-nv-600: #5E9400;
+  --color-nv-700: #4A7500;
+  --color-nv-800: #3A5C00;
+  --color-nv-900: #2C4600;
+  --color-nv-950: #172500;
+
+  --animate-scan: scan 2.4s ease-in-out infinite;
+
+  @keyframes scan {
+    0%, 100% { transform: translateY(-100%); opacity: 0; }
+    15%, 85% { opacity: 1; }
+    50% { transform: translateY(100%); }
+  }
+}
+
+/*
+ * Severity and verdict colours, switched per theme below. The bare name fills bars and dots,
+ * `-ink` is text, `-tint` a background and `-line` a border on that background.
+ */
+@theme inline {
+  --color-critical: var(--sev-critical);
+  --color-critical-ink: var(--sev-critical-ink);
+  --color-critical-tint: var(--sev-critical-tint);
+  --color-critical-line: var(--sev-critical-line);
+  --color-high: var(--sev-high);
+  --color-high-ink: var(--sev-high-ink);
+  --color-high-tint: var(--sev-high-tint);
+  --color-high-line: var(--sev-high-line);
+  --color-medium: var(--sev-medium);
+  --color-medium-ink: var(--sev-medium-ink);
+  --color-medium-tint: var(--sev-medium-tint);
+  --color-medium-line: var(--sev-medium-line);
+  --color-low: var(--sev-low);
+  --color-low-ink: var(--sev-low-ink);
+  --color-low-tint: var(--sev-low-tint);
+  --color-low-line: var(--sev-low-line);
+  --color-safe: var(--sev-safe);
+  --color-safe-ink: var(--sev-safe-ink);
+  --color-safe-tint: var(--sev-safe-tint);
+  --color-safe-line: var(--sev-safe-line);
+  --color-ground: var(--app-ground);
+  --color-code: var(--app-code);
+  --color-brand: var(--color-nv-500);
+  --color-brand-ink: var(--app-brand-ink);
+}
+
+:root {
+  --ui-radius: 0.125rem;
+  --ui-header-height: 4rem;
+
+  /* Nuxt UI's default 500 shades are too light for text on white. */
+  --ui-primary: var(--ui-color-primary-700);
+  --ui-success: var(--ui-color-success-700);
+  --ui-warning: var(--ui-color-warning-700);
+  --ui-error: var(--ui-color-error-700);
+
+  --app-ground: var(--color-graphite-100);
+  --app-code: #0D0D0D;
+  /* Green for large text: #5E9400 clears 3:1 on white, the bar for 24px+ type. */
+  --app-brand-ink: var(--color-nv-600);
+
+  --ui-bg: #fff;
+  --ui-bg-muted: var(--color-graphite-50);
+  --ui-bg-elevated: var(--color-graphite-200);
+  --ui-bg-accented: var(--color-graphite-300);
+  --ui-bg-inverted: #000;
+  --ui-border: var(--color-graphite-300);
+  --ui-border-muted: var(--color-graphite-200);
+  --ui-border-accented: var(--color-graphite-400);
+  --ui-border-inverted: #000;
+  --ui-text-dimmed: var(--color-graphite-500);
+  --ui-text-muted: var(--color-graphite-600);
+  --ui-text-toned: var(--color-graphite-700);
+  --ui-text: var(--color-graphite-800);
+  --ui-text-highlighted: #000;
+  --ui-text-inverted: #fff;
+
+  --sev-critical: #D32F2F;
+  --sev-critical-ink: #A51D1D;
+  --sev-critical-tint: #FDECEC;
+  --sev-critical-line: #F3C2C2;
+  --sev-high: #EF6C00;
+  --sev-high-ink: #A94700;
+  --sev-high-tint: #FFF1E3;
+  --sev-high-line: #F8CFA6;
+  --sev-medium: #F2B600;
+  --sev-medium-ink: #7A5800;
+  --sev-medium-tint: #FFF8DC;
+  --sev-medium-line: #F0DC96;
+  --sev-low: #8B95A3;
+  --sev-low-ink: #4A5361;
+  --sev-low-tint: #EEF0F3;
+  --sev-low-line: #D3D8DF;
+  --sev-safe: #76B900;
+  --sev-safe-ink: #3F6400;
+  --sev-safe-tint: #EEF7DC;
+  --sev-safe-line: #C9E68A;
+}
+
+.dark {
+  --ui-primary: var(--ui-color-primary-500);
+  --ui-success: var(--ui-color-success-500);
+  --ui-warning: var(--ui-color-warning-400);
+  --ui-error: var(--ui-color-error-400);
+
+  --app-ground: #000;
+  --app-code: #0D0D0D;
+  --app-brand-ink: var(--color-nv-500);
+
+  --ui-bg: #111111;
+  --ui-bg-muted: #0A0A0A;
+  --ui-bg-elevated: #1A1A1A;
+  --ui-bg-accented: #262626;
+  --ui-bg-inverted: #fff;
+  --ui-border: #2A2A2A;
+  --ui-border-muted: #1F1F1F;
+  --ui-border-accented: #3D3D3D;
+  --ui-border-inverted: #fff;
+  --ui-text-dimmed: #8C8C8C;
+  --ui-text-muted: #A6A6A6;
+  --ui-text-toned: #CCCCCC;
+  --ui-text: #E0E0E0;
+  --ui-text-highlighted: #fff;
+  --ui-text-inverted: #000;
+
+  --sev-critical: #F0544F;
+  --sev-critical-ink: #FF8A85;
+  --sev-critical-tint: #2B0F0F;
+  --sev-critical-line: #551C1B;
+  --sev-high: #FF8A2A;
+  --sev-high-ink: #FFB06B;
+  --sev-high-tint: #2B1809;
+  --sev-high-line: #5A3312;
+  --sev-medium: #F5C400;
+  --sev-medium-ink: #FFD84D;
+  --sev-medium-tint: #292106;
+  --sev-medium-line: #54440C;
+  --sev-low: #98A3B3;
+  --sev-low-ink: #BAC3D0;
+  --sev-low-tint: #181C22;
+  --sev-low-line: #313843;
+  --sev-safe: #76B900;
+  --sev-safe-ink: #9BD13A;
+  --sev-safe-tint: #121C04;
+  --sev-safe-line: #2C4600;
+}
+
+body {
+  background-color: var(--app-ground);
+}
+
+/* Section label: bold, uppercase, tracked, led by a small green square. */
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Page and section titles: heavy and tight. */
+@utility display {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+}
+
+/* The flat panels everything sits on: square corners, hairline edge, no shadow. */
+@utility surface {
+  background-color: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.125rem;
+}

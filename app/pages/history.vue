@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScanSummary, Severity } from '~~/shared/types/scan'
+import type { Recommendation, ScanSummary } from '~~/shared/types/scan'
 import type { SettingsResponse } from '~~/shared/types/settings'
 
 useSeoMeta({ title: 'Scan history — Skillspector Web' })
@@ -13,25 +13,42 @@ const retentionLabel = computed(() => {
   return `Scans older than ${days} day${days === 1 ? '' : 's'} are automatically removed.`
 })
 
-const SEVERITY_BORDER: Record<Severity, string> = {
-  CRITICAL: 'border-l-error',
-  HIGH: 'border-l-error',
-  MEDIUM: 'border-l-warning',
-  LOW: 'border-l-primary'
+type VerdictFilter = 'all' | Recommendation | 'error'
+
+const VERDICT_FILTERS: { value: VerdictFilter, label: string, dot?: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'DO_NOT_INSTALL', label: RECOMMENDATION_SHORT_LABEL.DO_NOT_INSTALL, dot: RECOMMENDATION_CLASSES.DO_NOT_INSTALL.dot },
+  { value: 'CAUTION', label: RECOMMENDATION_SHORT_LABEL.CAUTION, dot: RECOMMENDATION_CLASSES.CAUTION.dot },
+  { value: 'SAFE', label: RECOMMENDATION_SHORT_LABEL.SAFE, dot: RECOMMENDATION_CLASSES.SAFE.dot },
+  { value: 'error', label: 'Failed' }
+]
+
+const verdictFilter = ref<VerdictFilter>('all')
+const search = ref('')
+
+function verdictOf(scan: ScanSummary): VerdictFilter | null {
+  if (scan.status === 'error') return 'error'
+  return scan.recommendation
 }
 
-const SEVERITY_TEXT: Record<Severity, string> = {
-  CRITICAL: 'text-error',
-  HIGH: 'text-error',
-  MEDIUM: 'text-warning',
-  LOW: 'text-primary'
-}
+// Filtering runs over the scans loaded so far, so counts only show once every scan is loaded.
+const verdictCounts = computed(() => {
+  if (hasMore.value) return undefined
+  const counts: Partial<Record<VerdictFilter, number>> = { all: data.value?.items.length ?? 0 }
+  for (const scan of data.value?.items ?? []) {
+    const verdict = verdictOf(scan)
+    if (verdict) counts[verdict] = (counts[verdict] ?? 0) + 1
+  }
+  return counts
+})
 
-function borderClass(scan: ScanSummary): string {
-  if (scan.status === 'error') return 'border-l-error'
-  if (scan.severity) return SEVERITY_BORDER[scan.severity]
-  return 'border-l-default'
-}
+const visibleScans = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  return (data.value?.items ?? []).filter((scan) => {
+    if (verdictFilter.value !== 'all' && verdictOf(scan) !== verdictFilter.value) return false
+    return !query || scan.target.toLowerCase().includes(query)
+  })
+})
 
 const deleteTarget = ref<ScanSummary | null>(null)
 const deleting = ref(false)
@@ -65,177 +82,288 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <UContainer class="py-16">
-    <div class="max-w-3xl mx-auto flex flex-col gap-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight">
-            Scan history
-          </h1>
-          <p class="text-sm text-muted mt-1">
-            {{ retentionLabel }}
-          </p>
-        </div>
-        <UButton
-          to="/"
-          icon="i-lucide-plus"
-          variant="soft"
-          color="neutral"
+  <UContainer class="flex flex-col gap-7 py-12 sm:py-14">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div class="flex flex-col gap-2">
+        <h1 class="display text-5xl text-highlighted sm:text-6xl">
+          Scan history
+        </h1>
+        <p class="text-[15px] text-muted">
+          <template v-if="data">
+            {{ data.total }} scan{{ data.total === 1 ? '' : 's' }} on this server.
+          </template>
+          {{ retentionLabel }}
+        </p>
+      </div>
+      <UButton
+        to="/"
+        icon="i-lucide-plus"
+        color="primary"
+        size="lg"
+        class="font-semibold"
+      >
+        New scan
+      </UButton>
+    </div>
+
+    <UAlert
+      v-if="error"
+      color="error"
+      variant="subtle"
+      title="Failed to load scan history"
+      :description="apiErrorMessage(error, error.message)"
+    />
+
+    <div
+      v-else-if="status === 'pending' && !data"
+      class="surface flex items-center gap-3 px-5 py-4"
+    >
+      <UIcon
+        name="i-lucide-loader-circle"
+        class="size-5 animate-spin text-primary"
+      />
+      <p class="text-sm text-muted">
+        Loading scans…
+      </p>
+    </div>
+
+    <div
+      v-else-if="!data?.items.length"
+      class="surface flex flex-col items-start gap-3 p-6"
+    >
+      <p class="text-lg font-semibold tracking-tight text-highlighted">
+        No scans yet
+      </p>
+      <p class="text-sm text-muted">
+        Scans you run show up here, so you can come back to a result later.
+      </p>
+    </div>
+
+    <template v-else>
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div
+          role="group"
+          aria-label="Filter by verdict"
+          class="flex flex-wrap gap-1.5"
         >
-          New scan
-        </UButton>
+          <button
+            v-for="filter in VERDICT_FILTERS"
+            :key="filter.value"
+            type="button"
+            :aria-pressed="verdictFilter === filter.value"
+            class="flex h-10 cursor-pointer items-center gap-2 rounded-xs border px-3.5 text-sm font-medium transition-colors"
+            :class="verdictFilter === filter.value ? 'border-inverted bg-inverted text-inverted' : 'border-default bg-default text-highlighted hover:bg-muted'"
+            @click="verdictFilter = filter.value"
+          >
+            <span
+              v-if="filter.dot"
+              class="size-2 rounded-xs"
+              :class="filter.dot"
+            />
+            <span
+              v-else-if="filter.value === 'error'"
+              class="size-2 rounded-xs border-2 border-accented"
+            />
+            {{ filter.label }}
+            <span
+              v-if="verdictCounts"
+              class="font-mono tabular-nums opacity-70"
+            >{{ verdictCounts[filter.value] ?? 0 }}</span>
+          </button>
+        </div>
+        <UInput
+          v-model="search"
+          type="search"
+          icon="i-lucide-search"
+          placeholder="Filter by skill or repo"
+          aria-label="Filter by skill or repo"
+          size="lg"
+          class="md:w-80"
+          :ui="{ base: 'rounded-xs' }"
+        />
       </div>
 
-      <UAlert
-        v-if="error"
-        color="error"
-        variant="subtle"
-        title="Failed to load scan history"
-        :description="apiErrorMessage(error, error.message)"
-      />
-
-      <UCard v-else-if="status === 'pending'">
-        <div class="flex items-center gap-3 py-2">
-          <UIcon
-            name="i-lucide-loader-circle"
-            class="size-5 animate-spin text-primary"
-          />
-          <p class="text-sm text-muted">
-            Loading scans…
-          </p>
-        </div>
-      </UCard>
-
-      <UAlert
-        v-else-if="!data?.items.length"
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-inbox"
-        title="No scans yet"
-        description="Scans you run will show up here."
-      />
-
-      <template v-else>
-        <NuxtLink
-          v-for="scan in data.items"
-          :key="scan.id"
-          :to="`/scan/${scan.id}`"
-          class="block group"
-        >
-          <UCard
-            class="hover:bg-elevated/50 transition-colors border-l-4"
-            :class="borderClass(scan)"
-          >
-            <div class="flex items-center justify-between gap-4">
-              <div class="min-w-0 flex items-center gap-2">
-                <UIcon
-                  v-if="parseScanTarget(scan.target).isGithub"
-                  name="i-simple-icons-github"
-                  class="size-4 text-muted shrink-0"
-                />
-                <div class="min-w-0">
-                  <p class="text-sm font-medium truncate">
-                    {{ parseScanTarget(scan.target).title }}
-                  </p>
-                  <p
-                    v-if="scan.status === 'error' && scan.error"
-                    class="text-xs text-error truncate mt-0.5"
-                  >
-                    {{ scan.error }}
-                  </p>
-                  <p
-                    v-else-if="scan.status === 'running'"
-                    class="text-xs text-muted mt-0.5"
-                  >
-                    Step {{ scan.completed_steps }} of {{ scan.total_steps }}
-                  </p>
-                  <p
-                    v-else
+      <div class="surface overflow-hidden">
+        <table class="w-full table-fixed text-sm">
+          <thead>
+            <tr class="eyebrow border-b border-default text-left text-muted">
+              <th
+                scope="col"
+                class="px-4 py-3.5 font-medium sm:px-5"
+              >
+                Skill
+              </th>
+              <th
+                scope="col"
+                class="w-36 px-4 py-3.5 font-medium sm:w-44 sm:px-5"
+              >
+                Verdict
+              </th>
+              <th
+                scope="col"
+                class="w-52 px-5 py-3.5 font-medium max-md:hidden"
+              >
+                Risk score
+              </th>
+              <th
+                scope="col"
+                class="w-36 px-5 py-3.5 font-medium max-sm:hidden"
+              >
+                Scanned
+              </th>
+              <th
+                scope="col"
+                class="w-14 sm:w-16"
+              >
+                <span class="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="scan in visibleScans"
+              :key="scan.id"
+              class="border-b border-muted transition-colors last:border-b-0 hover:bg-muted"
+            >
+              <td class="px-4 py-3.5 sm:px-5">
+                <NuxtLink
+                  :to="`/scan/${scan.id}`"
+                  class="flex min-w-0 flex-col gap-0.5"
+                  :title="scan.target"
+                >
+                  <span class="truncate font-semibold text-highlighted">{{ splitScanTitle(scan.target).name }}</span>
+                  <span class="truncate font-mono text-xs text-dimmed">
+                    {{ splitScanTitle(scan.target).source ?? scan.target }}
+                  </span>
+                  <span
+                    class="font-mono text-xs text-dimmed sm:hidden"
                     :title="formatDate(scan.created_at)"
-                    class="text-xs text-muted mt-0.5"
                   >
                     <NuxtTime
                       :datetime="scan.created_at * 1000"
                       relative
                     />
-                  </p>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-3 shrink-0">
-                <template v-if="scan.status === 'pending'">
+                  </span>
+                </NuxtLink>
+              </td>
+              <td class="px-4 py-3.5 whitespace-nowrap sm:px-5">
+                <span
+                  v-if="scan.status === 'pending' || scan.status === 'running'"
+                  class="inline-flex items-center gap-2 text-highlighted"
+                >
                   <UIcon
                     name="i-lucide-loader-circle"
-                    class="size-4 animate-spin text-muted"
+                    class="size-3.5 animate-spin"
                   />
-                  <span class="text-sm text-muted">Queued</span>
-                </template>
-                <template v-else-if="scan.status === 'running'">
+                  {{ scan.status === 'pending' ? 'Queued' : 'Scanning' }}
+                </span>
+                <span
+                  v-else-if="scan.status === 'error'"
+                  class="inline-flex items-center gap-2 font-medium text-critical-ink"
+                  :title="scan.error ?? undefined"
+                >
+                  <UIcon
+                    name="i-lucide-circle-x"
+                    class="size-3.5"
+                  />
+                  Scan failed
+                </span>
+                <span
+                  v-else-if="scan.recommendation"
+                  class="inline-flex rounded-xs px-3 py-1 font-medium"
+                  :class="RECOMMENDATION_CLASSES[scan.recommendation].chip"
+                >
+                  {{ RECOMMENDATION_SHORT_LABEL[scan.recommendation] }}
+                </span>
+              </td>
+              <td class="px-5 py-3.5 max-md:hidden">
+                <div
+                  v-if="scan.status === 'pending' || scan.status === 'running'"
+                  class="flex items-center gap-2.5"
+                >
                   <UProgress
                     :model-value="scan.completed_steps"
-                    :max="scan.total_steps"
+                    :max="scan.total_steps || 1"
+                    color="neutral"
                     size="sm"
-                    class="w-16"
+                    class="w-24"
                   />
-                </template>
-                <template v-else-if="scan.status === 'error'">
-                  <UBadge
-                    color="error"
-                    variant="subtle"
-                    icon="i-lucide-x-circle"
-                  >
-                    Failed
-                  </UBadge>
-                </template>
-                <template v-else>
-                  <span
-                    v-if="scan.risk_score !== null && scan.severity"
-                    class="text-sm font-mono font-semibold tabular-nums"
-                    :class="SEVERITY_TEXT[scan.severity]"
-                  >
-                    {{ scan.risk_score }}
-                  </span>
-                  <SeverityBadge
-                    v-if="scan.severity"
-                    :severity="scan.severity"
-                  />
-                  <UBadge
-                    v-if="scan.recommendation"
-                    :color="RECOMMENDATION_COLOR[scan.recommendation]"
-                    variant="subtle"
-                  >
-                    {{ scan.recommendation }}
-                  </UBadge>
-                </template>
+                  <span class="font-mono text-xs text-muted tabular-nums">{{ scan.completed_steps }}/{{ scan.total_steps }}</span>
+                </div>
+                <p
+                  v-else-if="scan.status === 'error'"
+                  class="line-clamp-1 max-w-56 text-[13px] text-muted"
+                  :title="scan.error ?? undefined"
+                >
+                  {{ scan.error }}
+                </p>
+                <div
+                  v-else-if="scan.risk_score !== null && scan.severity"
+                  class="flex items-center gap-2.5"
+                >
+                  <div class="h-1.5 w-24 overflow-hidden rounded-xs bg-elevated">
+                    <div
+                      class="h-full rounded-xs"
+                      :class="SEVERITY_CLASSES[scan.severity].dot"
+                      :style="{ width: `${Math.max(scan.risk_score, 2)}%` }"
+                    />
+                  </div>
+                  <span class="font-mono text-[13px] font-medium text-highlighted tabular-nums">{{ scan.risk_score }}</span>
+                </div>
+              </td>
+              <td
+                class="px-5 py-3.5 whitespace-nowrap text-muted max-sm:hidden"
+                :title="formatDate(scan.created_at)"
+              >
+                <NuxtTime
+                  :datetime="scan.created_at * 1000"
+                  relative
+                />
+              </td>
+              <td class="px-2 py-2 sm:px-3">
                 <UButton
+                  v-if="scan.status !== 'pending' && scan.status !== 'running'"
                   icon="i-lucide-trash-2"
                   variant="ghost"
                   color="neutral"
-                  size="xs"
                   aria-label="Delete scan"
-                  class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                  @click.stop.prevent="openDeleteModal(scan)"
+                  class="size-10 justify-center text-dimmed hover:text-critical-ink"
+                  @click="openDeleteModal(scan)"
                 />
-                <UIcon
-                  name="i-lucide-chevron-right"
-                  class="size-4 text-muted"
-                />
-              </div>
-            </div>
-          </UCard>
-        </NuxtLink>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
+        <p
+          v-if="!visibleScans.length"
+          class="px-5 py-6 text-sm text-muted"
+        >
+          No loaded scans match.
+          <button
+            type="button"
+            class="cursor-pointer font-medium text-highlighted underline underline-offset-2"
+            @click="verdictFilter = 'all'; search = ''"
+          >
+            Clear filters
+          </button>
+        </p>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 text-sm text-muted">
+        <span>Showing {{ visibleScans.length }} of {{ data.total }}</span>
         <UButton
           v-if="hasMore"
-          variant="ghost"
           color="neutral"
-          class="self-center"
+          variant="outline"
+          size="lg"
+          :loading="status === 'pending'"
           @click="loadMore"
         >
           Load more
         </UButton>
-      </template>
-    </div>
+      </div>
+    </template>
 
     <UModal
       :open="!!deleteTarget"
@@ -245,7 +373,7 @@ async function confirmDelete() {
     >
       <template #body>
         <div class="flex flex-col gap-4">
-          <p class="text-sm text-muted font-mono break-all">
+          <p class="font-mono text-sm break-all text-muted">
             {{ deleteTarget ? parseScanTarget(deleteTarget.target).title : '' }}
           </p>
 
@@ -259,7 +387,7 @@ async function confirmDelete() {
       </template>
 
       <template #footer>
-        <div class="flex justify-end gap-2 w-full">
+        <div class="flex w-full justify-end gap-2">
           <UButton
             variant="ghost"
             color="neutral"

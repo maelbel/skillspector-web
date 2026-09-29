@@ -24,6 +24,15 @@ export function parseScanTarget(target: string): { title: string, isGithub: bool
   return { title: target, isGithub: false }
 }
 
+// "org/repo/deep/path/to/SKILL.md" → lead with the distinctive end ("to/SKILL.md") and keep
+// "org/repo" as the source; many scans share the same repo prefix, which truncation would keep.
+export function splitScanTitle(target: string): { name: string, source?: string } {
+  const { title } = parseScanTarget(target)
+  const parts = title.split('/')
+  if (title.includes('://') || parts.length <= 3) return { name: title }
+  return { name: parts.slice(-2).join('/'), source: parts.slice(0, 2).join('/') }
+}
+
 export type ScanTargetKind = 'repository' | 'file' | 'archive'
 
 export type ScanTargetInfo

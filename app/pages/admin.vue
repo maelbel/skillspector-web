@@ -109,23 +109,15 @@ async function saveRetention() {
 </script>
 
 <template>
-  <UContainer class="py-16">
-    <div class="max-w-lg mx-auto flex flex-col gap-6">
-      <UButton
-        to="/"
-        icon="i-lucide-arrow-left"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="self-start"
-      >
-        Back
-      </UButton>
-
-      <div>
-        <h1 class="text-xl font-bold">
+  <UContainer class="py-12 sm:py-14">
+    <div class="mx-auto flex max-w-xl flex-col gap-7">
+      <div class="flex flex-col gap-2">
+        <h1 class="display text-5xl text-highlighted sm:text-6xl">
           Admin
         </h1>
+        <p class="text-[15px] text-muted">
+          Server-wide settings. Every action needs the admin token.
+        </p>
       </div>
 
       <UFormField
@@ -140,10 +132,10 @@ async function saveRetention() {
         />
       </UFormField>
 
-      <UCard>
+      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
-            <h2 class="text-sm font-semibold">
+            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
               Claude CLI login
             </h2>
             <p class="mt-1 text-sm text-muted">
@@ -157,7 +149,7 @@ async function saveRetention() {
               :key="n"
             >
               <div
-                class="flex items-center justify-center size-6 rounded-full text-xs font-semibold shrink-0"
+                class="flex items-center justify-center size-6 rounded-xs text-xs font-semibold shrink-0"
                 :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
               >
                 {{ n }}
@@ -225,7 +217,7 @@ async function saveRetention() {
               :icon="resultSuccess ? 'i-lucide-check-circle-2' : 'i-lucide-circle-x'"
               :title="resultSuccess ? 'Logged in' : 'Login failed'"
             />
-            <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
+            <pre class="overflow-x-auto rounded-xs bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
             <UButton
               variant="outline"
               icon="i-lucide-rotate-ccw"
@@ -244,10 +236,10 @@ async function saveRetention() {
         </div>
       </UCard>
 
-      <UCard>
+      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
-            <h2 class="text-sm font-semibold">
+            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
               Scan retention
             </h2>
             <p class="mt-1 text-sm text-muted">

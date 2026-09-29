@@ -1,105 +1,110 @@
 <script setup lang="ts">
+import type { ScanSummary } from '~~/shared/types/scan'
+
 const SHOWN = 5
 
 const { data } = useRecentScans()
 const scans = computed(() => data.value?.items.slice(0, SHOWN) ?? [])
 
-// "org/repo/deep/path/to/SKILL.md" → lead with the distinctive end ("to/SKILL.md") and show
-// "org/repo" underneath; many scans share the same repo prefix, which truncation would keep.
-function splitTitle(target: string): { name: string, source?: string } {
-  const { title } = parseScanTarget(target)
-  const parts = title.split('/')
-  if (title.includes('://') || parts.length <= 3) return { name: title }
-  return { name: parts.slice(-2).join('/'), source: parts.slice(0, 2).join('/') }
+function isWorking(scan: ScanSummary) {
+  return scan.status === 'pending' || scan.status === 'running'
 }
 </script>
 
 <template>
-  <section
-    v-if="scans.length"
+  <aside
     aria-labelledby="recent-scans-heading"
     class="flex flex-col gap-3"
   >
-    <div class="flex items-center justify-between">
+    <div class="flex items-baseline justify-between">
       <h2
         id="recent-scans-heading"
-        class="text-sm font-semibold text-highlighted"
+        class="eyebrow text-muted"
       >
         Recent scans
       </h2>
-      <UButton
+      <ULink
         to="/history"
-        label="See all"
-        trailing-icon="i-lucide-arrow-right"
-        color="neutral"
-        variant="link"
-        size="xs"
-      />
+        class="text-sm font-medium text-primary"
+      >
+        All history →
+      </ULink>
     </div>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <ul class="divide-y divide-default">
-        <li
-          v-for="scan in scans"
-          :key="scan.id"
+    <ul
+      v-if="scans.length"
+      class="surface flex flex-col gap-0.5 p-1.5"
+    >
+      <li
+        v-for="scan in scans"
+        :key="scan.id"
+      >
+        <NuxtLink
+          :to="`/scan/${scan.id}`"
+          class="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-xs px-3.5 py-3 transition-colors hover:bg-muted"
         >
-          <NuxtLink
-            :to="`/scan/${scan.id}`"
-            class="flex items-center gap-3 px-4 py-3 hover:bg-elevated/50 transition-colors"
+          <span
+            v-if="isWorking(scan)"
+            class="flex size-3 items-center justify-center"
           >
-            <div class="min-w-0 flex-1">
-              <p
-                class="text-sm font-medium truncate"
-                :title="scan.target"
-              >
-                {{ splitTitle(scan.target).name }}
-              </p>
-              <p
-                :title="formatDate(scan.created_at)"
-                class="text-xs text-muted truncate"
-              >
-                <template v-if="splitTitle(scan.target).source">
-                  {{ splitTitle(scan.target).source }} ·
-                </template>
-                <NuxtTime
-                  :datetime="scan.created_at * 1000"
-                  relative
-                />
-              </p>
-            </div>
-
-            <UBadge
-              v-if="scan.status === 'pending' || scan.status === 'running'"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-loader-circle"
-              :ui="{ leadingIcon: 'animate-spin' }"
-            >
-              <span class="sr-only sm:not-sr-only">{{ scan.status === 'pending' ? 'Queued' : 'Scanning' }}</span>
-            </UBadge>
-            <UBadge
-              v-else-if="scan.status === 'error'"
-              color="error"
-              variant="subtle"
-              icon="i-lucide-x-circle"
-            >
-              <span class="sr-only sm:not-sr-only">Failed</span>
-            </UBadge>
-            <UBadge
-              v-else-if="scan.recommendation"
-              :color="RECOMMENDATION_COLOR[scan.recommendation]"
-              :icon="RECOMMENDATION_ICON[scan.recommendation]"
-              variant="subtle"
-            >
-              <span class="sr-only sm:not-sr-only">{{ RECOMMENDATION_LABEL[scan.recommendation] }}</span>
-            </UBadge>
             <UIcon
-              name="i-lucide-chevron-right"
-              class="size-4 text-dimmed shrink-0"
+              name="i-lucide-loader-circle"
+              class="size-3 animate-spin text-muted"
             />
-          </NuxtLink>
-        </li>
-      </ul>
-    </UCard>
-  </section>
+          </span>
+          <span
+            v-else-if="scan.status === 'error' || !scan.recommendation"
+            class="size-2.5 rounded-xs border-2 border-accented"
+          />
+          <span
+            v-else
+            class="size-2.5 rounded-xs ring-4 ring-default"
+            :class="RECOMMENDATION_CLASSES[scan.recommendation].dot"
+          />
+
+          <span class="flex min-w-0 flex-col gap-0.5">
+            <span
+              class="truncate text-[15px] font-medium text-highlighted"
+              :title="scan.target"
+            >{{ splitScanTitle(scan.target).name }}</span>
+            <span
+              class="truncate font-mono text-xs text-dimmed"
+              :title="formatDate(scan.created_at)"
+            >
+              <template v-if="splitScanTitle(scan.target).source">{{ splitScanTitle(scan.target).source }} · </template>
+              <NuxtTime
+                :datetime="scan.created_at * 1000"
+                relative
+              />
+            </span>
+          </span>
+
+          <span class="flex flex-col items-end gap-0.5 text-xs">
+            <template v-if="isWorking(scan)">
+              <span class="font-mono text-sm text-muted tabular-nums">{{ scan.completed_steps }}/{{ scan.total_steps }}</span>
+              <span class="text-muted">{{ scan.status === 'pending' ? 'Queued' : 'Scanning' }}</span>
+            </template>
+            <template v-else-if="scan.status === 'error'">
+              <span class="font-mono text-sm text-dimmed">—</span>
+              <span class="text-critical-ink">Scan failed</span>
+            </template>
+            <template v-else-if="scan.recommendation">
+              <span
+                class="font-mono text-base font-medium tabular-nums"
+                :class="RECOMMENDATION_CLASSES[scan.recommendation].ink"
+              >{{ scan.risk_score }}</span>
+              <span :class="RECOMMENDATION_CLASSES[scan.recommendation].ink">{{ RECOMMENDATION_SHORT_LABEL[scan.recommendation] }}</span>
+            </template>
+          </span>
+        </NuxtLink>
+      </li>
+    </ul>
+
+    <p
+      v-else
+      class="surface p-5 text-sm text-muted"
+    >
+      Scans you run show up here, so you can come back to a result later.
+    </p>
+  </aside>
 </template>

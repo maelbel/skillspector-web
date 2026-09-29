@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Finding, Severity } from '~~/shared/types/scan'
+import type { Finding } from '~~/shared/types/scan'
 
-defineProps<{
+const props = defineProps<{
   finding: Finding
   expanded: boolean
 }>()
@@ -10,91 +10,109 @@ defineEmits<{
   toggle: []
 }>()
 
-const BORDER_COLOR: Record<Severity, string> = {
-  CRITICAL: 'border-l-error',
-  HIGH: 'border-l-error',
-  MEDIUM: 'border-l-warning',
-  LOW: 'border-l-primary'
-}
+const title = computed(() => findingTitle(props.finding))
+const location = computed(() => findingLocation(props.finding))
+// Snippets often open with blank lines around the match; they only push the code out of view.
+const snippet = computed(() => props.finding.code_snippet?.replace(/^\s*\n/, '').trimEnd() ?? '')
+// `finding` holds the matched text. Skip it when it just repeats the title or the location.
+const matched = computed(() => {
+  const text = props.finding.finding?.trim()
+  if (!text || text === title.value || text.startsWith(props.finding.location.file)) return undefined
+  return text
+})
 </script>
 
 <template>
-  <UCard
-    class="border-l-4"
-    :class="BORDER_COLOR[finding.severity]"
-  >
-    <template #header>
-      <button
-        type="button"
-        class="w-full text-left flex flex-wrap items-center justify-between gap-2"
-        @click="$emit('toggle')"
-      >
-        <div class="flex items-center gap-2 min-w-0">
-          <UIcon
-            :name="expanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-            class="size-4 shrink-0 text-muted"
-          />
-          <SeverityBadge :severity="finding.severity" />
-          <span
-            v-if="finding.category"
-            class="text-sm text-muted font-mono"
-          >{{ finding.category }}</span>
-          <span class="text-xs text-muted">
-            {{ Math.round(finding.confidence * 100) }}% confidence
-          </span>
-        </div>
-        <span class="text-xs text-muted font-mono">
-          {{ finding.location.file }}:{{ finding.location.start_line }}
+  <article class="surface overflow-hidden">
+    <button
+      type="button"
+      :aria-expanded="expanded"
+      class="grid w-full cursor-pointer grid-cols-[20px_minmax(0,1fr)] items-start gap-x-3.5 gap-y-2 px-4 py-4 text-left transition-colors hover:bg-muted sm:grid-cols-[20px_minmax(0,1fr)_auto] sm:px-5"
+      @click="$emit('toggle')"
+    >
+      <UIcon
+        :name="expanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+        class="mt-0.5 size-[18px] text-muted"
+      />
+      <span class="flex min-w-0 flex-col gap-1.5">
+        <span class="text-base font-semibold break-words text-highlighted">{{ title }}</span>
+        <span class="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
+          <span v-if="finding.category && finding.category !== title">{{ finding.category }}</span>
+          <span class="break-all">{{ location }}</span>
         </span>
-      </button>
-    </template>
+      </span>
+      <span class="flex items-center gap-2.5 max-sm:col-start-2">
+        <span class="font-mono text-xs whitespace-nowrap text-muted">{{ Math.round(finding.confidence * 100) }}% sure</span>
+        <SeverityBadge :severity="finding.severity" />
+      </span>
+    </button>
 
-    <template v-if="expanded">
-      <p class="font-medium">
-        {{ finding.explanation ?? finding.finding }}
+    <div
+      v-if="expanded"
+      class="flex flex-col gap-4 px-4 pb-5 sm:pr-5 sm:pl-[54px]"
+    >
+      <p
+        v-if="finding.explanation && finding.explanation !== title"
+        class="text-[15px] leading-relaxed text-default"
+      >
+        {{ finding.explanation }}
       </p>
 
       <p
         v-if="finding.intent"
-        class="mt-2 text-sm text-muted"
+        class="text-sm text-muted"
       >
-        <span class="font-semibold text-default">Likely intent:</span> {{ finding.intent }}
+        <span class="font-semibold text-highlighted">Likely intent:</span> {{ finding.intent }}
       </p>
 
       <p
-        v-if="finding.remediation"
-        class="mt-2 text-sm text-muted"
+        v-if="matched"
+        class="flex min-w-0 flex-col gap-1 text-sm"
       >
-        <span class="font-semibold text-default">Remediation:</span> {{ finding.remediation }}
+        <span class="font-semibold text-highlighted">Matched</span>
+        <code class="line-clamp-3 rounded-xs bg-muted px-2.5 py-1.5 font-mono text-xs break-all text-default">{{ matched }}</code>
       </p>
 
-      <div v-if="finding.code_snippet">
-        <p class="mt-3 mb-1 text-xs font-semibold text-muted uppercase tracking-wide">
-          Code
-        </p>
-        <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs font-mono">{{ finding.code_snippet }}</pre>
-      </div>
+      <figure
+        v-if="snippet"
+        class="overflow-hidden rounded-xs bg-code"
+      >
+        <figcaption class="flex justify-between gap-4 border-b border-white/10 px-4 py-2.5 font-mono text-xs text-graphite-400">
+          <span class="truncate">{{ finding.location.file }}</span>
+          <span
+            v-if="finding.location.start_line"
+            class="shrink-0"
+          >line {{ finding.location.start_line }}</span>
+        </figcaption>
+        <pre class="max-h-80 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-graphite-200">{{ snippet }}</pre>
+      </figure>
 
       <div
-        v-if="finding.tags.length"
-        class="mt-3 flex flex-wrap gap-1"
+        v-if="finding.remediation"
+        class="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 rounded-xs bg-safe-tint px-4 py-3.5 ring-1 ring-safe-line"
       >
-        <UBadge
+        <UIcon
+          name="i-lucide-check"
+          class="mt-0.5 size-[18px] text-safe-ink"
+        />
+        <div class="flex flex-col gap-1 text-sm">
+          <span class="font-semibold text-safe-ink">How to fix</span>
+          <span class="leading-relaxed text-highlighted">{{ finding.remediation }}</span>
+        </div>
+      </div>
+
+      <ul
+        v-if="finding.tags.length"
+        class="flex flex-wrap gap-1.5"
+      >
+        <li
           v-for="tag in finding.tags"
           :key="tag"
-          color="neutral"
-          variant="subtle"
-          size="sm"
+          class="rounded-xs border border-default px-2 py-0.5 font-mono text-[11px] text-muted"
         >
           {{ tag }}
-        </UBadge>
-      </div>
-    </template>
-    <p
-      v-else
-      class="text-sm text-muted truncate"
-    >
-      {{ finding.explanation ?? finding.finding }}
-    </p>
-  </UCard>
+        </li>
+      </ul>
+    </div>
+  </article>
 </template>
