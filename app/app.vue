@@ -22,32 +22,32 @@ const NAV = [
 
 <template>
   <UApp>
-    <header class="sticky top-0 z-40 border-b border-default bg-ground/85 backdrop-blur">
-      <UContainer class="flex h-(--ui-header-height) items-center justify-between gap-4">
+    <header class="sticky top-3 z-40 px-3 sm:top-4 sm:px-4">
+      <div class="mx-auto flex h-14 max-w-(--ui-container) items-center justify-between gap-3 rounded-full border border-default/70 bg-default/70 py-1.5 pr-1.5 pl-2 shadow-[0_8px_30px_-12px_rgb(27_31_26/0.18)] backdrop-blur-xl backdrop-saturate-150">
         <NuxtLink
           to="/"
-          class="flex items-center gap-2.5 text-highlighted"
+          class="flex items-center gap-2.5 rounded-full py-1 pr-3 pl-1 text-highlighted"
         >
-          <span class="flex size-8 items-center justify-center rounded-lg bg-inverted text-inverted">
+          <span class="relative flex size-9 items-center justify-center overflow-hidden rounded-full bg-matcha-500 text-white shadow-inner">
             <UIcon
-              name="i-lucide-shield-check"
+              name="i-lucide-scan-eye"
               class="size-[18px]"
             />
           </span>
-          <span class="font-serif text-[26px] leading-none">Skillspector</span>
+          <span class="text-[17px] font-semibold tracking-[-0.03em]">skillspector</span>
         </NuxtLink>
 
         <nav
           aria-label="Main"
-          class="flex items-center gap-1"
+          class="flex items-center gap-0.5"
         >
           <NuxtLink
             v-for="item in NAV"
             :key="item.to"
             :to="item.to"
             :aria-current="route.path === item.to ? 'page' : undefined"
-            class="flex h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors sm:px-4"
-            :class="route.path === item.to ? 'bg-accented/70 text-highlighted' : 'text-muted hover:bg-elevated hover:text-highlighted'"
+            class="flex h-11 min-w-11 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition-colors sm:px-4"
+            :class="route.path === item.to ? 'bg-inverted text-inverted' : 'text-muted hover:bg-elevated hover:text-highlighted'"
           >
             <UIcon
               :name="item.icon"
@@ -55,11 +55,6 @@ const NAV = [
             />
             <span class="max-sm:sr-only">{{ item.label }}</span>
           </NuxtLink>
-
-          <span
-            aria-hidden="true"
-            class="mx-1 h-6 w-px bg-accented sm:mx-2"
-          />
 
           <UColorModeButton
             color="neutral"
@@ -76,14 +71,14 @@ const NAV = [
             class="size-11 justify-center text-muted max-sm:hidden"
           />
         </nav>
-      </UContainer>
+      </div>
     </header>
 
-    <main class="min-h-[calc(100vh-var(--ui-header-height)-4.5rem)]">
+    <main class="min-h-[calc(100vh-10rem)]">
       <NuxtPage />
     </main>
 
-    <footer class="border-t border-default">
+    <footer class="mt-8 border-t border-default/70">
       <UContainer class="py-6 text-sm text-muted">
         <p>
           Scans run on this server with <ULink

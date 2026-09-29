@@ -112,7 +112,7 @@ async function saveRetention() {
   <UContainer class="py-12 sm:py-14">
     <div class="mx-auto flex max-w-xl flex-col gap-7">
       <div class="flex flex-col gap-2">
-        <h1 class="font-serif text-5xl leading-none text-highlighted sm:text-6xl">
+        <h1 class="display text-5xl text-highlighted sm:text-6xl">
           Admin
         </h1>
         <p class="text-[15px] text-muted">
@@ -135,7 +135,7 @@ async function saveRetention() {
       <UCard :ui="{ root: 'rounded-2xl', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
-            <h2 class="font-serif text-2xl text-highlighted">
+            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
               Claude CLI login
             </h2>
             <p class="mt-1 text-sm text-muted">
@@ -239,7 +239,7 @@ async function saveRetention() {
       <UCard :ui="{ root: 'rounded-2xl', body: 'p-5 sm:p-6' }">
         <div class="flex flex-col gap-4">
           <div>
-            <h2 class="font-serif text-2xl text-highlighted">
+            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
               Scan retention
             </h2>
             <p class="mt-1 text-sm text-muted">

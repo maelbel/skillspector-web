@@ -222,11 +222,11 @@ const errorMessage = computed(() => {
     />
 
     <template v-else-if="status.status === 'error'">
-      <section class="flex flex-col gap-4 rounded-3xl border border-critical-line bg-critical-tint p-6 sm:p-10">
+      <section class="flex flex-col gap-4 rounded-[2rem] border border-critical-line bg-critical-tint p-6 sm:p-10">
         <p class="eyebrow text-critical-ink">
           Scan failed
         </p>
-        <h1 class="font-serif text-4xl leading-tight break-words text-highlighted sm:text-6xl">
+        <h1 class="display text-4xl leading-tight break-words text-highlighted sm:text-5xl">
           {{ displayTitle }}
         </h1>
         <p class="font-mono text-sm break-all text-muted">
@@ -332,13 +332,13 @@ const errorMessage = computed(() => {
               >
                 <input
                   type="checkbox"
-                  class="size-4 shrink-0 accent-(--ui-text-highlighted)"
+                  class="size-4 shrink-0 accent-(--ui-primary)"
                   :checked="!group.hidden.value.has(item.value)"
                   @change="toggle(group.hidden, item.value)"
                 >
                 <span
                   v-if="group.legend === 'Severity'"
-                  class="size-2.5 shrink-0 rounded-xs"
+                  class="size-2.5 shrink-0 rounded-full"
                   :class="SEVERITY_CLASSES[item.value as Severity].dot"
                 />
                 <span
@@ -371,7 +371,7 @@ const errorMessage = computed(() => {
           <div class="flex flex-wrap items-center justify-between gap-3">
             <h2
               id="findings-heading"
-              class="font-serif text-3xl text-highlighted"
+              class="display text-2xl text-highlighted"
             >
               Findings
             </h2>
@@ -406,7 +406,7 @@ const errorMessage = computed(() => {
               :class="SEVERITY_CLASSES[group.severity].ink"
             >
               <span
-                class="size-2.5 rounded-xs"
+                class="size-2 rounded-full"
                 :class="SEVERITY_CLASSES[group.severity].dot"
               />
               {{ SEVERITY_LABEL[group.severity] }} · {{ group.issues.length }}

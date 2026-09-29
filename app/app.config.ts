@@ -7,15 +7,20 @@ export default defineAppConfig({
   },
   ui: {
     colors: {
-      primary: 'forest',
-      neutral: 'bone',
-      success: 'forest',
+      primary: 'matcha',
+      neutral: 'oat',
+      success: 'matcha',
       warning: 'amber',
       error: 'red'
     },
     button: {
       slots: {
-        base: 'cursor-pointer'
+        base: 'cursor-pointer rounded-full'
+      }
+    },
+    input: {
+      slots: {
+        base: 'rounded-xl'
       }
     },
     select: {

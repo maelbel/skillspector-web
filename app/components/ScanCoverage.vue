@@ -39,17 +39,19 @@ const CHECKS = [
       What a scan checks
     </h2>
 
-    <ul class="grid gap-8 border-t border-default pt-6 sm:grid-cols-2 lg:grid-cols-4">
+    <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <li
         v-for="check in CHECKS"
         :key="check.title"
-        class="flex flex-col gap-2.5"
+        class="surface flex flex-col gap-2.5 p-5"
       >
-        <UIcon
-          :name="check.icon"
-          class="size-[22px] text-highlighted"
-        />
-        <h3 class="font-serif text-2xl text-highlighted">
+        <span class="mb-2 flex size-10 items-center justify-center rounded-full bg-matcha-100 text-matcha-700 dark:bg-matcha-950 dark:text-matcha-300">
+          <UIcon
+            :name="check.icon"
+            class="size-5"
+          />
+        </span>
+        <h3 class="text-base font-semibold tracking-tight text-highlighted">
           {{ check.title }}
         </h3>
         <p class="text-sm text-muted">

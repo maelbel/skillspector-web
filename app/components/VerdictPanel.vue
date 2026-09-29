@@ -8,11 +8,17 @@ const props = defineProps<{
 const recommendation = computed(() => props.report.risk_assessment.recommendation)
 const tone = computed(() => RECOMMENDATION_CLASSES[recommendation.value])
 const score = computed(() => props.report.risk_assessment.score)
+const severity = computed(() => props.report.risk_assessment.severity)
+
+// The gauge: a 270° arc, open at the bottom, filled in proportion to the score.
+const RADIUS = 52
+const ARC = 2 * Math.PI * RADIUS * 0.75
+const dashOffset = computed(() => ARC * (1 - Math.min(Math.max(score.value, 0), 100) / 100))
 
 const counts = computed(() => {
   const result: Record<Severity, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }
   for (const issue of props.report.issues) result[issue.severity]++
-  return SEVERITIES.map(severity => ({ severity, count: result[severity] })).filter(({ count }) => count > 0)
+  return SEVERITIES.map(level => ({ severity: level, count: result[level] })).filter(({ count }) => count > 0)
 })
 
 const topFinding = computed(() =>
@@ -33,19 +39,23 @@ const summary = computed(() => {
 <template>
   <section
     aria-labelledby="verdict-heading"
-    class="grid gap-8 rounded-3xl border p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-14 lg:px-12"
+    class="relative grid gap-8 overflow-hidden rounded-[2rem] border p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12 lg:px-12"
     :class="tone.panel"
   >
-    <div class="flex min-w-0 flex-col gap-4">
+    <div class="flex min-w-0 flex-col gap-5">
       <p
-        class="eyebrow"
+        class="eyebrow flex items-center gap-2"
         :class="tone.ink"
       >
+        <span
+          class="size-1.5 rounded-full"
+          :class="tone.dot"
+        />
         Verdict
       </p>
       <h1
         id="verdict-heading"
-        class="flex items-center gap-3 font-serif text-5xl leading-none sm:gap-4 sm:text-7xl"
+        class="display flex items-center gap-3 text-5xl sm:gap-4 sm:text-7xl"
         :class="tone.ink"
       >
         <UIcon
@@ -57,66 +67,82 @@ const summary = computed(() => {
       <p class="max-w-2xl text-base text-highlighted text-pretty sm:text-lg">
         {{ summary }}
       </p>
-      <div
-        class="flex min-w-0 flex-col gap-1.5 border-t pt-4"
-        :class="tone.rule"
-      >
+      <div class="mt-1 flex min-w-0 flex-col gap-1.5 rounded-2xl bg-default/60 p-4 ring-1 ring-default/60 backdrop-blur">
         <slot />
       </div>
     </div>
 
-    <div class="flex flex-col justify-center gap-6">
-      <div class="flex flex-col gap-2.5">
-        <div class="flex items-baseline justify-between">
-          <span class="text-sm font-semibold text-highlighted">Risk score</span>
-          <span
-            class="font-mono"
-            :class="tone.ink"
-          >
-            <span class="text-5xl leading-none font-medium tabular-nums sm:text-6xl">{{ score }}</span>
-            <span class="text-lg text-muted"> / 100</span>
-          </span>
-        </div>
-        <div
-          role="meter"
-          aria-label="Risk score"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          :aria-valuenow="score"
-          class="h-2.5 overflow-hidden rounded-full bg-default/70"
+    <div class="flex flex-col items-center justify-center gap-6 rounded-[1.5rem] bg-default/70 p-6 ring-1 ring-default/60 backdrop-blur">
+      <div
+        role="meter"
+        aria-label="Risk score"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="score"
+        class="relative size-44"
+      >
+        <svg
+          viewBox="0 0 120 120"
+          class="size-full rotate-135"
+          aria-hidden="true"
         >
-          <div
-            class="h-full rounded-full transition-[width] duration-700 ease-out"
-            :class="SEVERITY_CLASSES[report.risk_assessment.severity].dot"
-            :style="{ width: `${Math.max(score, 2)}%` }"
+          <circle
+            cx="60"
+            cy="60"
+            :r="RADIUS"
+            fill="none"
+            stroke-width="10"
+            stroke-linecap="round"
+            class="stroke-(--ui-bg-accented)"
+            :stroke-dasharray="`${ARC} ${2 * Math.PI * RADIUS}`"
           />
+          <circle
+            cx="60"
+            cy="60"
+            :r="RADIUS"
+            fill="none"
+            stroke-width="10"
+            stroke-linecap="round"
+            class="transition-[stroke-dashoffset] duration-1000 ease-out"
+            :class="SEVERITY_CLASSES[severity].stroke"
+            :stroke-dasharray="`${ARC} ${2 * Math.PI * RADIUS}`"
+            :stroke-dashoffset="dashOffset"
+          />
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <span
+            class="display text-6xl tabular-nums"
+            :class="tone.ink"
+          >{{ score }}</span>
+          <span class="mt-1 font-mono text-xs text-muted">risk / 100</span>
         </div>
-        <p class="text-xs text-muted">
-          Overall severity: <span class="font-medium text-highlighted">{{ SEVERITY_LABEL[report.risk_assessment.severity] }}</span>
-        </p>
+        <span class="absolute inset-x-0 bottom-1 text-center text-xs font-medium text-highlighted">
+          {{ SEVERITY_LABEL[severity] }}
+        </span>
       </div>
 
-      <div class="flex flex-col gap-2.5">
+      <div class="flex w-full flex-col gap-2.5">
         <span class="text-sm font-semibold text-highlighted">
           {{ report.issues.length }} finding{{ report.issues.length === 1 ? '' : 's' }}
         </span>
         <template v-if="counts.length">
           <div
             aria-hidden="true"
-            class="flex h-2.5 gap-0.5 overflow-hidden rounded-full"
+            class="flex h-2 gap-1"
           >
             <span
-              v-for="{ severity, count } in counts"
-              :key="severity"
-              :class="SEVERITY_CLASSES[severity].dot"
+              v-for="{ severity: level, count } in counts"
+              :key="level"
+              class="rounded-full"
+              :class="SEVERITY_CLASSES[level].dot"
               :style="{ flexGrow: count }"
             />
           </div>
-          <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-highlighted">
+          <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
             <span
-              v-for="{ severity, count } in counts"
-              :key="severity"
-            ><b class="font-mono font-medium">{{ count }}</b> {{ SEVERITY_LABEL[severity].toLowerCase() }}</span>
+              v-for="{ severity: level, count } in counts"
+              :key="level"
+            ><b class="font-mono font-medium text-highlighted">{{ count }}</b> {{ SEVERITY_LABEL[level].toLowerCase() }}</span>
           </p>
         </template>
         <p

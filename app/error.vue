@@ -32,7 +32,7 @@ function goHome() {
           />
           Error {{ statusCode }}
         </p>
-        <h1 class="font-serif text-5xl leading-none text-highlighted sm:text-6xl">
+        <h1 class="display text-5xl text-highlighted sm:text-6xl">
           {{ isNotFound ? 'Nothing here' : 'Something broke' }}
         </h1>
         <p class="text-lg text-muted">

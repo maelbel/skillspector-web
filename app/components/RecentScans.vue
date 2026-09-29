@@ -33,16 +33,15 @@ function isWorking(scan: ScanSummary) {
 
     <ul
       v-if="scans.length"
-      class="border-t border-inverted"
+      class="surface flex flex-col gap-0.5 p-1.5"
     >
       <li
         v-for="scan in scans"
         :key="scan.id"
-        class="border-b border-default"
       >
         <NuxtLink
           :to="`/scan/${scan.id}`"
-          class="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3.5 px-1 py-4 transition-colors hover:bg-default/60"
+          class="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-[1.1rem] px-3.5 py-3 transition-colors hover:bg-muted"
         >
           <span
             v-if="isWorking(scan)"
@@ -59,7 +58,7 @@ function isWorking(scan: ScanSummary) {
           />
           <span
             v-else
-            class="size-2.5 rounded-xs"
+            class="size-2.5 rounded-full ring-4 ring-default"
             :class="RECOMMENDATION_CLASSES[scan.recommendation].dot"
           />
 
@@ -103,7 +102,7 @@ function isWorking(scan: ScanSummary) {
 
     <p
       v-else
-      class="border-t border-inverted pt-4 text-sm text-muted"
+      class="surface p-5 text-sm text-muted"
     >
       Scans you run show up here, so you can come back to a result later.
     </p>

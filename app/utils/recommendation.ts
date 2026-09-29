@@ -24,21 +24,21 @@ export const RECOMMENDATION_CLASSES: Record<Recommendation, { dot: string, ink: 
   SAFE: {
     dot: 'bg-safe',
     ink: 'text-safe-ink',
-    chip: 'bg-safe-tint text-safe-ink',
+    chip: 'bg-safe-tint text-safe-ink ring-1 ring-safe-line',
     panel: 'bg-safe-tint border-safe-line',
     rule: 'border-safe-line'
   },
   CAUTION: {
     dot: 'bg-medium',
     ink: 'text-medium-ink',
-    chip: 'bg-medium-tint text-medium-ink',
+    chip: 'bg-medium-tint text-medium-ink ring-1 ring-medium-line',
     panel: 'bg-medium-tint border-medium-line',
     rule: 'border-medium-line'
   },
   DO_NOT_INSTALL: {
     dot: 'bg-critical',
     ink: 'text-critical-ink',
-    chip: 'bg-critical-tint text-critical-ink',
+    chip: 'bg-critical-tint text-critical-ink ring-1 ring-critical-line',
     panel: 'bg-critical-tint border-critical-line',
     rule: 'border-critical-line'
   }

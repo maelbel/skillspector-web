@@ -85,7 +85,7 @@ async function confirmDelete() {
   <UContainer class="flex flex-col gap-7 py-12 sm:py-14">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div class="flex flex-col gap-2">
-        <h1 class="font-serif text-5xl leading-none text-highlighted sm:text-6xl">
+        <h1 class="display text-5xl text-highlighted sm:text-6xl">
           Scan history
         </h1>
         <p class="text-[15px] text-muted">
@@ -116,7 +116,7 @@ async function confirmDelete() {
 
     <div
       v-else-if="status === 'pending' && !data"
-      class="flex items-center gap-3 rounded-2xl border border-default bg-default px-5 py-4"
+      class="surface flex items-center gap-3 px-5 py-4"
     >
       <UIcon
         name="i-lucide-loader-circle"
@@ -129,9 +129,9 @@ async function confirmDelete() {
 
     <div
       v-else-if="!data?.items.length"
-      class="flex flex-col items-start gap-3 rounded-2xl border border-default bg-default p-6"
+      class="surface flex flex-col items-start gap-3 p-6"
     >
-      <p class="font-serif text-2xl text-highlighted">
+      <p class="text-lg font-semibold tracking-tight text-highlighted">
         No scans yet
       </p>
       <p class="text-sm text-muted">
@@ -157,7 +157,7 @@ async function confirmDelete() {
           >
             <span
               v-if="filter.dot"
-              class="size-2 rounded-xs"
+              class="size-2 rounded-full"
               :class="filter.dot"
             />
             <span
@@ -179,10 +179,11 @@ async function confirmDelete() {
           aria-label="Filter by skill or repo"
           size="lg"
           class="md:w-80"
+          :ui="{ base: 'rounded-full' }"
         />
       </div>
 
-      <div class="overflow-hidden rounded-2xl border border-default bg-default">
+      <div class="surface overflow-hidden">
         <table class="w-full table-fixed text-sm">
           <thead>
             <tr class="eyebrow border-b border-default text-left text-muted">
@@ -269,7 +270,7 @@ async function confirmDelete() {
                 </span>
                 <span
                   v-else-if="scan.recommendation"
-                  class="inline-flex rounded-md px-2.5 py-1 font-medium"
+                  class="inline-flex rounded-full px-3 py-1 font-medium"
                   :class="RECOMMENDATION_CLASSES[scan.recommendation].chip"
                 >
                   {{ RECOMMENDATION_SHORT_LABEL[scan.recommendation] }}

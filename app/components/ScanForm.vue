@@ -3,7 +3,7 @@ import type { LLMConfig, LLMProvider } from '~~/shared/types/scan'
 import type { ScanTargetKind } from '~~/shared/utils/scan'
 
 // Awaited so the server-rendered default provider matches the client's (see the watch below).
-const { data: health, pending: healthPending } = await useFetch('/api/health')
+const { data: health, pending: healthPending } = await useHealth()
 
 const PROVIDER_LABELS: Record<LLMProvider, string> = {
   anthropic: 'Anthropic',
@@ -227,7 +227,7 @@ async function submit() {
 
 <template>
   <form
-    class="flex flex-col gap-5 rounded-2xl border border-default bg-default p-5 shadow-[0_12px_32px_-16px_rgb(21_23_28/0.18)] sm:p-6"
+    class="surface flex flex-col gap-5 rounded-[1.75rem] p-4 sm:p-5"
     @submit.prevent="submit"
   >
     <UAlert
@@ -244,7 +244,7 @@ async function submit() {
       :error="targetProblem"
       :ui="{ label: 'font-semibold text-highlighted' }"
     >
-      <div class="flex gap-2 max-sm:flex-col">
+      <div class="flex gap-2 rounded-[1.5rem] bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-primary/60 max-sm:flex-col sm:rounded-full">
         <UInput
           ref="targetInput"
           v-model="target"
@@ -254,7 +254,8 @@ async function submit() {
           icon="i-lucide-link"
           size="xl"
           class="min-w-0 flex-1"
-          :ui="{ base: 'h-14 font-mono text-sm ring-accented focus-visible:ring-2 focus-visible:ring-inverted' }"
+          variant="none"
+          :ui="{ base: 'h-12 font-mono text-sm', leadingIcon: 'text-dimmed' }"
           :disabled="submitting"
           @blur="targetTouched = true"
         />
@@ -263,7 +264,7 @@ async function submit() {
           color="neutral"
           size="xl"
           trailing-icon="i-lucide-arrow-right"
-          class="h-14 justify-center px-6 font-semibold"
+          class="h-12 justify-center px-6 font-semibold shadow-sm"
           :loading="submitting"
           :disabled="!canSubmit"
         >
@@ -321,7 +322,7 @@ async function submit() {
       :ui="{
         legend: 'mb-2.5 font-semibold text-highlighted',
         fieldset: 'grid gap-3 sm:grid-cols-2',
-        item: 'rounded-xl border-accented p-4 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/8',
+        item: 'rounded-2xl border-default p-4 has-data-[state=checked]:border-primary/70 has-data-[state=checked]:bg-matcha-50 dark:has-data-[state=checked]:bg-matcha-950/60 has-data-[state=checked]:ring-4 has-data-[state=checked]:ring-primary/10',
         label: 'font-semibold text-highlighted',
         description: 'mt-1 leading-snug'
       }"
@@ -337,7 +338,7 @@ async function submit() {
     >
       <div
         v-if="useLlm"
-        class="flex flex-col gap-3 rounded-xl bg-muted p-4 ring ring-default"
+        class="flex flex-col gap-3 rounded-2xl bg-muted p-4 ring ring-default"
       >
         <UFormField label="Provider">
           <USelect
@@ -440,7 +441,7 @@ async function submit() {
       :description="errorMessage"
     />
 
-    <div class="flex flex-wrap items-center gap-2 border-t border-muted pt-4 text-sm text-muted">
+    <div class="flex flex-wrap items-center gap-2 px-1 pb-1 text-sm text-muted">
       <template v-if="!target.trim()">
         <span>Try an example:</span>
         <UButton

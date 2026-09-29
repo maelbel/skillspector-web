@@ -17,14 +17,14 @@ const queued = computed(() => props.status?.status === 'pending')
 <template>
   <div class="flex flex-col gap-8">
     <div class="flex min-w-0 flex-col gap-3">
-      <p class="eyebrow flex items-center gap-2.5 text-primary">
+      <p class="eyebrow flex items-center gap-2.5 self-start rounded-full bg-matcha-100 px-3 py-1.5 text-matcha-800 dark:bg-matcha-950 dark:text-matcha-200">
         <UIcon
           name="i-lucide-loader-circle"
           class="size-3.5 animate-spin"
         />
         {{ queued ? 'Queued' : 'Scanning' }}
       </p>
-      <h1 class="font-serif text-4xl leading-tight break-words text-highlighted sm:text-6xl">
+      <h1 class="display text-4xl leading-tight break-words text-highlighted sm:text-5xl">
         {{ title }}
       </h1>
       <p
@@ -54,8 +54,12 @@ const queued = computed(() => props.status?.status === 'pending')
     <div class="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-8">
       <section
         aria-labelledby="stages-heading"
-        class="flex flex-col rounded-2xl border border-default bg-default p-6"
+        class="surface relative flex flex-col overflow-hidden p-6"
       >
+        <div
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-x-0 top-0 h-full animate-scan bg-linear-to-b from-transparent via-matcha-300/20 to-transparent motion-reduce:hidden"
+        />
         <h2
           id="stages-heading"
           class="eyebrow mb-3 text-muted"
@@ -75,7 +79,7 @@ const queued = computed(() => props.status?.status === 'pending')
             <span class="flex-1 text-[15px] text-highlighted">{{ stage.label }}</span>
             <span class="font-mono text-sm text-muted tabular-nums">{{ stage.completed }} done</span>
           </li>
-          <li class="-mx-3 mt-1 flex items-center gap-3 rounded-lg bg-ground px-3 py-3">
+          <li class="-mx-3 mt-1 flex items-center gap-3 rounded-2xl bg-matcha-50 px-3 py-3 ring-1 ring-matcha-200 dark:bg-matcha-950/60 dark:ring-matcha-900">
             <UIcon
               name="i-lucide-loader-circle"
               class="size-[18px] shrink-0 animate-spin text-highlighted"
@@ -96,17 +100,17 @@ const queued = computed(() => props.status?.status === 'pending')
 
       <section
         aria-labelledby="log-heading"
-        class="flex flex-col gap-3 rounded-2xl bg-code p-5 sm:p-6"
+        class="flex flex-col gap-3 rounded-[1.5rem] bg-code p-5 sm:p-6"
       >
         <div class="flex items-center justify-between">
           <h2
             id="log-heading"
-            class="eyebrow text-bone-400"
+            class="eyebrow text-oat-400"
           >
             Live log
           </h2>
-          <span class="flex items-center gap-1.5 font-mono text-xs text-forest-300">
-            <span class="size-1.5 animate-pulse rounded-full bg-forest-300" />
+          <span class="flex items-center gap-1.5 font-mono text-xs text-matcha-300">
+            <span class="size-1.5 animate-pulse rounded-full bg-matcha-300" />
             streaming
           </span>
         </div>
@@ -118,7 +122,7 @@ const queued = computed(() => props.status?.status === 'pending')
         />
         <p
           v-else
-          class="font-mono text-xs text-bone-400"
+          class="font-mono text-xs text-oat-400"
         >
           Waiting for the first log line…
         </p>
