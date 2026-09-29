@@ -126,6 +126,11 @@ class PostgresStore:
             (error, finished_at),
         )
 
+    def count_active_scans(self) -> int:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT COUNT(*) AS active FROM scans WHERE status IN ('pending', 'running')").fetchone()
+        return row["active"]
+
     def get_scan(self, id: str) -> ScanRow | None:
         with self._pool.connection() as conn:
             return conn.execute("SELECT * FROM scans WHERE id = %s", (id,)).fetchone()

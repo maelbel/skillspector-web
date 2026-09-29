@@ -22,7 +22,6 @@ class Mode(StrEnum):
 # Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
 # hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
 HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "durable job runner": "#42",
     "shared log and progress store": "#43",
     "sandboxed scan execution": "#44",
     "user accounts": "#45",

@@ -15,7 +15,6 @@ from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
 from app import db, scan_logs
-from app.core.config import get_settings
 
 TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
@@ -64,14 +63,8 @@ class Job:
     error: str | None = None
 
 
-_tasks: set[asyncio.Task] = set()
-_semaphore = asyncio.Semaphore(get_settings().max_concurrent_scans)
+# skillspector reads provider credentials from os.environ, so AI scans in one process must not overlap.
 _llm_lock = asyncio.Lock()
-
-
-def queue_is_full() -> bool:
-    """Whether running + waiting scans have reached max_queued_scans."""
-    return len(_tasks) >= get_settings().max_queued_scans
 
 
 def create_job(target: str, llm: LLMConfig | None) -> Job:
@@ -111,38 +104,35 @@ def delete_job(job_id: str) -> bool:
     return db.delete_scan(job_id)
 
 
-def schedule(job: Job) -> None:
-    task = asyncio.create_task(_run(job))
-    _tasks.add(task)
-    task.add_done_callback(_tasks.discard)
+async def run_job(job: Job) -> None:
+    """Run one scan to completion and record the outcome. Every job runner ends up here.
 
-
-async def _run(job: Job) -> None:
-    async with _semaphore:
-        job.status = JobStatus.RUNNING
-        db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
-        loop = asyncio.get_running_loop()
-        try:
-            if job.llm is not None:
-                async with _llm_lock:
-                    with _llm_env(job.llm):
-                        job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True)
-            else:
-                job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False)
-            job.status = JobStatus.DONE
-        except Exception as exc:  # noqa: BLE001
-            job.error = str(exc)
-            job.status = JobStatus.ERROR
-        finally:
-            job.finished_at = time.time()
-            job.llm = None
-            db.update_scan(
-                id=job.id,
-                status=job.status,
-                finished_at=job.finished_at,
-                result=job.result,
-                error=job.error,
-            )
+    Never raises for a failed scan: the error is stored on the scan instead.
+    """
+    job.status = JobStatus.RUNNING
+    db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
+    loop = asyncio.get_running_loop()
+    try:
+        if job.llm is not None:
+            async with _llm_lock:
+                with _llm_env(job.llm):
+                    job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True)
+        else:
+            job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False)
+        job.status = JobStatus.DONE
+    except Exception as exc:  # noqa: BLE001
+        job.error = str(exc)
+        job.status = JobStatus.ERROR
+    finally:
+        job.finished_at = time.time()
+        job.llm = None
+        db.update_scan(
+            id=job.id,
+            status=job.status,
+            finished_at=job.finished_at,
+            result=job.result,
+            error=job.error,
+        )
 
 
 @contextmanager

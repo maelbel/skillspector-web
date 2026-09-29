@@ -65,10 +65,19 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
   store (`app/storage/`). Each store applies its versioned migrations on startup and records them in
   `schema_migrations`; existing SQLite databases are adopted as they are. Scans aren't copied
   between engines when you switch.
+- **Job runners.** `app/jobs/` picks how scans run (`SKILLSPECTOR_WEB_JOB_RUNNER`, defaulting by
+  mode). Both call `scanner.run_job()`, which records the outcome on the scan.
+  - `in_process` (self-hosted): asyncio tasks in the API process, as described below.
+  - `vercel_queues` (hosted): `POST /scan` publishes `{scan_id}` to the `scans` topic, with the scan
+    id as idempotency key. The `@subscribe` handler in `app/jobs/queue_worker.py`, registered under
+    `[[tool.vercel.subscribers]]` in `pyproject.toml`, runs it. Delivery is at least once, so the
+    handler skips scans that already finished and marks a scan failed after 3 deliveries that
+    never completed. The queue limit counts pending and running scans in the database. Messages
+    never carry API keys, so AI review is rejected in this runner until per-user keys land (#46).
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.
-- **Restarts.** Jobs run in-process. On startup, any scan left `pending` or `running` is marked
+- **Restarts.** With the in-process runner, on startup any scan left `pending` or `running` is marked
   failed with an "interrupted" message.
 - **Logs.** The last 500 lines of each of the 50 most recent scans are kept in memory.
 - **Retention.** An hourly sweep deletes finished scans older than the configured number of days;

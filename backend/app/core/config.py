@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +14,8 @@ class Settings(BaseSettings):
 
     # Which deployment this is; see app/core/mode.py.
     mode: Mode = Mode.SELF_HOSTED
+    # How scans are run; unset picks the mode's default (in_process, or vercel_queues when hosted).
+    job_runner: Literal["in_process", "vercel_queues"] | None = None
     cors_origins: list[str] = ["http://localhost:3000"]
     allowed_target_schemes: tuple[str, ...] = ("http://", "https://")
     max_concurrent_scans: int = 2

@@ -119,6 +119,9 @@ class SQLiteStore:
         self._conn.commit()
         return cursor.rowcount
 
+    def count_active_scans(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM scans WHERE status IN ('pending', 'running')").fetchone()[0]
+
     def get_scan(self, id: str) -> ScanRow | None:
         row = self._conn.execute("SELECT * FROM scans WHERE id = ?", (id,)).fetchone()
         return _to_row(row) if row is not None else None

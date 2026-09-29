@@ -1,8 +1,11 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
-from app import rate_limit
+from app import db, rate_limit
 from app.core.config import get_settings
+from app.jobs import JobRejectedError, get_runner
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
@@ -13,8 +16,6 @@ from app.scanner import (
     delete_job,
     get_job,
     list_jobs,
-    queue_is_full,
-    schedule,
 )
 
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -100,10 +101,20 @@ def _to_response(job: Job) -> ScanStatusResponse:
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest) -> ScanQueuedResponse:
-    if queue_is_full():
+    runner = get_runner()
+    try:
+        runner.check(req.llm)
+    except JobRejectedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if runner.is_full():
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
     job = create_job(req.target, req.llm)
-    schedule(job)
+    try:
+        await runner.submit(job)
+    except Exception as exc:
+        # Don't leave a scan pending forever if it never reached the queue.
+        db.update_scan(id=job.id, status=JobStatus.ERROR, finished_at=time.time(), result=None, error="Couldn't queue the scan")
+        raise HTTPException(status_code=503, detail="Couldn't queue the scan — try again in a moment") from exc
     return ScanQueuedResponse(id=job.id, status=job.status)
 
 
