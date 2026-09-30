@@ -43,17 +43,26 @@ Run everything from the repository root.
 1. **Create and link the project**:
 
    ```bash
-   vercel link             # create a new project; Vercel detects the services from vercel.ts
-   vercel git connect      # optional: deploy every push, with a preview per pull request
+   vercel link             # create a new project; with a GitHub remote it also connects the repository
+   vercel api /v9/projects/<project-name> -X PATCH -F framework=services
    ```
+
+   `vercel link` creates the project with the Nuxt preset. The second command switches it to the
+   Services preset, which builds both services from `vercel.ts`. You can also switch it in
+   **Settings → Build and Deployment → Framework Preset**. Use CLI 62 or later: older versions
+   fail to link a project whose `vercel.ts` already defines services.
 
 2. **Create two Postgres databases**, one for production and one for everything else. The prefix
    makes Neon's connection string arrive as `SKILLSPECTOR_WEB_DATABASE_URL`:
 
    ```bash
-   vercel install neon --name skillspector-production -e production --prefix SKILLSPECTOR_WEB_
-   vercel install neon --name skillspector-preview -e preview -e development --prefix SKILLSPECTOR_WEB_
+   vercel install neon --name skillspector-production --plan free_v3 -e production --prefix SKILLSPECTOR_WEB_
+   vercel install neon --name skillspector-preview --plan free_v3 -e preview -e development --prefix SKILLSPECTOR_WEB_
    ```
+
+   `--plan` picks Neon's free plan. Also available: `launch_v3` and `scale_v3`. Each install also
+   writes Neon's agent skills (`.agents/`, `.claude/skills/`, `skills-lock.json`) into the working
+   directory. They aren't part of this project, so don't commit them.
 
    Any Postgres works. Set `SKILLSPECTOR_WEB_DATABASE_URL` yourself for another provider. The API
    creates and migrates its tables on startup.
@@ -65,7 +74,8 @@ Run everything from the repository root.
    ```
 
    Rebuild it whenever the skillspector pin in `backend/pyproject.toml` changes. Scans log a
-   warning when the versions differ.
+   warning when the versions differ. The build VM installs a C compiler first: some skillspector
+   dependencies have no prebuilt wheel for the sandbox image's Python.
 
 4. **Set the environment variables** listed [below](#environment-variables). For each variable
    and environment, run `vercel env add NAME production` (or `preview`, or `development`), which
@@ -73,9 +83,13 @@ Run everything from the repository root.
 
    ```bash
    vercel env add SKILLSPECTOR_WEB_MODE production           # hosted
-   vercel env add SKILLSPECTOR_WEB_SECRET_KEY production     # from: cd backend && uv run python -m app.secrets_box
-   vercel env add SKILLSPECTOR_WEB_SECRET_KEY preview        # a different key
+   vercel env add SKILLSPECTOR_WEB_SECRET_KEY production --sensitive   # from: cd backend && uv run python -m app.secrets_box
+   vercel env add SKILLSPECTOR_WEB_SECRET_KEY preview --sensitive      # a different key
+   vercel env add SKILLSPECTOR_WEB_SECRET_KEY development    # the preview key: they share a database
    ```
+
+   Store secrets as sensitive, except in Development, where Vercel doesn't allow sensitive
+   variables.
 
 5. **Deploy**:
 
