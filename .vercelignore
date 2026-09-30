@@ -1,0 +1,13 @@
+# Local files `vercel deploy` must not upload. Git deployments don't have them anyway.
+.env
+.env.local
+backend/.env
+backend/.env.local
+backend/.venv
+backend/data
+backend/.pytest_cache
+backend/.ruff_cache
+**/__pycache__
+.nuxt
+.output
+docker-compose.override.yml

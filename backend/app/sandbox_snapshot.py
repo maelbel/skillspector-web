@@ -33,9 +33,20 @@ async def build() -> str:
     requirement = skillspector_requirement()
     print(f"Installing {requirement}", file=sys.stderr)
     async with create_sandbox(execution_time_limit=15 * 60, persistent=False) as box:
+        # Some dependencies (yara-python) have no wheel for the image's Python and build from source.
+        await box.run_process(
+            "sh",
+            ["-c", "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc python3-dev"],
+            sudo=True,
+            stdout=sys.stderr,
+            stderr=sys.stderr,
+            check=True,
+        )
         await box.run_process(
             "python3",
             ["-m", "pip", "install", "--user", "--break-system-packages", requirement],
+            stdout=sys.stderr,
+            stderr=sys.stderr,
             check=True,
         )
         check = await box.run_process(

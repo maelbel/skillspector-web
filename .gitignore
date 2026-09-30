@@ -11,3 +11,4 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/.ruff_cache/
 backend/data/
+.vercel

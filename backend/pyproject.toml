@@ -16,7 +16,11 @@ dependencies = [
     "cryptography>=44",
 ]
 
-# Hosted mode: Vercel compiles this module's @subscribe handlers into a queue-triggered function.
+# Hosted mode: what Vercel builds for the `api` service (see vercel.ts, whose entrypoint is this
+# file): the FastAPI app, and a queue-triggered function from this module's @subscribe handlers.
+[tool.vercel]
+entrypoint = "app.main:app"
+
 [[tool.vercel.subscribers]]
 entrypoint = "app.jobs.queue_worker"
 

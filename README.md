@@ -97,7 +97,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start while a setting it needs is missing, and names it; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
+| `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start while a setting it needs is missing, and names it; see [docs/VERCEL.md](./docs/VERCEL.md). |
 | `AUTH` | *by mode* | Who can use the server: `none` (the `self_hosted` default: no sign-in, every visitor has full access, admin page included) or `accounts` (sign-in required; the first account becomes the admin, users see only their own scans, admins see all and manage the server). Always `accounts` when hosted. |
 | `ALLOW_SIGNUP` | *unset* | With accounts, whether visitors may create their own account from the landing page. Unset allows it; admins can also turn it on and off in the backoffice, which takes precedence. The very first account is always the admin. |
 | `SESSION_DAYS` | `30` | How long a sign-in lasts. |
@@ -126,7 +126,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 
 | Variable | Default | Description |
 |---|---|---|
-| `NUXT_API_BASE` | `http://localhost:8000` | Where the Nitro proxy reaches the API (`http://api:8000` in Compose). |
+| `NUXT_API_BASE` | `http://localhost:8000` | Where the Nitro proxy reaches the API (`http://api:8000` in Compose; set by the service binding on Vercel). |
 | `NUXT_TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so rate limits use the client IP it appends to `X-Forwarded-For`. |
 | `NUXT_PUBLIC_BOTID` | `false` | Hosted on Vercel only: `true` turns on [BotID](https://vercel.com/docs/botid) for scan submissions, refusing ones it classifies as bots (`403`). Read at build time too. |
 | `NUXT_ALLOWED_HOST` | *unset* | Public hostname allowed by the development server (`nuxt dev`) only. |
@@ -170,6 +170,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
   `NUXT_TRUST_PROXY=true`.
 - Anyone who can reach the UI can use it; see the [security model](#security-model) before exposing
   it publicly.
+
+### Vercel (hosted)
+
+The same repository also deploys to Vercel as one project, with `MODE=hosted`. `vercel.ts` runs the
+UI and the API as two services, and only the UI is public. Scans go through Vercel Queues and run
+in Vercel Sandbox microVMs, and data lives in Postgres. Previews get their own database. See
+[docs/VERCEL.md](./docs/VERCEL.md) for the setup and every environment variable.
 
 ## Architecture
 
@@ -376,6 +383,7 @@ backend/tests/          pytest suite
 test/                   Vitest suite
 docs/                   deployment guides and README assets
 scripts/setup.mjs       the `pnpm setup` wizard
+vercel.ts               the hosted deployment: services, routing and cron
 ```
 
 The scan service's endpoints are documented in [backend/README.md](./backend/README.md).
@@ -446,9 +454,10 @@ Found a vulnerability? Please report it privately — see [SECURITY.md](./SECURI
 
 ## Limitations
 
-- Scans run inside the API process: restarting it fails in-flight scans (they're marked as
-  interrupted on startup), and it can't run as more than one replica.
-- Live logs are kept in memory for the 50 most recent scans; the report itself is persisted.
+- Self-hosted, scans run inside the API process: restarting it fails in-flight scans (they're
+  marked as interrupted on startup), and it can't run as more than one replica.
+- Self-hosted, live logs are kept in memory for the 50 most recent scans; the report itself is
+  persisted.
 - Only URLs can be scanned — there's no file upload, and folder (`/tree/`) links aren't supported;
   link the repository or a `SKILL.md` file instead.
 
