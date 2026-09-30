@@ -16,7 +16,7 @@ def _reset_postgres(url: str) -> None:
     import psycopg
 
     with psycopg.connect(url, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines")
+        conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines, users, sessions, password_resets")
 
 
 @pytest.fixture(

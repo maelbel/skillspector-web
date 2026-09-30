@@ -1,3 +1,4 @@
+import logging
 import os
 
 _provider = os.environ.get("SKILLSPECTOR_PROVIDER", "").strip()
@@ -18,8 +19,9 @@ from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
 from app import retention
-from app.api.routes import admin, scan
+from app.api.routes import admin, auth, scan, users
 from app.api.routes import settings as settings_routes
+from app.auth import auth_mode
 from app.claude_login import is_claude_cli_available, kill_pending
 from app.core.config import get_settings
 from app.core.mode import check_mode
@@ -33,6 +35,12 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     check_mode(settings)
+    if os.environ.get("SKILLSPECTOR_WEB_ADMIN_TOKEN"):
+        logging.getLogger("uvicorn.error").warning(
+            "SKILLSPECTOR_WEB_ADMIN_TOKEN is no longer used and can be removed. "
+            "Admin access now follows SKILLSPECTOR_WEB_AUTH: with 'none' (the default) anyone who can "
+            "reach the server has full access; with 'accounts', admins sign in."
+        )
     init_db()
     get_runner().on_startup()
     init_logging()
@@ -51,6 +59,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(scan.router)
 app.include_router(admin.router)
 app.include_router(settings_routes.router)
@@ -62,6 +72,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "mode": settings.mode.value,
+        "auth": auth_mode(),
         "skillspector_version": skillspector_version,
         "llm_available": llm_available,
         "claude_cli_available": is_claude_cli_available(),

@@ -6,12 +6,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing scan id' })
   }
 
-  const { apiBase } = useRuntimeConfig()
-
-  return await $fetch<ScanStatus>(`/scan/${encodeURIComponent(id)}`, { baseURL: apiBase }).catch((error) => {
-    throw createError({
-      statusCode: error?.response?.status ?? 502,
-      statusMessage: error?.data?.detail ?? 'Failed to fetch scan status'
-    })
+  return await backendFetch<ScanStatus>(event, `/scan/${encodeURIComponent(id)}`, {
+    fallbackMessage: 'Failed to fetch scan status'
   })
 })

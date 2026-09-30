@@ -55,6 +55,46 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN completed_steps INTEGER NOT NULL DEFAULT 0",
         ],
     ),
+    (
+        3,
+        [
+            """
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_sessions_user ON sessions (user_id)",
+            "ALTER TABLE scans ADD COLUMN owner_id TEXT",
+            "CREATE INDEX idx_scans_owner ON scans (owner_id, created_at DESC)",
+        ],
+    ),
+    (
+        4,
+        [
+            """
+            CREATE TABLE password_resets (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                used_at REAL
+            )
+            """,
+            "CREATE INDEX idx_password_resets_user ON password_resets (user_id)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -108,10 +148,12 @@ class SQLiteStore:
         self._conn.close()
 
     @_locked
-    def insert_scan(self, *, id: str, target: str, status: str, created_at: float, provider: str | None) -> None:
+    def insert_scan(
+        self, *, id: str, target: str, status: str, created_at: float, provider: str | None, owner_id: str | None = None
+    ) -> None:
         self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider) VALUES (?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (id, target, status, created_at, provider, owner_id),
         )
         self._conn.commit()
 
@@ -190,12 +232,13 @@ class SQLiteStore:
         self._conn.commit()
 
     @_locked
-    def list_scans(self, limit: int, offset: int) -> tuple[list[ScanRow], int]:
+    def list_scans(self, limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[ScanRow], int]:
+        where, params = ("WHERE owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
         rows = self._conn.execute(
-            f"SELECT {SUMMARY_COLUMNS} FROM scans ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"SELECT {SUMMARY_COLUMNS} FROM scans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
-        total = self._conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+        total = self._conn.execute(f"SELECT COUNT(*) FROM scans {where}", params).fetchone()[0]
         return [dict(row) for row in rows], total
 
     @_locked
@@ -233,3 +276,119 @@ class SQLiteStore:
         self._conn.execute("DELETE FROM scan_log_lines WHERE scan_id = ?", (scan_id,))
         self._conn.execute("UPDATE scans SET completed_steps = 0 WHERE id = ?", (scan_id,))
         self._conn.commit()
+
+    # Accounts (app/auth). Emails are stored lower-cased by the caller.
+
+    @_locked
+    def create_user(self, *, id: str, email: str, password_hash: str, role: str, created_at: float) -> None:
+        self._conn.execute(
+            "INSERT INTO users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+            (id, email, password_hash, role, created_at),
+        )
+        self._conn.commit()
+
+    @_locked
+    def create_first_user(self, *, id: str, email: str, password_hash: str, role: str, created_at: float) -> bool:
+        """Create the account only if none exists yet; False when another request got there first."""
+        cursor = self._conn.execute(
+            """
+            INSERT INTO users (id, email, password_hash, role, created_at)
+            SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)
+            """,
+            (id, email, password_hash, role, created_at),
+        )
+        self._conn.commit()
+        return cursor.rowcount == 1
+
+    @_locked
+    def get_user(self, id: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM users WHERE id = ?", (id,)).fetchone()
+        return dict(row) if row else None
+
+    @_locked
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        return dict(row) if row else None
+
+    @_locked
+    def list_users(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute("SELECT id, email, role, created_at FROM users ORDER BY created_at")
+        return [dict(row) for row in rows]
+
+    @_locked
+    def count_users(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+    @_locked
+    def delete_user(self, id: str) -> bool:
+        cursor = self._conn.execute("DELETE FROM users WHERE id = ?", (id,))
+        self._conn.execute("DELETE FROM sessions WHERE user_id = ?", (id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
+
+    @_locked
+    def create_session(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
+        self._conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token_hash, user_id, created_at, expires_at),
+        )
+        self._conn.commit()
+
+    @_locked
+    def get_session_user(self, token_hash: str, *, now: float) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            """
+            SELECT users.id, users.email, users.role, users.created_at
+            FROM sessions JOIN users ON users.id = sessions.user_id
+            WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+            """,
+            (token_hash, now),
+        ).fetchone()
+        return dict(row) if row else None
+
+    @_locked
+    def delete_session(self, token_hash: str) -> None:
+        self._conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+        self._conn.commit()
+
+    @_locked
+    def delete_expired_sessions(self, now: float) -> int:
+        cursor = self._conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+        self._conn.commit()
+        return cursor.rowcount
+
+    @_locked
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        self._conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        self._conn.commit()
+
+    @_locked
+    def delete_sessions_for_user(self, user_id: str, *, keep_token_hash: str | None = None) -> None:
+        self._conn.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND token_hash IS NOT ?", (user_id, keep_token_hash)
+        )
+        self._conn.commit()
+
+    @_locked
+    def create_password_reset(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
+        # Only the newest link works: issuing one cancels the user's earlier links.
+        self._conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+        self._conn.execute(
+            "INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token_hash, user_id, created_at, expires_at),
+        )
+        self._conn.commit()
+
+    @_locked
+    def consume_password_reset(self, token_hash: str, *, now: float) -> str | None:
+        """Mark an unused, unexpired reset as used and return its user id, in one statement."""
+        row = self._conn.execute(
+            """
+            UPDATE password_resets SET used_at = ?
+            WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+            RETURNING user_id
+            """,
+            (now, token_hash, now),
+        ).fetchone()
+        self._conn.commit()
+        return row["user_id"] if row else None

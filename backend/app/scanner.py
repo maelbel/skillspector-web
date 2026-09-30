@@ -75,7 +75,7 @@ def _sandbox_executor() -> SandboxExecutor:
 _llm_lock = asyncio.Lock()
 
 
-def create_job(target: str, llm: LLMConfig | None) -> Job:
+def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = None) -> Job:
     job = Job(id=uuid.uuid4().hex, target=target, llm=llm)
     db.insert_scan(
         id=job.id,
@@ -83,6 +83,7 @@ def create_job(target: str, llm: LLMConfig | None) -> Job:
         status=job.status,
         created_at=job.created_at,
         provider=llm.provider if llm else None,
+        owner_id=owner_id,
     )
     return job
 
@@ -103,8 +104,8 @@ def get_job(job_id: str) -> Job | None:
     )
 
 
-def list_jobs(limit: int, offset: int) -> tuple[list[db.ScanRow], int]:
-    return db.list_scans(limit, offset)
+def list_jobs(limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[db.ScanRow], int]:
+    return db.list_scans(limit, offset, owner_id=owner_id)
 
 
 def delete_job(job_id: str) -> bool:

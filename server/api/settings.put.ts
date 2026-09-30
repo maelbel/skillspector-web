@@ -1,23 +1,11 @@
 import type { SettingsResponse } from '~~/shared/types/settings'
 
 export default defineEventHandler(async (event) => {
-  const { adminToken, scanRetentionDays } = await readBody<{ adminToken?: string, scanRetentionDays?: number | null }>(event)
+  const { scanRetentionDays } = await readBody<{ scanRetentionDays?: number | null }>(event)
 
-  if (!adminToken) {
-    throw createError({ statusCode: 400, statusMessage: 'Missing "adminToken" in request body' })
-  }
-
-  const { apiBase } = useRuntimeConfig()
-
-  return await $fetch<SettingsResponse>('/settings', {
-    baseURL: apiBase,
+  return await backendFetch<SettingsResponse>(event, '/settings', {
     method: 'PUT',
-    headers: { 'X-Admin-Token': adminToken, 'X-Forwarded-For': getClientIp(event) },
-    body: { scan_retention_days: scanRetentionDays ?? null }
-  }).catch((error) => {
-    throw createError({
-      statusCode: error?.response?.status ?? 502,
-      statusMessage: error?.data?.detail?.[0]?.msg ?? error?.data?.detail ?? 'Failed to update settings'
-    })
+    body: { scan_retention_days: scanRetentionDays ?? null },
+    fallbackMessage: 'Failed to update settings'
   })
 })
