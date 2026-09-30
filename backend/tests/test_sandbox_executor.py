@@ -77,6 +77,7 @@ class FakeSandbox:
         self.fs = _Fs(root)
         self.root = root
         self.closed = False
+        self.destroyed: dict | None = None
         self.commands: list[tuple[str, list[str], float | None]] = []
 
     async def __aenter__(self):
@@ -84,6 +85,9 @@ class FakeSandbox:
 
     async def __aexit__(self, *exc_info) -> None:
         self.closed = True
+
+    async def destroy(self, **options) -> None:
+        self.destroyed = options
 
     async def create_process(self, command, args, *, kill_after=None):
         self.commands.append((command, list(args), kill_after))
@@ -151,6 +155,9 @@ def test_a_sandboxed_scan_streams_logs_and_matches_an_in_process_scan(memory_log
 
     box = created[0]
     assert box.closed
+    # Destroyed by the executor rather than the SDK, whose cleanup would delete orphaned snapshots.
+    assert box.options["destroy"] is False
+    assert box.destroyed == {}
     assert box.fs.files[RUNNER_PATH].startswith('"""Run one skillspector scan')
     assert box.commands == [("python3", [RUNNER_PATH, str(skill_dir)], 240.0)]
 
@@ -217,6 +224,22 @@ def test_a_scan_killed_without_a_report_says_why(memory_logs, tmp_path, returnco
     with pytest.raises(RuntimeError, match=message.replace("(", r"\(").replace(")", r"\)")):
         anyio.run(main)
     assert scan_logs.get_progress("s") == 1
+
+
+def test_a_failed_scan_still_destroys_its_sandbox(memory_logs, tmp_path):
+    created = []
+
+    class Box(FakeSandbox):
+        async def create_process(self, command, args, *, kill_after=None):
+            return _SilentProcess(3)
+
+    def create_sandbox(**options):
+        created.append(Box(tmp_path, **options))
+        return created[-1]
+
+    with pytest.raises(RuntimeError):
+        anyio.run(lambda: SandboxExecutor(_settings(), create_sandbox=create_sandbox).run("s", "https://github.com/acme/skill", llm=None))
+    assert created[0].destroyed == {}
 
 
 def test_sandbox_api_failures_become_a_clear_error(memory_logs, tmp_path):

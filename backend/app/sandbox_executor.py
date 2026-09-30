@@ -10,6 +10,7 @@ can fetch from.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -18,6 +19,8 @@ from app import scan_logs
 from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_runner import PREFIX
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.scanner import LLMConfig
@@ -92,6 +95,15 @@ def _llm_env(llm: LLMConfig | None) -> dict[str, str] | None:
     return env
 
 
+async def _destroy(box: Any) -> None:
+    """Destroy a finished scan's sandbox, keeping every snapshot (the default)."""
+    try:
+        await box.destroy()
+    except Exception:
+        # The scan's outcome is already known, and a stopped sandbox costs nothing.
+        logger.warning("Couldn't destroy scan sandbox %s", getattr(box, "name", "?"), exc_info=True)
+
+
 class SandboxExecutor:
     def __init__(self, settings: Settings, create_sandbox: Callable[..., Any] | None = None) -> None:
         if not settings.sandbox_snapshot_id:
@@ -110,7 +122,10 @@ class SandboxExecutor:
         settings = self._settings
         limit = settings.sandbox_timeout_seconds
         scan_logs.append(job_id, f"Starting scan of {target}")
+        box = None
         try:
+            # destroy=False: the SDK's own cleanup also deletes snapshots no other sandbox uses,
+            # which can be the one every scan boots from. The sandbox is destroyed below instead.
             async with self._create_sandbox(
                 source=SnapshotSource(snapshot_id=settings.sandbox_snapshot_id),
                 resources=SandboxResources(vcpus=settings.sandbox_vcpus),
@@ -120,6 +135,7 @@ class SandboxExecutor:
                 network_policy=scan_network_policy(llm.api_key if llm else None),
                 env=_llm_env(llm),
                 tags={"app": "skillspector-web", "scan": job_id},
+                destroy=False,
             ) as box:
                 await box.fs.write_text(RUNNER_PATH, RUNNER_SOURCE)
                 args = [RUNNER_PATH, target, *(["--llm"] if llm else [])]
@@ -129,6 +145,9 @@ class SandboxExecutor:
         except SandboxError as exc:
             scan_logs.append(job_id, f"Scan failed: {exc}")
             raise RuntimeError(f"The scan sandbox failed: {exc}") from exc
+        finally:
+            if box is not None:
+                await _destroy(box)
 
         if report is not None and returncode == 0:
             scan_logs.append(job_id, "Scan complete")
