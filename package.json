@@ -25,7 +25,6 @@
     "@iconify-json/simple-icons": "^1.2.97",
     "@nuxt/eslint": "^1.17.0",
     "@types/node": "^26.2.0",
-    "@vercel/config": "^0.7.2",
     "eslint": "^10.8.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",

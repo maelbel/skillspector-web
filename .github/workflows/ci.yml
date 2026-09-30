@@ -50,6 +50,34 @@ jobs:
       - run: pnpm run test
       - run: pnpm run build
 
+  # The hosted configuration: vercel.ts must compile, and both services must build the way Vercel
+  # builds them, including the scan queue's subscriber. Offline: no Vercel project or token needed.
+  hosted:
+    runs-on: ubuntu-latest
+    env:
+      ENABLE_EXPERIMENTAL_COREPACK: "1"
+      NUXT_PUBLIC_BOTID: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v3
+      - name: Stand in for `vercel pull`
+        run: |
+          mkdir -p .vercel
+          echo '{"projectId":"prj_ci","orgId":"team_ci","settings":{"framework":"services"}}' > .vercel/project.json
+      - run: pnpm dlx vercel@62.0.0 build --yes
+      - name: Check the build output
+        run: |
+          out=.vercel/output
+          jq -e '.crons | map(.path) | index("/api/internal/retention")' $out/config.json
+          jq -e '[.routes[] | select(.destination.service?)] | map(.destination.service) == ["web"]' $out/config.json
+          test -d $out/services/web/functions
+          ls $out/services/api/functions
+          test "$(ls -d $out/services/api/functions/*.func | wc -l)" -ge 2  # the app and the subscriber
+
   docker:
     runs-on: ubuntu-latest
     strategy:
