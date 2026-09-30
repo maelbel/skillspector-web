@@ -22,7 +22,7 @@ from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
 from app import retention
-from app.api.routes import account, admin, auth, backoffice, scan, users
+from app.api.routes import account, admin, auth, backoffice, internal, scan, users
 from app.api.routes import settings as settings_routes
 from app.auth import auth_mode
 from app.claude_login import is_claude_cli_available, kill_pending
@@ -47,7 +47,9 @@ async def lifespan(app: FastAPI):
     init_db()
     get_runner().on_startup()
     init_logging()
-    retention.start()
+    # Hosted, Vercel Cron runs the sweep (POST /internal/retention): no process lives long enough.
+    if settings.mode is Mode.SELF_HOSTED:
+        retention.start()
     yield
     retention.stop()
     kill_pending()
@@ -77,6 +79,7 @@ app.include_router(backoffice.router)
 app.include_router(scan.router)
 app.include_router(admin.router)
 app.include_router(settings_routes.router)
+app.include_router(internal.router)
 
 
 @app.get("/health")

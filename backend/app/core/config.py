@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.mode import Mode
@@ -71,6 +72,9 @@ class Settings(BaseSettings):
     # Scans allowed per client IP within the same window, across every account signed in from it.
     scan_ip_rate_limit: int = 20
     scan_retention_days: float | None = None
+    # Vercel's own variable, without our prefix: Vercel Cron sends it as a bearer token, and
+    # POST /internal/retention runs the sweep only for callers presenting it. Required in hosted mode.
+    cron_secret: str | None = Field(default=None, validation_alias="CRON_SECRET")
     # Sign-in, first-run setup and sign-up attempts allowed per client IP within the window.
     login_rate_limit: int = 10
     login_rate_limit_window_seconds: float = 300.0

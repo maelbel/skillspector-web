@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app import main
 from app.core.config import Settings
-from app.core.mode import HOSTED_NOT_IMPLEMENTED, Mode, ModeConfigError, check_mode
+from app.core.mode import Mode, ModeConfigError, check_mode
 from app.secrets_box import generate_key
 
 SECRET = generate_key()
@@ -47,23 +47,29 @@ def test_hosted_refuses_to_start_and_names_what_is_missing():
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET))
 
     message = str(excinfo.value)
-    for piece, issue in HOSTED_NOT_IMPLEMENTED.items():
-        assert f"{piece} ({issue})" in message
+    assert "CRON_SECRET" in message
     assert "DATABASE_URL" not in message
     assert "self_hosted" in message
 
 
-def test_hosted_requires_a_database_url(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
-
+def test_hosted_requires_a_database_url():
     with pytest.raises(ModeConfigError, match="SKILLSPECTOR_WEB_DATABASE_URL"):
         check_mode(_settings(Mode.HOSTED))
 
 
-def test_hosted_starts_once_every_piece_exists(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
+def test_hosted_starts_once_every_piece_exists():
+    check_mode(
+        _settings(
+            Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET, CRON_SECRET="cron"
+        )
+    )
 
-    check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET))
+
+def test_cron_secret_is_read_from_vercels_own_variable(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CRON_SECRET", "cron")
+
+    assert Settings().cron_secret == "cron"
 
 
 def test_health_reports_the_mode(monkeypatch):
@@ -76,30 +82,22 @@ def test_health_reports_the_mode(monkeypatch):
     assert response.json()["mode"] == "self_hosted"
 
 
-def test_hosted_requires_a_sandbox_snapshot(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
-
+def test_hosted_requires_a_sandbox_snapshot():
     with pytest.raises(ModeConfigError, match="SANDBOX_SNAPSHOT_ID"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector"))
 
 
-def test_hosted_refuses_to_scan_outside_the_sandbox(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
-
+def test_hosted_refuses_to_scan_outside_the_sandbox():
     with pytest.raises(ModeConfigError, match="SCAN_EXECUTOR=local"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", scan_executor="local"))
 
 
-def test_hosted_requires_a_secret_key(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
-
+def test_hosted_requires_a_secret_key():
     with pytest.raises(ModeConfigError, match="SECRET_KEY"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
 
 
-def test_hosted_refuses_in_memory_rate_limits(monkeypatch):
-    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
-
+def test_hosted_refuses_in_memory_rate_limits():
     with pytest.raises(ModeConfigError, match="RATE_LIMIT_STORE=memory"):
         check_mode(
             _settings(

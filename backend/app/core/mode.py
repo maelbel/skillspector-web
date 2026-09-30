@@ -19,13 +19,6 @@ class Mode(StrEnum):
     HOSTED = "hosted"
 
 
-# Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
-# hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
-HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "scheduled retention": "#48",
-}
-
-
 class ModeConfigError(RuntimeError):
     """The configured mode can't run with the current code or settings."""
 
@@ -56,11 +49,11 @@ def check_mode(settings: Settings) -> None:
     if settings.rate_limit_store == "memory":
         # Each instance would count on its own, multiplying every limit.
         problems.append("SKILLSPECTOR_WEB_RATE_LIMIT_STORE=memory can't hold limits across instances; leave it unset")
-    if HOSTED_NOT_IMPLEMENTED:
-        missing = ", ".join(f"{piece} ({issue})" for piece, issue in HOSTED_NOT_IMPLEMENTED.items())
-        problems.append(f"still missing: {missing}")
+    if not settings.cron_secret:
+        # No background loop runs on Vercel: retention sweeps only when Vercel Cron calls in.
+        problems.append("set CRON_SECRET so Vercel Cron can run the retention sweep")
     if problems:
         raise ModeConfigError(
-            f"SKILLSPECTOR_WEB_MODE=hosted isn't usable yet: {'; '.join(problems)}. "
+            f"SKILLSPECTOR_WEB_MODE=hosted can't start: {'; '.join(problems)}. "
             "Use SKILLSPECTOR_WEB_MODE=self_hosted (the default)."
         )
