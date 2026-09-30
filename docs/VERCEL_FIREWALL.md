@@ -1,7 +1,7 @@
 # Vercel Firewall rules (hosted version)
 
 On the hosted version the app enforces its own limits (see "Abuse limits" in the
-[README](../README.md#security-model)). These Vercel Firewall rules add a coarser limit at the edge in
+[security model](./SECURITY_MODEL.md)). These Vercel Firewall rules add a coarser limit at the edge in
 front of them. Requests the firewall blocks never reach a function, and Vercel doesn't bill for
 them. The app's limits stay the precise ones: they know who is signed in, and the firewall only
 sees addresses.

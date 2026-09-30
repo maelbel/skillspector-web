@@ -130,7 +130,7 @@ Every service in the project sees the same variables. Scope each one as shown:
 | `ENABLE_EXPERIMENTAL_COREPACK` | All | `1`, so the build uses the pnpm version pinned in `package.json`. |
 | `SKILLSPECTOR_WEB_SMTP_HOST`<br>`SKILLSPECTOR_WEB_SMTP_PORT`<br>`SKILLSPECTOR_WEB_SMTP_USERNAME`<br>`SKILLSPECTOR_WEB_SMTP_PASSWORD`<br>`SKILLSPECTOR_WEB_MAIL_FROM`<br>`SKILLSPECTOR_WEB_PUBLIC_URL` | Production | Optional: password reset emails. `PUBLIC_URL` is the production domain. Previews go without them, so they never email real users links to production. |
 
-Any other setting in the [main README](../README.md#configuration) can be set the same way. Don't
+Any other setting in the [configuration reference](./CONFIGURATION.md) can be set the same way. Don't
 set these:
 - `NUXT_API_BASE`: the binding sets it.
 - `SKILLSPECTOR_WEB_AUTH`, `SKILLSPECTOR_WEB_SCAN_EXECUTOR`, `SKILLSPECTOR_WEB_LOG_STORE` and

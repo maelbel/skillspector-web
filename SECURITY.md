@@ -23,6 +23,6 @@ Only the latest release receives security fixes.
 
 The deployment model and its deliberate trade-offs — no user accounts, a shared server Claude
 login, unrestricted custom AI base URLs — are described in the
-[README's security model](./README.md#security-model). Reports that show those boundaries being
+[security model](./docs/SECURITY_MODEL.md). Reports that show those boundaries being
 bypassed (for example reaching admin actions without the token, or scanning internal addresses)
 are in scope.
