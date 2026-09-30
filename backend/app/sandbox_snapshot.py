@@ -32,7 +32,9 @@ async def build() -> str:
 
     requirement = skillspector_requirement()
     print(f"Installing {requirement}", file=sys.stderr)
-    async with create_sandbox(execution_time_limit=15 * 60, persistent=False) as box:
+    # destroy=False: the SDK's cleanup would delete the snapshot along with this sandbox, its only
+    # user. The sandbox is destroyed once the snapshot exists, keeping the snapshot.
+    async with create_sandbox(execution_time_limit=15 * 60, persistent=False, destroy=False) as box:
         # Some dependencies (yara-python) have no wheel for the image's Python and build from source.
         await box.run_process(
             "sh",
@@ -57,6 +59,7 @@ async def build() -> str:
         )
         print(f"skillspector {check.stdout.strip()} installed", file=sys.stderr)
         snapshot = await box.snapshot(expiration=0)  # Kept until rebuilt; scans depend on it.
+    await box.destroy()
     return snapshot.id
 
 
