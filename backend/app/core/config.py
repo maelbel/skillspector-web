@@ -45,9 +45,21 @@ class Settings(BaseSettings):
     # required, scans belong to their user, and admins manage the server. Unset picks the mode's
     # default (none, or accounts when hosted).
     auth: Literal["none", "accounts"] | None = None
-    # Whether anyone may create an account; unset allows it only when hosted.
+    # Whether visitors may create their own account (with accounts on). Unset allows it; admins can
+    # also change it from the backoffice, which overrides this.
     allow_signup: bool | None = None
     session_days: float = 30.0
+    # Email (app/mail.py): password reset emails switch on when SMTP_HOST, MAIL_FROM and
+    # PUBLIC_URL are all set.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    # starttls (port 587), ssl (port 465) or none (a local relay only).
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
+    mail_from: str | None = None
+    # This app's public address, e.g. https://skillspector.example.com, for links in emails.
+    public_url: str | None = None
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
     scan_retention_days: float | None = None

@@ -67,7 +67,7 @@ def _scan(client, token: str) -> str:
 
 def test_without_accounts_everything_is_open(open_client):
     session = open_client.get("/auth/session").json()
-    assert session == {"auth": "none", "user": None, "needs_setup": False, "signup_allowed": False}
+    assert session == {"auth": "none", "user": None, "needs_setup": False, "signup_allowed": False, "email_enabled": False}
 
     scan_id = open_client.post("/scan", json={"target": "https://github.com/acme/skill"}).json()["id"]
     assert open_client.get(f"/scan/{scan_id}").status_code == 200
@@ -90,7 +90,13 @@ def test_no_admin_token_is_checked_any_more(open_client, monkeypatch):
 
 
 def test_a_fresh_server_asks_for_its_first_admin(client):
-    assert client.get("/auth/session").json() == {"auth": "accounts", "user": None, "needs_setup": True, "signup_allowed": False}
+    assert client.get("/auth/session").json() == {
+        "auth": "accounts",
+        "user": None,
+        "needs_setup": True,
+        "signup_allowed": True,
+        "email_enabled": False,
+    }
 
     token = _setup_admin(client)
 
@@ -256,7 +262,8 @@ def test_the_last_admin_cannot_be_removed(client):
 # Sign-up
 
 
-def test_sign_up_is_off_when_self_hosted(client):
+def test_sign_up_can_be_turned_off(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "allow_signup", False)
     _setup_admin(client)
 
     response = client.post("/auth/signup", json={"email": "new@example.com", "password": PASSWORD})
@@ -281,12 +288,12 @@ def test_sign_up_when_allowed(client, monkeypatch):
     ("mode", "auth_setting", "signup", "expected_auth", "expected_signup"),
     [
         (Mode.SELF_HOSTED, None, None, "none", False),
-        (Mode.SELF_HOSTED, "accounts", None, "accounts", False),
+        (Mode.SELF_HOSTED, "accounts", None, "accounts", True),
         (Mode.HOSTED, None, None, "accounts", True),
         (Mode.HOSTED, None, False, "accounts", False),
     ],
 )
-def test_auth_follows_the_mode_unless_overridden(mode, auth_setting, signup, expected_auth, expected_signup):
+def test_auth_follows_the_mode_unless_overridden(temp_db, mode, auth_setting, signup, expected_auth, expected_signup):
     settings = Settings(_env_file=None, mode=mode, auth=auth_setting, allow_signup=signup)
 
     assert auth.auth_mode(settings) == expected_auth

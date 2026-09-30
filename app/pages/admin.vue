@@ -1,294 +1,54 @@
 <script setup lang="ts">
-import type { SettingsResponse } from '~~/shared/types/settings'
-
-useSeoMeta({ title: 'Admin — Skillspector Web' })
-
+// The backoffice shell: a sidebar next to whichever section is open (pages/admin/*).
+const route = useRoute()
 const { accounts } = useAuth()
 
-const step = ref<'idle' | 'started' | 'done'>('idle')
-const loginUrl = ref('')
-const code = ref('')
-const starting = ref(false)
-const completing = ref(false)
-const errorMessage = ref('')
-const resultMessage = ref('')
-const resultSuccess = ref(false)
+const sections = computed(() => [
+  { to: '/admin', label: 'Overview', icon: 'i-lucide-layout-dashboard', exact: true },
+  ...(accounts.value ? [{ to: '/admin/users', label: 'Users', icon: 'i-lucide-users', exact: false }] : []),
+  { to: '/admin/activity', label: 'Activity', icon: 'i-lucide-scroll-text', exact: true },
+  { to: '/admin/settings', label: 'Settings', icon: 'i-lucide-settings', exact: true }
+])
 
-const stepNumber = computed(() => ({ idle: 1, started: 2, done: 3 })[step.value])
-
-async function startLogin() {
-  starting.value = true
-  errorMessage.value = ''
-
-  try {
-    const { url } = await $fetch<{ url: string }>('/api/admin/claude-login/start', { method: 'POST' })
-    loginUrl.value = url
-    step.value = 'started'
-  } catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Failed to start login')
-  } finally {
-    starting.value = false
-  }
-}
-
-async function completeLogin() {
-  if (!code.value.trim()) return
-
-  completing.value = true
-  errorMessage.value = ''
-
-  try {
-    const { success, output } = await $fetch<{ success: boolean, output: string }>(
-      '/api/admin/claude-login/complete',
-      { method: 'POST', body: { code: code.value.trim() } }
-    )
-    resultSuccess.value = success
-    resultMessage.value = output
-    step.value = 'done'
-  } catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Failed to complete login')
-  } finally {
-    completing.value = false
-  }
-}
-
-function reset() {
-  step.value = 'idle'
-  loginUrl.value = ''
-  code.value = ''
-  errorMessage.value = ''
-  resultMessage.value = ''
-}
-
-const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
-
-const retentionMode = ref<'forever' | 'days'>('forever')
-const retentionDays = ref(30)
-const savingRetention = ref(false)
-const retentionError = ref('')
-const retentionSaved = ref(false)
-
-watch(settingsData, (value) => {
-  if (!value) return
-  if (value.scan_retention_days === null) {
-    retentionMode.value = 'forever'
-  } else {
-    retentionMode.value = 'days'
-    retentionDays.value = value.scan_retention_days
-  }
-}, { immediate: true })
-
-async function saveRetention() {
-  savingRetention.value = true
-  retentionError.value = ''
-  retentionSaved.value = false
-
-  try {
-    const updated = await $fetch<SettingsResponse>('/api/settings', {
-      method: 'PUT',
-      body: {
-        scanRetentionDays: retentionMode.value === 'forever' ? null : retentionDays.value
-      }
-    })
-    settingsData.value = updated
-    retentionSaved.value = true
-  } catch (err) {
-    retentionError.value = apiErrorMessage(err, 'Failed to save')
-  } finally {
-    savingRetention.value = false
-  }
+function isActive(section: { to: string, exact: boolean }) {
+  return section.exact ? route.path === section.to : route.path.startsWith(section.to)
 }
 </script>
 
 <template>
-  <UContainer class="py-12 sm:py-14">
-    <div class="mx-auto flex max-w-xl flex-col gap-7">
-      <div class="flex flex-col gap-2">
-        <h1 class="display text-5xl text-highlighted sm:text-6xl">
-          Admin
-        </h1>
-        <p class="text-[15px] text-muted">
-          Server-wide settings{{ accounts ? ' and accounts' : '' }}.
+  <UContainer class="py-8 sm:py-10">
+    <div class="grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-10">
+      <nav
+        aria-label="Backoffice"
+        class="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[calc(var(--ui-header-height)+2rem)] lg:self-start"
+      >
+        <p class="eyebrow text-muted">
+          Backoffice
         </p>
+        <ul class="flex gap-1 overflow-x-auto lg:flex-col">
+          <li
+            v-for="section in sections"
+            :key="section.to"
+          >
+            <NuxtLink
+              :to="section.to"
+              :aria-current="isActive(section) ? 'page' : undefined"
+              class="flex h-11 items-center gap-2.5 border-l-[3px] px-3 text-sm font-semibold whitespace-nowrap transition-colors"
+              :class="isActive(section) ? 'border-brand bg-default text-highlighted' : 'border-transparent text-muted hover:bg-default/60 hover:text-highlighted'"
+            >
+              <UIcon
+                :name="section.icon"
+                class="size-4 shrink-0"
+              />
+              {{ section.label }}
+            </NuxtLink>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="min-w-0">
+        <NuxtPage />
       </div>
-
-      <UAlert
-        v-if="!accounts"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-shield-alert"
-        title="This server has no authentication"
-        description="Anyone who can reach it can use this page, including the Claude login below. Keep it on a private network or behind your reverse proxy's login, or set SKILLSPECTOR_WEB_AUTH=accounts."
-      />
-
-      <AdminUsers v-else />
-
-      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Claude CLI login
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Re-authenticates the server-wide login every visitor's Claude CLI scans share.
-            </p>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <template
-              v-for="n in 3"
-              :key="n"
-            >
-              <div
-                class="flex items-center justify-center size-6 rounded-xs text-xs font-semibold shrink-0"
-                :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
-              >
-                {{ n }}
-              </div>
-              <div
-                v-if="n < 3"
-                class="h-px flex-1"
-                :class="n < stepNumber ? 'bg-primary' : 'bg-default'"
-              />
-            </template>
-          </div>
-
-          <UButton
-            v-if="step === 'idle'"
-            icon="i-lucide-play"
-            :loading="starting"
-            @click="startLogin"
-          >
-            Start login
-          </UButton>
-
-          <template v-if="step === 'started'">
-            <UAlert
-              color="primary"
-              variant="subtle"
-              icon="i-lucide-external-link"
-              title="Visit this link to sign in"
-              :description="loginUrl"
-            />
-            <UButton
-              :to="loginUrl"
-              target="_blank"
-              variant="outline"
-              icon="i-lucide-external-link"
-            >
-              Open login page
-            </UButton>
-
-            <UFormField
-              label="Code"
-              description="Paste the code Anthropic shows you after signing in."
-            >
-              <UInput
-                id="claude-login-code"
-                v-model="code"
-                icon="i-lucide-clipboard-paste"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UButton
-              icon="i-lucide-check"
-              :loading="completing"
-              :disabled="!code.trim()"
-              @click="completeLogin"
-            >
-              Complete login
-            </UButton>
-          </template>
-
-          <template v-if="step === 'done'">
-            <UAlert
-              :color="resultSuccess ? 'primary' : 'error'"
-              variant="subtle"
-              :icon="resultSuccess ? 'i-lucide-check-circle-2' : 'i-lucide-circle-x'"
-              :title="resultSuccess ? 'Logged in' : 'Login failed'"
-            />
-            <pre class="overflow-x-auto rounded-xs bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
-            <UButton
-              variant="outline"
-              icon="i-lucide-rotate-ccw"
-              @click="reset"
-            >
-              Start over
-            </UButton>
-          </template>
-
-          <UAlert
-            v-if="errorMessage"
-            color="error"
-            variant="subtle"
-            :title="errorMessage"
-          />
-        </div>
-      </UCard>
-
-      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Scan retention
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Automatically delete scans from history after a set number of days.
-            </p>
-          </div>
-
-          <UFormField label="Keep scans">
-            <USelect
-              id="retention-mode"
-              v-model="retentionMode"
-              :items="[
-                { label: 'Forever', value: 'forever' },
-                { label: 'For a set number of days', value: 'days' }
-              ]"
-              value-key="value"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField
-            v-if="retentionMode === 'days'"
-            label="Days"
-          >
-            <UInput
-              id="retention-days"
-              v-model.number="retentionDays"
-              type="number"
-              min="1"
-              step="1"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UButton
-            icon="i-lucide-save"
-            :loading="savingRetention"
-            :disabled="retentionMode === 'days' && (!retentionDays || retentionDays <= 0)"
-            @click="saveRetention"
-          >
-            Save
-          </UButton>
-
-          <UAlert
-            v-if="retentionSaved"
-            color="primary"
-            variant="subtle"
-            icon="i-lucide-check-circle-2"
-            title="Saved"
-          />
-          <UAlert
-            v-if="retentionError"
-            color="error"
-            variant="subtle"
-            :title="retentionError"
-          />
-        </div>
-      </UCard>
     </div>
   </UContainer>
 </template>

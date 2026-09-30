@@ -19,10 +19,15 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/auth/setup` | accounts | Create the first account, as admin; `409` once any account exists. Returns `{ token, expires_at, user }`. |
 | `POST` | `/auth/login` | accounts | Sign in with `{ email, password }`. Returns `{ token, expires_at, user }`. |
 | `POST` | `/auth/signup` | accounts | Create an account when sign-up is allowed. |
+| `POST` | `/auth/forgot` | accounts | Email a reset link to `{ email }` if it has an active account. Always `202 { accepted: true }`, sent after responding. |
 | `POST` | `/auth/reset` | accounts | Set a new password with `{ token, password }` from a reset link; ends the user's other sessions and signs in. |
 | `POST` | `/auth/password` | signed in | Change your password with `{ current_password, new_password }`; your other sessions end. |
 | `POST` | `/auth/logout` | — | End the bearer token's session. |
-| `GET` · `POST` | `/admin/users` | admin | List users, or add one with `{ email, password, role }`. |
+| `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity. |
+| `GET` | `/admin/activity` | admin | The audit log, newest first: `?limit=` and `?offset=`. Returns `{ items, total }`. |
+| `GET` · `POST` | `/admin/users` | admin | The directory (`?query=` searches emails; each user has role, status, scan count, last sign-in), or add a user with `{ email, password, role }`. |
+| `GET` · `PATCH` | `/admin/users/{id}` | admin | A user with their recent scans and account history, or change `{ role, status }`. Suspending signs them out. |
+| `POST` | `/admin/users/{id}/reset-email` | admin | Email the user a reset link; `409` without SMTP. |
 | `POST` | `/admin/users/{id}/reset` | admin | Issue a one-time password reset link, valid 24 hours: `{ path, expires_at }`. Cancels earlier links. |
 | `DELETE` | `/admin/users/{id}` | admin | Remove a user and end their sessions; their scans stay. Not yourself, not the last admin. |
 | `POST` | `/scan` | rate-limited | Queue a scan. Returns `{ id, status }`. |

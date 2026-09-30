@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from app import auth, db, rate_limit
@@ -12,7 +12,9 @@ class UserResponse(BaseModel):
     id: str
     email: str
     role: str
+    status: str
     created_at: float
+    last_login_at: float | None
 
 
 class SessionResponse(BaseModel):
@@ -21,6 +23,8 @@ class SessionResponse(BaseModel):
     # Accounts are on but none exists yet: the first visitor creates the admin.
     needs_setup: bool
     signup_allowed: bool
+    # "Forgot password?" by email is available.
+    email_enabled: bool
 
 
 class CredentialsRequest(BaseModel):
@@ -59,7 +63,7 @@ def _auth_error(exc: auth.AuthError) -> HTTPException:
 def read_session(authorization: str | None = Header(default=None)) -> SessionResponse:
     mode = auth.auth_mode()
     if mode == "none":
-        return SessionResponse(auth=mode, user=None, needs_setup=False, signup_allowed=False)
+        return SessionResponse(auth=mode, user=None, needs_setup=False, signup_allowed=False, email_enabled=False)
     token = bearer_token(authorization)
     user = auth.user_for_token(token) if token else None
     return SessionResponse(
@@ -67,6 +71,7 @@ def read_session(authorization: str | None = Header(default=None)) -> SessionRes
         user=UserResponse(**auth.public_user(user)) if user else None,
         needs_setup=db.count_users() == 0,
         signup_allowed=auth.signup_allowed(),
+        email_enabled=auth.email_enabled(),
     )
 
 
@@ -89,6 +94,13 @@ def login(req: CredentialsRequest) -> TokenResponse:
 
 @router.post("/signup", response_model=TokenResponse, dependencies=[Depends(_require_accounts), Depends(_rate_limit_login)])
 def signup(req: CredentialsRequest) -> TokenResponse:
+    # On a server with no account yet, signing up is the first-run setup: that account is the admin.
+    if db.count_users() == 0:
+        try:
+            return _signed_in(auth.create_first_admin(req.email, req.password))
+        except auth.AuthError as exc:
+            if exc.status_code != 409:  # 409: someone else just became the admin; sign up normally.
+                raise _auth_error(exc) from exc
     if not auth.signup_allowed():
         raise HTTPException(status_code=403, detail="Ask an admin of this server for an account")
     try:
@@ -100,6 +112,10 @@ def signup(req: CredentialsRequest) -> TokenResponse:
 class ResetRequest(BaseModel):
     token: str
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
 
 
 class ChangePasswordRequest(BaseModel):
@@ -114,6 +130,14 @@ def reset_password(req: ResetRequest) -> TokenResponse:
         return _signed_in(auth.reset_password(req.token, req.password))
     except auth.AuthError as exc:
         raise _auth_error(exc) from exc
+
+
+@router.post("/forgot", status_code=202, dependencies=[Depends(_require_accounts), Depends(_rate_limit_login)])
+def forgot_password(req: ForgotPasswordRequest, background: BackgroundTasks) -> dict[str, bool]:
+    """Email a reset link if the address has an active account. The answer is the same either way,
+    and the email is sent after responding, so neither the reply nor its timing tells who has one."""
+    background.add_task(auth.request_password_reset, req.email)
+    return {"accepted": True}
 
 
 @router.post("/password", status_code=204, dependencies=[Depends(_require_accounts), Depends(_rate_limit_login)])

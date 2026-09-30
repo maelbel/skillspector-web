@@ -125,8 +125,8 @@ def get_user_by_email(email: str) -> dict[str, Any] | None:
     return _store_or_raise().get_user_by_email(email)
 
 
-def list_users() -> list[dict[str, Any]]:
-    return _store_or_raise().list_users()
+def list_users(*, query: str | None = None) -> list[dict[str, Any]]:
+    return _store_or_raise().list_users(query=query)
 
 
 def count_users() -> int:
@@ -169,3 +169,52 @@ def create_password_reset(*, token_hash: str, user_id: str, created_at: float, e
 
 def consume_password_reset(token_hash: str, *, now: float) -> str | None:
     return _store_or_raise().consume_password_reset(token_hash, now=now)
+
+
+def update_user(user_id: str, *, role: str | None = None, status: str | None = None) -> None:
+    _store_or_raise().update_user(user_id, role=role, status=status)
+
+
+def record_login(user_id: str, at: float) -> None:
+    _store_or_raise().record_login(user_id, at)
+
+
+def count_active_admins() -> int:
+    return _store_or_raise().count_active_admins()
+
+
+def get_allow_signup() -> bool | None:
+    return _store_or_raise().get_allow_signup()
+
+
+def set_allow_signup(value: bool | None) -> None:
+    _store_or_raise().set_allow_signup(value)
+
+
+def add_audit(
+    *,
+    created_at: float,
+    actor_id: str | None,
+    actor_email: str | None,
+    action: str,
+    target_id: str | None = None,
+    target_email: str | None = None,
+    detail: str | None = None,
+) -> None:
+    _store_or_raise().add_audit(
+        created_at=created_at,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        action=action,
+        target_id=target_id,
+        target_email=target_email,
+        detail=detail,
+    )
+
+
+def list_audit(limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
+    return _store_or_raise().list_audit(limit, offset, target_id=target_id)
+
+
+def overview_stats(*, since: float) -> dict[str, Any]:
+    return _store_or_raise().overview_stats(since=since)

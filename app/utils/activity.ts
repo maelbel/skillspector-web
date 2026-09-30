@@ -1,0 +1,44 @@
+import type { ActivityEntry } from '~~/shared/types/backoffice'
+
+// How each audit action reads in the activity log: "<actor> <verb> <target>".
+const VERBS: Record<string, { verb: string, icon: string }> = {
+  'account.created': { verb: 'created the account of', icon: 'i-lucide-user-plus' },
+  'user.role_changed': { verb: 'changed the role of', icon: 'i-lucide-shield-half' },
+  'user.suspended': { verb: 'suspended', icon: 'i-lucide-user-x' },
+  'user.reactivated': { verb: 'reactivated', icon: 'i-lucide-user-check' },
+  'user.deleted': { verb: 'deleted', icon: 'i-lucide-trash-2' },
+  'password.reset_link_created': { verb: 'created a password reset link for', icon: 'i-lucide-link' },
+  'password.reset_email_sent': { verb: 'emailed a password reset link to', icon: 'i-lucide-mail' },
+  'password.reset': { verb: 'reset the password of', icon: 'i-lucide-key-round' },
+  'password.changed': { verb: 'changed the password of', icon: 'i-lucide-key-round' },
+  'settings.retention_changed': { verb: 'changed scan retention', icon: 'i-lucide-archive' },
+  'settings.signup_changed': { verb: 'turned sign-up', icon: 'i-lucide-door-open' }
+}
+
+export interface ActivityLine {
+  icon: string
+  actor: string
+  verb: string
+  // Omitted when the actor acted on their own account ("signed up", "changed their password").
+  target: string | null
+  detail: string | null
+}
+
+export function describeActivity(entry: ActivityEntry): ActivityLine {
+  const known = VERBS[entry.action] ?? { verb: entry.action, icon: 'i-lucide-dot' }
+  const actor = entry.actor_email ?? 'Someone'
+  const self = entry.actor_id !== null && entry.actor_id === entry.target_id
+  if (self && entry.action === 'account.created') {
+    return { icon: known.icon, actor, verb: entry.detail === 'signed up' ? 'signed up' : 'created the first admin account', target: null, detail: null }
+  }
+  if (self && entry.action === 'password.reset_email_sent') {
+    return { icon: known.icon, actor, verb: 'asked for a password reset email', target: null, detail: null }
+  }
+  if (self && entry.action.startsWith('password.')) {
+    return { icon: known.icon, actor, verb: known.verb.replace(/ (of|for|to)$/, '').replace('the password', 'their password'), target: null, detail: entry.detail }
+  }
+  if (entry.action === 'settings.signup_changed') {
+    return { icon: known.icon, actor, verb: `${known.verb} ${entry.detail ?? ''}`.trim(), target: null, detail: null }
+  }
+  return { icon: known.icon, actor, verb: known.verb, target: entry.target_email, detail: entry.detail }
+}

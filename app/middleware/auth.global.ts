@@ -1,17 +1,20 @@
-// With accounts on, every page but /login and /reset-password needs a session, and /admin needs the
-// admin role.
+// Pages a signed-out visitor may open when accounts are on. `/` shows the landing page to them.
+const PUBLIC_PATHS = new Set(['/', '/login', '/signup', '/forgot-password', '/reset-password'])
+// Pages meant only for signed-out visitors: signed-in users go back to where they were heading.
+const SIGNED_OUT_ONLY = new Set(['/login', '/signup', '/forgot-password'])
+
+// With accounts on, everything but the public pages needs a session, and /admin needs the admin role.
 export default defineNuxtRouteMiddleware(async (to) => {
   const { session, accounts, user, isAdmin, refresh } = useAuth()
   if (!session.value) await refresh()
   if (!session.value) return // API unreachable: let the page show its own error.
 
-  if (to.path === '/login') {
+  if (SIGNED_OUT_ONLY.has(to.path)) {
     if (!accounts.value || user.value) return navigateTo(typeof to.query.redirect === 'string' ? to.query.redirect : '/')
     return
   }
-  if (to.path === '/reset-password') return
-  if (accounts.value && !user.value) {
-    return navigateTo({ path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} })
+  if (accounts.value && !user.value && !PUBLIC_PATHS.has(to.path)) {
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
-  if (to.path === '/admin' && !isAdmin.value) return navigateTo('/')
+  if (to.path.startsWith('/admin') && !isAdmin.value) return navigateTo('/')
 })
