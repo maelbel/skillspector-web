@@ -60,10 +60,9 @@ async function submit() {
           label="New password"
           description="At least 10 characters."
         >
-          <UInput
+          <PasswordInput
             id="reset-password"
             v-model="password"
-            type="password"
             autocomplete="new-password"
             size="lg"
             class="w-full"
@@ -75,10 +74,9 @@ async function submit() {
           label="Confirm new password"
           :error="mismatch ? 'The passwords don’t match' : undefined"
         >
-          <UInput
+          <PasswordInput
             id="reset-password-confirm"
             v-model="confirm"
-            type="password"
             autocomplete="new-password"
             size="lg"
             class="w-full"

@@ -64,10 +64,9 @@ async function submit() {
         label="Password"
         description="At least 10 characters."
       >
-        <UInput
+        <PasswordInput
           id="signup-password"
           v-model="password"
-          type="password"
           autocomplete="new-password"
           size="lg"
           class="w-full"
@@ -78,10 +77,9 @@ async function submit() {
         label="Confirm password"
         :error="mismatch ? 'The passwords don’t match' : undefined"
       >
-        <UInput
+        <PasswordInput
           id="signup-confirm"
           v-model="confirm"
-          type="password"
           autocomplete="new-password"
           size="lg"
           class="w-full"

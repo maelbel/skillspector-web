@@ -221,10 +221,9 @@ async function addUser() {
             label="Password"
             description="At least 10 characters."
           >
-            <UInput
+            <PasswordInput
               id="new-user-password"
               v-model="password"
-              type="password"
               autocomplete="new-password"
               class="w-full"
               required

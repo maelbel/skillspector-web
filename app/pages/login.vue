@@ -69,10 +69,9 @@ async function submit() {
             Forgot password?
           </ULink>
         </template>
-        <UInput
+        <PasswordInput
           id="login-password"
           v-model="password"
-          type="password"
           :autocomplete="setup ? 'new-password' : 'current-password'"
           size="lg"
           class="w-full"
