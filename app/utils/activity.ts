@@ -11,6 +11,8 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'password.reset_email_sent': { verb: 'emailed a password reset link to', icon: 'i-lucide-mail' },
   'password.reset': { verb: 'reset the password of', icon: 'i-lucide-key-round' },
   'password.changed': { verb: 'changed the password of', icon: 'i-lucide-key-round' },
+  'account.claude_connected': { verb: 'connected a Claude key for', icon: 'i-lucide-plug' },
+  'account.claude_disconnected': { verb: 'disconnected the Claude key of', icon: 'i-lucide-unplug' },
   'settings.retention_changed': { verb: 'changed scan retention', icon: 'i-lucide-archive' },
   'settings.signup_changed': { verb: 'turned sign-up', icon: 'i-lucide-door-open' }
 }
@@ -33,6 +35,12 @@ export function describeActivity(entry: ActivityEntry): ActivityLine {
   }
   if (self && entry.action === 'password.reset_email_sent') {
     return { icon: known.icon, actor, verb: 'asked for a password reset email', target: null, detail: null }
+  }
+  if (self && entry.action === 'account.claude_connected') {
+    return { icon: known.icon, actor, verb: 'connected their Claude key', target: null, detail: entry.detail }
+  }
+  if (self && entry.action === 'account.claude_disconnected') {
+    return { icon: known.icon, actor, verb: 'disconnected their Claude key', target: null, detail: null }
   }
   if (self && entry.action.startsWith('password.')) {
     return { icon: known.icon, actor, verb: known.verb.replace(/ (of|for|to)$/, '').replace('the password', 'their password'), target: null, detail: entry.detail }

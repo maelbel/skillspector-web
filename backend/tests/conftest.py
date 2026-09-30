@@ -4,8 +4,15 @@ import os
 
 import pytest
 
+from app.core.config import Settings, get_settings
+
+# Tests never read the developer's .env / .env.local: those can hold real SMTP or API credentials,
+# and a test must never send a real email or call a real provider with them.
+Settings.model_config["env_file"] = ()
+get_settings.cache_clear()
+
+# Imported only now, so nothing has cached settings read from the real files.
 from app import db
-from app.core.config import get_settings
 
 # Point this at a throwaway Postgres database to run every storage test on both engines.
 # Its tables are dropped before each test.
@@ -16,7 +23,7 @@ def _reset_postgres(url: str) -> None:
     import psycopg
 
     with psycopg.connect(url, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines, users, sessions, password_resets, audit_log")
+        conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines, users, sessions, password_resets, audit_log, llm_credentials, scan_secrets")
 
 
 @pytest.fixture(

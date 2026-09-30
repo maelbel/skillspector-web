@@ -14,7 +14,8 @@ export default defineEventHandler(async (event) => {
       llm: llm
         ? {
             provider: llm.provider,
-            api_key: llm.apiKey,
+            use_saved_key: llm.useSavedKey ?? false,
+            api_key: llm.useSavedKey ? undefined : llm.apiKey,
             base_url: llm.baseUrl,
             model: llm.model
           }

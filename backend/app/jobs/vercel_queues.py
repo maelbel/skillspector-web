@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from vercel.queue import DuplicateIdempotencyKeyError, QueueClient
 
-from app import db
+from app import claude_key, db
 from app.core.config import get_settings
 from app.scanner import Job, LLMConfig
 
@@ -27,14 +27,16 @@ class VercelQueuesRunner:
         return db.count_active_scans() >= get_settings().max_queued_scans
 
     def check(self, llm: LLMConfig | None) -> None:
-        # A queued message is stored for hours, so it must never carry an API key. Per-user keys,
-        # fetched by the worker at run time, come with #46.
-        if llm is not None:
+        # Queue messages carry only the scan id, never a key: the worker gets it at run time, from
+        # the user's saved key or from the one-off key held encrypted for this scan.
+        if llm is not None and llm.provider != "anthropic":
             from app.jobs.base import JobRejectedError
 
-            raise JobRejectedError("AI review isn't available on this server yet; run a static scan instead")
+            raise JobRejectedError("Only Claude (Anthropic) is available for AI review on this server")
 
     async def submit(self, job: Job) -> None:
+        if job.llm is not None and not job.llm.use_saved_key and job.llm.api_key:
+            claude_key.hold_for_scan(job.id, job.llm.api_key)
         # The scan id doubles as the idempotency key, so a retried request can't queue it twice.
         try:
             await self._client.send(

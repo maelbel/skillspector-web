@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
-from app import auth, db, rate_limit
+from app import auth, claude_key, db, rate_limit
 from app.auth.deps import CurrentViewer, bearer_token
 from app.core.config import get_settings
 
@@ -25,6 +25,9 @@ class SessionResponse(BaseModel):
     signup_allowed: bool
     # "Forgot password?" by email is available.
     email_enabled: bool
+    # Users can save their own Claude key, and the signed-in user's saved key, if any.
+    claude_key_available: bool
+    claude_key: dict | None
 
 
 class CredentialsRequest(BaseModel):
@@ -63,7 +66,15 @@ def _auth_error(exc: auth.AuthError) -> HTTPException:
 def read_session(authorization: str | None = Header(default=None)) -> SessionResponse:
     mode = auth.auth_mode()
     if mode == "none":
-        return SessionResponse(auth=mode, user=None, needs_setup=False, signup_allowed=False, email_enabled=False)
+        return SessionResponse(
+            auth=mode,
+            user=None,
+            needs_setup=False,
+            signup_allowed=False,
+            email_enabled=False,
+            claude_key_available=False,
+            claude_key=None,
+        )
     token = bearer_token(authorization)
     user = auth.user_for_token(token) if token else None
     return SessionResponse(
@@ -72,6 +83,8 @@ def read_session(authorization: str | None = Header(default=None)) -> SessionRes
         needs_setup=db.count_users() == 0,
         signup_allowed=auth.signup_allowed(),
         email_enabled=auth.email_enabled(),
+        claude_key_available=claude_key.available(),
+        claude_key=claude_key.status(user["id"]) if user and claude_key.available() else None,
     )
 
 

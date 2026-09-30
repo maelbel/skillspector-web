@@ -15,7 +15,15 @@ class ScanStore(Protocol):
     def close(self) -> None: ...
 
     def insert_scan(
-        self, *, id: str, target: str, status: str, created_at: float, provider: str | None, owner_id: str | None = None
+        self,
+        *,
+        id: str,
+        target: str,
+        status: str,
+        created_at: float,
+        provider: str | None,
+        owner_id: str | None = None,
+        llm_model: str | None = None,
     ) -> None: ...
 
     def update_scan(
@@ -121,6 +129,22 @@ class ScanStore(Protocol):
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]: ...
 
     def overview_stats(self, *, since: float) -> dict[str, Any]: ...
+
+    # Stored AI provider keys and per-scan one-off keys, both encrypted by the caller.
+
+    def set_llm_credential(
+        self, *, user_id: str, provider: str, encrypted_key: str, key_hint: str, now: float
+    ) -> None: ...
+
+    def get_llm_credential(self, user_id: str) -> dict[str, Any] | None: ...
+
+    def delete_llm_credential(self, user_id: str) -> bool: ...
+
+    def put_scan_secret(self, *, scan_id: str, encrypted_key: str, now: float) -> None: ...
+
+    def get_scan_secret(self, scan_id: str) -> str | None: ...
+
+    def delete_scan_secret(self, scan_id: str) -> None: ...
 
 
 

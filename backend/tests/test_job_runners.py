@@ -101,12 +101,14 @@ def test_in_process_runner_fails_scans_left_over_from_a_previous_process(temp_db
 # Vercel Queues runner
 
 
-def test_queue_runner_never_takes_ai_scans(temp_db):
+def test_queue_runner_takes_claude_scans_only(temp_db):
     runner = VercelQueuesRunner(client=object())
 
-    with pytest.raises(JobRejectedError):
-        runner.check(LLMConfig(provider="anthropic", api_key="sk-ant-secret"))
+    runner.check(LLMConfig(provider="anthropic", api_key="sk-ant-secret"))
     runner.check(None)
+    for provider in ("openai", "ollama", "claude_cli"):
+        with pytest.raises(JobRejectedError):
+            runner.check(LLMConfig(provider=provider, api_key="k"))
 
 
 def test_queue_runner_leaves_other_instances_scans_alone_on_startup(temp_db):

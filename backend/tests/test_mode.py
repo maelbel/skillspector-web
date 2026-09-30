@@ -7,6 +7,9 @@ from pydantic import ValidationError
 from app import main
 from app.core.config import Settings
 from app.core.mode import HOSTED_NOT_IMPLEMENTED, Mode, ModeConfigError, check_mode
+from app.secrets_box import generate_key
+
+SECRET = generate_key()
 
 
 def test_mode_defaults_to_self_hosted(tmp_path, monkeypatch):
@@ -41,7 +44,7 @@ def test_self_hosted_always_starts():
 
 def test_hosted_refuses_to_start_and_names_what_is_missing():
     with pytest.raises(ModeConfigError) as excinfo:
-        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
+        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET))
 
     message = str(excinfo.value)
     for piece, issue in HOSTED_NOT_IMPLEMENTED.items():
@@ -60,7 +63,7 @@ def test_hosted_requires_a_database_url(monkeypatch):
 def test_hosted_starts_once_every_piece_exists(monkeypatch):
     monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
 
-    check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
+    check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET))
 
 
 def test_health_reports_the_mode(monkeypatch):
@@ -85,3 +88,10 @@ def test_hosted_refuses_to_scan_outside_the_sandbox(monkeypatch):
 
     with pytest.raises(ModeConfigError, match="SCAN_EXECUTOR=local"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", scan_executor="local"))
+
+
+def test_hosted_requires_a_secret_key(monkeypatch):
+    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
+
+    with pytest.raises(ModeConfigError, match="SECRET_KEY"):
+        check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))

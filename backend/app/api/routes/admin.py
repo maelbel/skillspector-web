@@ -3,8 +3,19 @@ from pydantic import BaseModel
 
 from app.auth.deps import require_admin
 from app.claude_login import complete_claude_login, start_claude_login
+from app.core.config import get_settings
+from app.core.mode import Mode
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+def _self_hosted_only() -> None:
+    # A hosted server has no shared Claude login: users bring their own key (app/claude_key.py).
+    if get_settings().mode is Mode.HOSTED:
+        raise HTTPException(status_code=404, detail="There's no server-wide Claude login on this server")
+
+
+router = APIRouter(
+    prefix="/admin", tags=["admin"], dependencies=[Depends(_self_hosted_only), Depends(require_admin)]
+)
 
 
 class ClaudeLoginStartResponse(BaseModel):

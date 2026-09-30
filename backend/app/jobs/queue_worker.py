@@ -11,9 +11,9 @@ import time
 
 from vercel.queue import Message, subscribe
 
-from app import db, scan_logs, scanner
+from app import claude_key, db, scan_logs, scanner
 from app.jobs.vercel_queues import SCAN_TOPIC
-from app.scanner import Job, JobStatus
+from app.scanner import Job, JobStatus, LLMConfig
 
 # A delivery beyond this means earlier attempts never finished, usually because the function was
 # stopped mid-scan. Give up and say so rather than retry forever.
@@ -27,6 +27,7 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
 
     scan = db.get_scan(message.payload["scan_id"])
     if scan is None or scan["status"] in (JobStatus.DONE, JobStatus.ERROR):
+        db.delete_scan_secret(message.payload["scan_id"])
         return  # Deleted, or already handled by an earlier delivery.
 
     if message.metadata.delivery_count > MAX_DELIVERIES:
@@ -37,6 +38,33 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
             result=None,
             error=f"The scan didn't finish after {MAX_DELIVERIES} attempts",
         )
+        db.delete_scan_secret(scan["id"])
         return
 
-    await scanner.run_job(Job(id=scan["id"], target=scan["target"], llm=None))
+    try:
+        llm = _llm_for(scan)
+    except _NoKeyError as exc:
+        db.update_scan(id=scan["id"], status=JobStatus.ERROR, finished_at=time.time(), result=None, error=str(exc))
+        return
+    try:
+        await scanner.run_job(Job(id=scan["id"], target=scan["target"], llm=llm))
+    finally:
+        # A one-off key lives only as long as its scan.
+        db.delete_scan_secret(scan["id"])
+
+
+class _NoKeyError(Exception):
+    pass
+
+
+def _llm_for(scan: dict) -> LLMConfig | None:
+    """The scan's AI settings, with its key fetched now: the one-off key held for it, else the
+    owner's saved key. Keys never travel in queue messages."""
+    if not scan["provider"]:
+        return None
+    key = claude_key.held_for_scan(scan["id"])
+    if key is None and scan.get("owner_id"):
+        key = claude_key.saved_key(scan["owner_id"])
+    if key is None:
+        raise _NoKeyError("No Claude key is available for this scan: connect one on your account page and scan again")
+    return LLMConfig(provider=scan["provider"], api_key=key, model=scan.get("llm_model"))

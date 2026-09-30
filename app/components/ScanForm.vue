@@ -31,6 +31,10 @@ const PROVIDER_ICONS: Record<LLMProvider, string> = {
   claude_cli: 'i-lucide-terminal'
 }
 
+const { session } = useAuth()
+// A hosted server offers Claude only: no shared login, no other providers.
+const hosted = computed(() => health.value?.mode === 'hosted')
+
 const providerOptions = computed(() => {
   const claudeCliLabel = healthPending.value
     ? 'Claude CLI (checking availability…)'
@@ -43,6 +47,7 @@ const providerOptions = computed(() => {
     { value: 'openai', label: PROVIDER_LABELS.openai, icon: PROVIDER_ICONS.openai },
     { value: 'ollama', label: PROVIDER_LABELS.ollama, icon: PROVIDER_ICONS.ollama }
   ]
+  if (hosted.value) return withKey.filter(option => option.value === 'anthropic')
   // The zero-setup option goes first when it works.
   return health.value?.claude_cli_available ? [claudeCli, ...withKey] : [...withKey, claudeCli]
 })
@@ -148,8 +153,17 @@ function savePrefs() {
 }
 
 // Default to the server's Claude login when it's available, unless the visitor picked before.
-watch(() => health.value?.claude_cli_available, (available) => {
-  if (available && !hasStoredProvider.value) provider.value = 'claude_cli'
+// Default provider, unless the visitor picked one before: their own saved Claude key first, then
+// the server's Claude login when it's available.
+watch([() => session.value?.claude_key, () => health.value?.claude_cli_available], ([saved, cliAvailable]) => {
+  if (hasStoredProvider.value) return
+  if (saved) provider.value = 'anthropic'
+  else if (cliAvailable) provider.value = 'claude_cli'
+}, { immediate: true })
+
+// A remembered provider this server doesn't offer (e.g. after it became hosted) falls back to Claude.
+watch([hosted, provider], ([isHosted, current]) => {
+  if (isHosted && current !== 'anthropic') provider.value = 'anthropic'
 }, { immediate: true })
 
 // Measured on this deployment: static scans of a repo or SKILL.md take about a minute.
@@ -171,7 +185,12 @@ const depthOptions = computed(() => [
   }
 ])
 
-const needsApiKey = computed(() => provider.value !== 'ollama' && provider.value !== 'claude_cli')
+// The Claude key saved to the user's account (app/claude_key.py on the API), used unless they
+// choose to paste a different one for this scan.
+const savedKey = computed(() => session.value?.claude_key ?? null)
+const useOtherKey = ref(false)
+const usingSavedKey = computed(() => provider.value === 'anthropic' && !!savedKey.value && !useOtherKey.value)
+const needsApiKey = computed(() => provider.value !== 'ollama' && provider.value !== 'claude_cli' && !usingSavedKey.value)
 const claudeCliUnauthenticated = computed(() =>
   provider.value === 'claude_cli' && !healthPending.value && !health.value?.claude_cli_available
 )
@@ -205,7 +224,8 @@ async function submit() {
   const llm: LLMConfig | undefined = useLlm.value
     ? {
         provider: provider.value,
-        apiKey: apiKey.value.trim() || undefined,
+        useSavedKey: usingSavedKey.value || undefined,
+        apiKey: usingSavedKey.value ? undefined : apiKey.value.trim() || undefined,
         baseUrl: baseUrl.value.trim() || undefined,
         model: model.value.trim() || undefined
       }
@@ -353,10 +373,33 @@ async function submit() {
           />
         </UFormField>
 
+        <div
+          v-if="usingSavedKey"
+          class="flex flex-wrap items-center justify-between gap-2 border-l-[3px] border-brand bg-default px-3 py-2.5 text-sm"
+        >
+          <span class="flex items-center gap-2 text-default">
+            <UIcon
+              name="i-lucide-plug"
+              class="size-4 shrink-0 text-brand-ink"
+            />
+            Using your saved Claude key
+            <code class="font-mono text-xs text-highlighted">{{ savedKey?.hint }}</code>
+          </span>
+          <button
+            type="button"
+            class="cursor-pointer text-xs font-semibold text-muted underline underline-offset-2 hover:text-highlighted"
+            @click="useOtherKey = true"
+          >
+            Use a different key for this scan
+          </button>
+        </div>
+
         <UFormField
           v-if="needsApiKey"
           label="API key"
-          description="Sent only for this scan, used to call the provider directly, never stored."
+          :description="hosted
+            ? 'Used only for this scan: held encrypted until it has run, then deleted.'
+            : 'Sent only for this scan, used to call the provider directly, never stored.'"
         >
           <template
             v-if="API_KEY_LINKS[provider]"
@@ -378,6 +421,27 @@ async function submit() {
             class="w-full"
             :disabled="submitting"
           />
+          <template
+            v-if="provider === 'anthropic' && savedKey"
+            #help
+          >
+            <button
+              type="button"
+              class="cursor-pointer font-semibold underline underline-offset-2 hover:text-highlighted"
+              @click="useOtherKey = false; apiKey = ''"
+            >
+              Use my saved key ({{ savedKey.hint }}) instead
+            </button>
+          </template>
+          <template
+            v-else-if="provider === 'anthropic' && session?.claude_key_available"
+            #help
+          >
+            Tired of pasting it? <ULink
+              to="/account"
+              class="font-semibold underline underline-offset-2"
+            >Save your key to your account</ULink>.
+          </template>
         </UFormField>
 
         <UAlert
@@ -406,7 +470,7 @@ async function submit() {
           <template #content>
             <div class="flex flex-col gap-3">
               <UFormField
-                v-if="provider !== 'claude_cli'"
+                v-if="provider !== 'claude_cli' && !hosted"
                 label="Base URL"
                 description="Override for a proxy or an OpenAI-compatible endpoint."
               >

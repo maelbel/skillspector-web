@@ -4,6 +4,7 @@ import type { SettingsResponse } from '~~/shared/types/settings'
 useSeoMeta({ title: 'Admin — Skillspector Web' })
 
 const { accounts, session } = useAuth()
+const { data: health } = useHealth()
 
 useSeoMeta({ title: 'Settings — Backoffice — Skillspector Web' })
 
@@ -199,7 +200,10 @@ SKILLSPECTOR_WEB_PUBLIC_URL=https://skillspector.example.com</pre>
         </div>
       </UCard>
 
-      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
+      <UCard
+        v-if="health?.mode !== 'hosted'"
+        :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
+      >
         <div class="flex flex-col gap-4">
           <div>
             <h2 class="text-lg font-semibold tracking-tight text-highlighted">

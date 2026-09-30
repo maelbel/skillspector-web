@@ -116,6 +116,29 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC)",
         ],
     ),
+    (
+        6,
+        [
+            """
+            CREATE TABLE llm_credentials (
+                user_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                encrypted_key TEXT NOT NULL,
+                key_hint TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE scan_secrets (
+                scan_id TEXT PRIMARY KEY,
+                encrypted_key TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """,
+            "ALTER TABLE scans ADD COLUMN llm_model TEXT",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -170,11 +193,19 @@ class SQLiteStore:
 
     @_locked
     def insert_scan(
-        self, *, id: str, target: str, status: str, created_at: float, provider: str | None, owner_id: str | None = None
+        self,
+        *,
+        id: str,
+        target: str,
+        status: str,
+        created_at: float,
+        provider: str | None,
+        owner_id: str | None = None,
+        llm_model: str | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider, owner_id),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (id, target, status, created_at, provider, owner_id, llm_model),
         )
         self._conn.commit()
 
@@ -228,6 +259,7 @@ class SQLiteStore:
     def delete_scan(self, id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM scans WHERE id = ?", (id,))
         self._conn.execute("DELETE FROM scan_log_lines WHERE scan_id = ?", (id,))
+        self._conn.execute("DELETE FROM scan_secrets WHERE scan_id = ?", (id,))
         self._conn.commit()
         return cursor.rowcount > 0
 
@@ -239,6 +271,7 @@ class SQLiteStore:
             (cutoff,),
         )
         self._conn.execute("DELETE FROM scan_log_lines WHERE scan_id NOT IN (SELECT id FROM scans)")
+        self._conn.execute("DELETE FROM scan_secrets WHERE scan_id NOT IN (SELECT id FROM scans)")
         self._conn.commit()
         return cursor.rowcount
 
@@ -352,6 +385,7 @@ class SQLiteStore:
     def delete_user(self, id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM users WHERE id = ?", (id,))
         self._conn.execute("DELETE FROM sessions WHERE user_id = ?", (id,))
+        self._conn.execute("DELETE FROM llm_credentials WHERE user_id = ?", (id,))
         self._conn.commit()
         return cursor.rowcount > 0
 
@@ -509,3 +543,50 @@ class SQLiteStore:
             (since,),
         ).fetchone()
         return {"users": dict(users), "scans": dict(scans)}
+
+    # Stored AI provider keys (encrypted by the caller; see app/secrets_box.py).
+
+    @_locked
+    def set_llm_credential(
+        self, *, user_id: str, provider: str, encrypted_key: str, key_hint: str, now: float
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO llm_credentials (user_id, provider, encrypted_key, key_hint, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id) DO UPDATE SET
+                provider = excluded.provider, encrypted_key = excluded.encrypted_key,
+                key_hint = excluded.key_hint, updated_at = excluded.updated_at
+            """,
+            (user_id, provider, encrypted_key, key_hint, now, now),
+        )
+        self._conn.commit()
+
+    @_locked
+    def get_llm_credential(self, user_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM llm_credentials WHERE user_id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+    @_locked
+    def delete_llm_credential(self, user_id: str) -> bool:
+        cursor = self._conn.execute("DELETE FROM llm_credentials WHERE user_id = ?", (user_id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
+
+    @_locked
+    def put_scan_secret(self, *, scan_id: str, encrypted_key: str, now: float) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO scan_secrets (scan_id, encrypted_key, created_at) VALUES (?, ?, ?)",
+            (scan_id, encrypted_key, now),
+        )
+        self._conn.commit()
+
+    @_locked
+    def get_scan_secret(self, scan_id: str) -> str | None:
+        row = self._conn.execute("SELECT encrypted_key FROM scan_secrets WHERE scan_id = ?", (scan_id,)).fetchone()
+        return row["encrypted_key"] if row else None
+
+    @_locked
+    def delete_scan_secret(self, scan_id: str) -> None:
+        self._conn.execute("DELETE FROM scan_secrets WHERE scan_id = ?", (scan_id,))
+        self._conn.commit()

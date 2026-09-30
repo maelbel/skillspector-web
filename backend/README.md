@@ -23,6 +23,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/auth/reset` | accounts | Set a new password with `{ token, password }` from a reset link; ends the user's other sessions and signs in. |
 | `POST` | `/auth/password` | signed in | Change your password with `{ current_password, new_password }`; your other sessions end. |
 | `POST` | `/auth/logout` | — | End the bearer token's session. |
+| `GET` · `PUT` · `DELETE` | `/account/claude` | signed in | Your saved Claude key: status `{ provider, hint, updated_at }` (never the key), connect or replace with `{ api_key }` (checked with Anthropic first), or disconnect. Needs accounts and `SECRET_KEY`. |
 | `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity. |
 | `GET` | `/admin/activity` | admin | The audit log, newest first: `?limit=` and `?offset=`. Returns `{ items, total }`. |
 | `GET` · `POST` | `/admin/users` | admin | The directory (`?query=` searches emails; each user has role, status, scan count, last sign-in), or add a user with `{ email, password, role }`. |
@@ -114,6 +115,15 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     message; the VM is destroyed when the scan ends either way.
   - AI review isn't supported in the sandbox yet: #46 will broker the user's provider key at the
     sandbox firewall so it never enters the VM.
+- **Saved Claude keys** (`app/claude_key.py`, `app/secrets_box.py`). A scan request with
+  `"llm": { "provider": "anthropic", "use_saved_key": true }` uses the key saved to the user's
+  account. Where the key comes from depends on the runner:
+  - In-process runner: the key is decrypted when the scan is queued and held in memory for it.
+  - Queue runner: messages still carry only the scan id. The worker decrypts the user's saved key,
+    or the one-off key held encrypted in `scan_secrets`, when the scan runs, and deletes the held
+    key afterwards.
+  - Sandbox executor: skillspector in the VM gets a placeholder key. The sandbox firewall adds the
+    real one as `x-api-key` on requests to `api.anthropic.com`, the only extra host allowed.
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.

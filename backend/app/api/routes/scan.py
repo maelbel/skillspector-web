@@ -3,10 +3,11 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
-from app import db, rate_limit
+from app import claude_key, db, rate_limit
 from app.auth import Viewer
 from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
+from app.core.mode import Mode
 from app.jobs import JobRejectedError, get_runner
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
@@ -101,16 +102,36 @@ def _to_response(job: Job) -> ScanStatusResponse:
     )
 
 
+def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
+    """Apply the mode's provider rules and swap in the user's saved Claude key when asked for."""
+    if llm is None:
+        return None
+    if get_settings().mode is Mode.HOSTED:
+        # No shared Claude login, and no server-side requests to arbitrary URLs.
+        if llm.provider != "anthropic":
+            raise HTTPException(status_code=422, detail="Only Claude (Anthropic) is available for AI review on this server")
+        if llm.base_url:
+            raise HTTPException(status_code=422, detail="A custom base URL isn't allowed on this server")
+    if not llm.use_saved_key:
+        return llm
+    key = claude_key.saved_key(viewer.user_id) if viewer.user_id and claude_key.available() else None
+    if key is None:
+        raise HTTPException(status_code=400, detail="Connect your Claude key on your account page first, or paste a key for this scan")
+    # Held in memory for this scan only; the queue runner never stores a saved key again.
+    return llm.model_copy(update={"api_key": key})
+
+
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
+    llm = _resolve_llm(req.llm, viewer)
     runner = get_runner()
     try:
-        runner.check(req.llm)
+        runner.check(llm)
     except JobRejectedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if runner.is_full():
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
-    job = create_job(req.target, req.llm, owner_id=viewer.user_id)
+    job = create_job(req.target, llm, owner_id=viewer.user_id)
     try:
         await runner.submit(job)
     except Exception as exc:

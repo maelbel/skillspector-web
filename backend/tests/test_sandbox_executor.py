@@ -12,7 +12,9 @@ from app import db, scan_logs, scanner
 from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_executor import (
+    ANTHROPIC_HOST,
     BLOCKED_SUBNETS,
+    BROKERED_KEY_PLACEHOLDER,
     RUNNER_PATH,
     SCAN_HOSTS,
     SandboxExecutor,
@@ -21,6 +23,7 @@ from app.sandbox_executor import (
 from app.sandbox_runner import PREFIX
 from app.sandbox_snapshot import skillspector_requirement
 from app.scan_logs import MemoryLogStore
+from app.scanner import LLMConfig
 
 SKILL_MD = """---
 name: demo
@@ -134,7 +137,7 @@ def test_a_sandboxed_scan_streams_logs_and_matches_an_in_process_scan(memory_log
     created, create_sandbox = sandboxes
     executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
 
-    report = anyio.run(lambda: executor.run("scan1", str(skill_dir), use_llm=False))
+    report = anyio.run(lambda: executor.run("scan1", str(skill_dir), llm=None))
 
     local = scanner._invoke_graph("local", str(skill_dir), False)
     assert _comparable(report) == _comparable(local)
@@ -155,7 +158,7 @@ def test_a_sandboxed_scan_streams_logs_and_matches_an_in_process_scan(memory_log
 def test_the_sandbox_is_locked_down(memory_logs, skill_dir, sandboxes):
     created, create_sandbox = sandboxes
 
-    anyio.run(lambda: SandboxExecutor(_settings(sandbox_vcpus=1), create_sandbox=create_sandbox).run("s", str(skill_dir), use_llm=False))
+    anyio.run(lambda: SandboxExecutor(_settings(sandbox_vcpus=1), create_sandbox=create_sandbox).run("s", str(skill_dir), llm=None))
 
     options = created[0].options
     assert options["persistent"] is False
@@ -172,7 +175,7 @@ def test_a_failing_scan_reports_the_runners_error(memory_logs, tmp_path, sandbox
     executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
 
     with pytest.raises(RuntimeError) as excinfo:
-        anyio.run(lambda: executor.run("s", str(tmp_path / "missing"), use_llm=False))
+        anyio.run(lambda: executor.run("s", str(tmp_path / "missing"), llm=None))
 
     assert str(excinfo.value)
     assert scan_logs.get_logs("s")[-1] == f"Scan failed: {excinfo.value}"
@@ -209,7 +212,7 @@ def test_a_scan_killed_without_a_report_says_why(memory_logs, tmp_path, returnco
     executor = SandboxExecutor(_settings(), create_sandbox=lambda **options: Box(tmp_path, **options))
 
     async def main():
-        return await executor.run("s", "https://github.com/acme/skill", use_llm=False)
+        return await executor.run("s", "https://github.com/acme/skill", llm=None)
 
     with pytest.raises(RuntimeError, match=message.replace("(", r"\(").replace(")", r"\)")):
         anyio.run(main)
@@ -223,15 +226,41 @@ def test_sandbox_api_failures_become_a_clear_error(memory_logs, tmp_path):
     executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
 
     with pytest.raises(RuntimeError, match="The scan sandbox failed"):
-        anyio.run(lambda: executor.run("s", "https://github.com/acme/skill", use_llm=False))
+        anyio.run(lambda: executor.run("s", "https://github.com/acme/skill", llm=None))
 
 
-def test_ai_review_never_runs_in_the_sandbox(memory_logs, sandboxes):
+def test_ai_review_brokers_the_key_at_the_firewall(memory_logs, skill_dir, sandboxes):
+    created, create_sandbox = sandboxes
+    executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
+    llm = LLMConfig(provider="anthropic", api_key="sk-ant-real-secret-key-123", model="claude-sonnet-5")
+
+    anyio.run(lambda: executor.run("s", str(skill_dir), llm=llm))
+
+    box = created[0]
+    policy = dict(box.options["network_policy"].allow)
+    rule = next(iter(policy[ANTHROPIC_HOST]))
+    assert dict(next(iter(rule.transform)).headers) == {"x-api-key": "sk-ant-real-secret-key-123"}
+    env = box.options["env"]
+    assert env == {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER, "SKILLSPECTOR_MODEL": "claude-sonnet-5"}
+    assert "sk-ant-real" not in " ".join(box.fs.files.values())
+    assert box.commands[0][1][-1] == "--llm"
+
+
+def test_static_scans_never_reach_anthropic(memory_logs, skill_dir, sandboxes):
+    created, create_sandbox = sandboxes
+
+    anyio.run(lambda: SandboxExecutor(_settings(), create_sandbox=create_sandbox).run("s", str(skill_dir), llm=None))
+
+    assert ANTHROPIC_HOST not in dict(created[0].options["network_policy"].allow)
+    assert created[0].options["env"] is None
+
+
+def test_only_claude_runs_in_the_sandbox(memory_logs, sandboxes):
     created, create_sandbox = sandboxes
     executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
 
-    with pytest.raises(RuntimeError, match="AI review"):
-        anyio.run(lambda: executor.run("s", "https://github.com/acme/skill", use_llm=True))
+    with pytest.raises(RuntimeError, match="Anthropic"):
+        anyio.run(lambda: executor.run("s", "https://github.com/acme/skill", llm=LLMConfig(provider="openai", api_key="sk-x")))
     assert created == []
 
 
@@ -251,7 +280,7 @@ def test_a_version_mismatch_is_logged(memory_logs, tmp_path, monkeypatch):
 
     executor = SandboxExecutor(_settings(), create_sandbox=lambda **options: Box(tmp_path, **options))
 
-    assert anyio.run(lambda: executor.run("s", "t", use_llm=False)) == {"issues": []}
+    assert anyio.run(lambda: executor.run("s", "t", llm=None)) == {"issues": []}
     assert any("runs skillspector 0.0.1" in line for line in scan_logs.get_logs("s"))
 
 
@@ -272,8 +301,8 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, use_llm):
-            calls.append((job_id, target, use_llm))
+        async def run(self, job_id, target, *, llm):
+            calls.append((job_id, target, llm))
             return {"risk_assessment": {"score": 1}, "issues": []}
 
     monkeypatch.setattr(scanner, "executor_kind", lambda settings: "sandbox")
@@ -282,7 +311,7 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
 
     anyio.run(scanner.run_job, scanner.Job(id="a", target="https://github.com/acme/skill", llm=None))
 
-    assert calls == [("a", "https://github.com/acme/skill", False)]
+    assert calls == [("a", "https://github.com/acme/skill", None)]
     assert db.get_scan("a")["status"] == "done"
 
 

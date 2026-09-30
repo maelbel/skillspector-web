@@ -118,6 +118,29 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC)",
         ],
     ),
+    (
+        6,
+        [
+            """
+            CREATE TABLE llm_credentials (
+                user_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                encrypted_key TEXT NOT NULL,
+                key_hint TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE scan_secrets (
+                scan_id TEXT PRIMARY KEY,
+                encrypted_key TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            "ALTER TABLE scans ADD COLUMN llm_model TEXT",
+        ],
+    ),
 ]
 
 
@@ -164,11 +187,19 @@ class PostgresStore:
         self._pool.close()
 
     def insert_scan(
-        self, *, id: str, target: str, status: str, created_at: float, provider: str | None, owner_id: str | None = None
+        self,
+        *,
+        id: str,
+        target: str,
+        status: str,
+        created_at: float,
+        provider: str | None,
+        owner_id: str | None = None,
+        llm_model: str | None = None,
     ) -> None:
         self._execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id) VALUES (%s, %s, %s, %s, %s, %s)",
-            (id, target, status, created_at, provider, owner_id),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (id, target, status, created_at, provider, owner_id, llm_model),
         )
 
     def update_scan(
@@ -216,6 +247,7 @@ class PostgresStore:
         with self._pool.connection() as conn, conn.transaction():
             deleted = conn.execute("DELETE FROM scans WHERE id = %s", (id,)).rowcount
             conn.execute("DELETE FROM scan_log_lines WHERE scan_id = %s", (id,))
+            conn.execute("DELETE FROM scan_secrets WHERE scan_id = %s", (id,))
         return deleted > 0
 
     def delete_scans_older_than(self, cutoff: float) -> int:
@@ -226,6 +258,7 @@ class PostgresStore:
                 (cutoff,),
             ).rowcount
             conn.execute("DELETE FROM scan_log_lines WHERE scan_id NOT IN (SELECT id FROM scans)")
+            conn.execute("DELETE FROM scan_secrets WHERE scan_id NOT IN (SELECT id FROM scans)")
         return deleted
 
     def get_retention_days(self) -> float | None:
@@ -331,6 +364,7 @@ class PostgresStore:
         with self._pool.connection() as conn, conn.transaction():
             deleted = conn.execute("DELETE FROM users WHERE id = %s", (id,)).rowcount
             conn.execute("DELETE FROM sessions WHERE user_id = %s", (id,))
+            conn.execute("DELETE FROM llm_credentials WHERE user_id = %s", (id,))
         return deleted > 0
 
     def create_session(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
@@ -463,3 +497,43 @@ class PostgresStore:
                 (since,),
             ).fetchone()
         return {"users": users, "scans": scans}
+
+    # Stored AI provider keys (encrypted by the caller; see app/secrets_box.py).
+
+    def set_llm_credential(
+        self, *, user_id: str, provider: str, encrypted_key: str, key_hint: str, now: float
+    ) -> None:
+        self._execute(
+            """
+            INSERT INTO llm_credentials (user_id, provider, encrypted_key, key_hint, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                provider = excluded.provider, encrypted_key = excluded.encrypted_key,
+                key_hint = excluded.key_hint, updated_at = excluded.updated_at
+            """,
+            (user_id, provider, encrypted_key, key_hint, now, now),
+        )
+
+    def get_llm_credential(self, user_id: str) -> dict[str, Any] | None:
+        with self._pool.connection() as conn:
+            return conn.execute("SELECT * FROM llm_credentials WHERE user_id = %s", (user_id,)).fetchone()
+
+    def delete_llm_credential(self, user_id: str) -> bool:
+        return self._execute("DELETE FROM llm_credentials WHERE user_id = %s", (user_id,)) > 0
+
+    def put_scan_secret(self, *, scan_id: str, encrypted_key: str, now: float) -> None:
+        self._execute(
+            """
+            INSERT INTO scan_secrets (scan_id, encrypted_key, created_at) VALUES (%s, %s, %s)
+            ON CONFLICT (scan_id) DO UPDATE SET encrypted_key = excluded.encrypted_key
+            """,
+            (scan_id, encrypted_key, now),
+        )
+
+    def get_scan_secret(self, scan_id: str) -> str | None:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT encrypted_key FROM scan_secrets WHERE scan_id = %s", (scan_id,)).fetchone()
+        return row["encrypted_key"] if row else None
+
+    def delete_scan_secret(self, scan_id: str) -> None:
+        self._execute("DELETE FROM scan_secrets WHERE scan_id = %s", (scan_id,))
