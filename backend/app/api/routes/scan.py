@@ -20,6 +20,7 @@ from app.scanner import (
     get_job,
     list_jobs,
 )
+from app.targets import raw_file_url
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -49,7 +50,8 @@ class ScanRequest(BaseModel):
         if not value.startswith(get_settings().allowed_target_schemes):
             allowed = " or ".join(get_settings().allowed_target_schemes)
             raise ValueError(f"target must start with {allowed} (a Git repo, zip, or file URL)")
-        return value
+        # Stored rewritten too, so the history shows what was actually scanned.
+        return raw_file_url(value)
 
 
 class ScanQueuedResponse(BaseModel):

@@ -91,6 +91,12 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
 - **Deployment mode.** `SKILLSPECTOR_WEB_MODE` is `self_hosted` by default, which is everything
   described here. `hosted` (Vercel) swaps in the hosted piece of each part below, and refuses to
   start while a setting it needs is missing, listing each one.
+- **File links.** skillspector downloads a single-file link as is, so a code host's file view
+  (GitHub's `/blob/`) would be scanned as the page's HTML. `POST /scan` rewrites these links to the
+  raw file first (`app/targets.py`), and stores the rewritten target:
+  - GitHub `/blob/` and `/raw/` become `raw.githubusercontent.com`.
+  - GitLab `/-/blob/` becomes `/-/raw/`.
+  - Hugging Face `/blob/` becomes `/resolve/`.
 - **Storage.** `app/db.py` is the only module the app calls; it delegates to a SQLite or Postgres
   store (`app/storage/`). Each store applies its versioned migrations on startup and records them in
   `schema_migrations`; existing SQLite databases are adopted as they are. Scans aren't copied
