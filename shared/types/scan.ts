@@ -4,6 +4,8 @@ export type LLMProvider = 'anthropic' | 'openai' | 'ollama' | 'claude_cli'
 
 export interface LLMConfig {
   provider: LLMProvider
+  // Use the Claude key saved to the signed-in user's account instead of apiKey.
+  useSavedKey?: boolean
   apiKey?: string
   baseUrl?: string
   model?: string

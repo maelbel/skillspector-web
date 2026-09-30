@@ -36,10 +36,23 @@ def close_db() -> None:
 
 
 def insert_scan(
-    *, id: str, target: str, status: str, created_at: float, provider: str | None, owner_id: str | None = None
+    *,
+    id: str,
+    target: str,
+    status: str,
+    created_at: float,
+    provider: str | None,
+    owner_id: str | None = None,
+    llm_model: str | None = None,
 ) -> None:
     _store_or_raise().insert_scan(
-        id=id, target=target, status=status, created_at=created_at, provider=provider, owner_id=owner_id
+        id=id,
+        target=target,
+        status=status,
+        created_at=created_at,
+        provider=provider,
+        owner_id=owner_id,
+        llm_model=llm_model,
     )
 
 
@@ -218,3 +231,29 @@ def list_audit(limit: int, offset: int, *, target_id: str | None = None) -> tupl
 
 def overview_stats(*, since: float) -> dict[str, Any]:
     return _store_or_raise().overview_stats(since=since)
+
+
+def set_llm_credential(*, user_id: str, provider: str, encrypted_key: str, key_hint: str, now: float) -> None:
+    _store_or_raise().set_llm_credential(
+        user_id=user_id, provider=provider, encrypted_key=encrypted_key, key_hint=key_hint, now=now
+    )
+
+
+def get_llm_credential(user_id: str) -> dict[str, Any] | None:
+    return _store_or_raise().get_llm_credential(user_id)
+
+
+def delete_llm_credential(user_id: str) -> bool:
+    return _store_or_raise().delete_llm_credential(user_id)
+
+
+def put_scan_secret(*, scan_id: str, encrypted_key: str, now: float) -> None:
+    _store_or_raise().put_scan_secret(scan_id=scan_id, encrypted_key=encrypted_key, now=now)
+
+
+def get_scan_secret(scan_id: str) -> str | None:
+    return _store_or_raise().get_scan_secret(scan_id)
+
+
+def delete_scan_secret(scan_id: str) -> None:
+    _store_or_raise().delete_scan_secret(scan_id)

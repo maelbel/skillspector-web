@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { accounts, user } = useAuth()
+const { accounts, user, session } = useAuth()
 
 useSeoMeta({ title: 'Account — Skillspector Web' })
 
@@ -47,6 +47,16 @@ async function save() {
           </template>
         </p>
       </div>
+
+      <ClaudeKeyCard v-if="session?.claude_key_available" />
+      <UAlert
+        v-else-if="user?.role === 'admin'"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-key-round"
+        title="Saved Claude keys are off on this server"
+        description="To let users connect their own Claude key, set SKILLSPECTOR_WEB_SECRET_KEY on the API (generate one with python -m app.secrets_box) and restart it."
+      />
 
       <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <form

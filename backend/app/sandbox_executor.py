@@ -12,12 +12,15 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterable, Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from app import scan_logs
 from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_runner import PREFIX
+
+if TYPE_CHECKING:
+    from app.scanner import LLMConfig
 
 ExecutorKind = Literal["local", "sandbox"]
 
@@ -58,13 +61,35 @@ def executor_kind(settings: Settings) -> ExecutorKind:
     return "sandbox" if settings.mode is Mode.HOSTED else "local"
 
 
-def scan_network_policy() -> Any:
-    from vercel.sandbox import NetworkPolicy, NetworkPolicySubnets
+ANTHROPIC_HOST = "api.anthropic.com"
+# What skillspector inside the VM sees as its Anthropic key. The real key never enters the VM: the
+# sandbox firewall sets the x-api-key header on the way out to api.anthropic.com.
+BROKERED_KEY_PLACEHOLDER = "brokered-at-the-sandbox-firewall"
 
-    return NetworkPolicy.custom(
-        allow={host: () for host in SCAN_HOSTS},
-        subnets=NetworkPolicySubnets(deny=list(BLOCKED_SUBNETS)),
+
+def scan_network_policy(api_key: str | None = None) -> Any:
+    """Code hosts only; with AI review, also Anthropic, with the key added by the firewall."""
+    from vercel.sandbox import (
+        NetworkPolicy,
+        NetworkPolicyRule,
+        NetworkPolicySubnets,
+        NetworkPolicyTransform,
     )
+
+    allow: dict[str, Any] = {host: () for host in SCAN_HOSTS}
+    if api_key:
+        allow[ANTHROPIC_HOST] = [NetworkPolicyRule(transform=[NetworkPolicyTransform(headers={"x-api-key": api_key})])]
+    return NetworkPolicy.custom(allow=allow, subnets=NetworkPolicySubnets(deny=list(BLOCKED_SUBNETS)))
+
+
+def _llm_env(llm: LLMConfig | None) -> dict[str, str] | None:
+    """Provider settings for skillspector inside the VM: everything but the key itself."""
+    if llm is None:
+        return None
+    env = {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER}
+    if llm.model:
+        env["SKILLSPECTOR_MODEL"] = llm.model
+    return env
 
 
 class SandboxExecutor:
@@ -76,10 +101,9 @@ class SandboxExecutor:
             from vercel.sandbox import create_sandbox
         self._create_sandbox = create_sandbox
 
-    async def run(self, job_id: str, target: str, *, use_llm: bool) -> dict[str, Any]:
-        if use_llm:
-            # Provider keys will be brokered at the sandbox firewall (#46), never passed into the VM.
-            raise RuntimeError("AI review can't run in the scan sandbox yet")
+    async def run(self, job_id: str, target: str, *, llm: LLMConfig | None) -> dict[str, Any]:
+        if llm is not None and (llm.provider != "anthropic" or not llm.api_key):
+            raise RuntimeError("AI review in the scan sandbox needs a Claude (Anthropic) key")
 
         from vercel.sandbox import SandboxError, SandboxResources, SnapshotSource
 
@@ -93,11 +117,13 @@ class SandboxExecutor:
                 # A little headroom over the scan itself for boot and upload.
                 execution_time_limit=limit + 60,
                 persistent=False,
-                network_policy=scan_network_policy(),
+                network_policy=scan_network_policy(llm.api_key if llm else None),
+                env=_llm_env(llm),
                 tags={"app": "skillspector-web", "scan": job_id},
             ) as box:
                 await box.fs.write_text(RUNNER_PATH, RUNNER_SOURCE)
-                process = await box.create_process("python3", [RUNNER_PATH, target], kill_after=limit)
+                args = [RUNNER_PATH, target, *(["--llm"] if llm else [])]
+                process = await box.create_process("python3", args, kill_after=limit)
                 report, error = await self._consume(job_id, process.stdout)
                 returncode = await process.wait()
         except SandboxError as exc:

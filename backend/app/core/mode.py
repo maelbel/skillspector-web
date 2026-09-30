@@ -22,7 +22,6 @@ class Mode(StrEnum):
 # Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
 # hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
 HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "per-user Claude connection": "#46",
     "shared rate limiting": "#47",
     "scheduled retention": "#48",
 }
@@ -48,6 +47,10 @@ def check_mode(settings: Settings) -> None:
         problems.append("set SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID (build one with `python -m app.sandbox_snapshot`)")
     if settings.auth == "none":
         problems.append("SKILLSPECTOR_WEB_AUTH=none isn't allowed on a public service; leave it unset")
+    from app import secrets_box
+
+    if not secrets_box.is_configured(settings):
+        problems.append("set SKILLSPECTOR_WEB_SECRET_KEY (generate one with `python -m app.secrets_box`)")
     if settings.log_store == "memory":
         # Scans run in another instance than the one serving their logs.
         problems.append("SKILLSPECTOR_WEB_LOG_STORE=memory can't work across instances; leave it unset")

@@ -67,7 +67,7 @@ def _scan(client, token: str) -> str:
 
 def test_without_accounts_everything_is_open(open_client):
     session = open_client.get("/auth/session").json()
-    assert session == {"auth": "none", "user": None, "needs_setup": False, "signup_allowed": False, "email_enabled": False}
+    assert session == {"auth": "none", "user": None, "needs_setup": False, "signup_allowed": False, "email_enabled": False, "claude_key_available": False, "claude_key": None}
 
     scan_id = open_client.post("/scan", json={"target": "https://github.com/acme/skill"}).json()["id"]
     assert open_client.get(f"/scan/{scan_id}").status_code == 200
@@ -96,6 +96,8 @@ def test_a_fresh_server_asks_for_its_first_admin(client):
         "needs_setup": True,
         "signup_allowed": True,
         "email_enabled": False,
+        "claude_key_available": False,
+        "claude_key": None,
     }
 
     token = _setup_admin(client)

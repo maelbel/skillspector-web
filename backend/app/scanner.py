@@ -46,9 +46,15 @@ class LLMConfig(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    # Use the Claude key saved to the user's account instead of api_key (app/claude_key.py).
+    use_saved_key: bool = False
 
     @model_validator(mode="after")
     def _require_key_for_hosted_providers(self) -> LLMConfig:
+        if self.use_saved_key:
+            if self.provider != "anthropic":
+                raise ValueError("a saved key is only for the anthropic provider")
+            return self
         if self.provider not in _NO_API_KEY_PROVIDERS and not (self.api_key and self.api_key.strip()):
             raise ValueError(f"{self.provider} requires an api_key")
         return self
@@ -84,6 +90,7 @@ def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = Non
         created_at=job.created_at,
         provider=llm.provider if llm else None,
         owner_id=owner_id,
+        llm_model=llm.model if llm else None,
     )
     return job
 
@@ -125,7 +132,7 @@ async def run_job(job: Job) -> None:
     loop = asyncio.get_running_loop()
     try:
         if executor_kind(get_settings()) == "sandbox":
-            job.result = await _sandbox_executor().run(job.id, job.target, use_llm=job.llm is not None)
+            job.result = await _sandbox_executor().run(job.id, job.target, llm=job.llm)
         elif job.llm is not None:
             async with _llm_lock:
                 with _llm_env(job.llm):

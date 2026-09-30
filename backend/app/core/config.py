@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     mail_from: str | None = None
     # This app's public address, e.g. https://skillspector.example.com, for links in emails.
     public_url: str | None = None
+    # Encrypts stored API keys at rest (app/secrets_box.py); generate with `python -m app.secrets_box`.
+    # Without it users can't save a Claude key. Required in hosted mode.
+    secret_key: str | None = None
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
     scan_retention_days: float | None = None

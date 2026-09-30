@@ -13,18 +13,21 @@ if not _known_working:
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
 from app import retention
-from app.api.routes import admin, auth, backoffice, scan, users
+from app.api.routes import account, admin, auth, backoffice, scan, users
 from app.api.routes import settings as settings_routes
 from app.auth import auth_mode
 from app.claude_login import is_claude_cli_available, kill_pending
 from app.core.config import get_settings
-from app.core.mode import check_mode
+from app.core.mode import Mode, check_mode
 from app.db import init_db
 from app.jobs import get_runner
 from app.scan_logs import init_logging
@@ -59,7 +62,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI's default 422 echoes the submitted values back, which for a scan request includes
+    the API key. Keep where and why, drop what was sent."""
+    errors = [{k: v for k, v in error.items() if k not in ("input", "ctx", "url")} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
+
 app.include_router(auth.router)
+app.include_router(account.router)
 app.include_router(users.router)
 app.include_router(backoffice.router)
 app.include_router(scan.router)
@@ -76,5 +88,6 @@ def health() -> dict:
         "auth": auth_mode(),
         "skillspector_version": skillspector_version,
         "llm_available": llm_available,
-        "claude_cli_available": is_claude_cli_available(),
+        # Hosted servers have no shared Claude login to check.
+        "claude_cli_available": settings.mode is Mode.SELF_HOSTED and is_claude_cli_available(),
     }

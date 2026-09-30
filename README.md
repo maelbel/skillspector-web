@@ -102,6 +102,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `ALLOW_SIGNUP` | *unset* | With accounts, whether visitors may create their own account from the landing page. Unset allows it; admins can also turn it on and off in the backoffice, which takes precedence. The very first account is always the admin. |
 | `SESSION_DAYS` | `30` | How long a sign-in lasts. |
 | `SMTP_HOST`<br>`SMTP_PORT`<br>`SMTP_USERNAME`<br>`SMTP_PASSWORD`<br>`SMTP_SECURITY` | *unset*<br>`587`<br>*unset*<br>*unset*<br>`starttls` | SMTP server for password reset emails: any provider works (your own, your mailbox provider's, or a sending service such as Resend). `SMTP_SECURITY` is `starttls` (port 587), `ssl` (465) or `none` (a local relay only). |
+| `SECRET_KEY` | *unset* | Encrypts the Claude keys users save to their account (AES-256-GCM). Generate one with `uv run python -m app.secrets_box`. Without it, users paste a key per scan. Required in hosted mode. Keep it: if it changes, saved keys can't be decrypted and users have to connect again. |
 | `MAIL_FROM` | *unset* | Sender of those emails, e.g. `Skillspector <noreply@example.com>`. |
 | `PUBLIC_URL` | *unset* | This app's public address, e.g. `https://skillspector.example.com`, used for links in emails. Email features switch on when `SMTP_HOST`, `MAIL_FROM` and `PUBLIC_URL` are all set. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
@@ -419,8 +420,18 @@ isn't protected:
   the app's environment passed in.
 - **Custom AI base URLs are not restricted.** A visitor-supplied Base URL makes the server send
   requests to that address — another reason not to expose the app without authentication.
-- **API keys** are held in memory only for the duration of the scan that uses them; they are never
-  written to the database, logs or browser storage.
+- **API keys.**
+  - A key pasted for one scan is held in memory only while that scan runs. On a hosted server,
+    whose queue can't hold it in memory, it's kept encrypted until the scan has run, then deleted.
+  - A Claude key a user saves to their account (Account → Claude) is checked with Anthropic,
+    encrypted with `SECRET_KEY` and bound to that user, and only ever shown back as a hint
+    (`…a1b2`). It's decrypted only for that user's own scans, and deleted on disconnect or
+    account deletion.
+  - Keys never appear in API responses, including validation errors, nor in logs, the activity
+    log or browser storage.
+  - In a hosted sandbox the key doesn't even enter the VM: the sandbox firewall adds it to requests
+    to `api.anthropic.com`.
+  - Hosted servers offer Claude only, with no shared Claude login and no custom base URLs.
 
 Found a vulnerability? Please report it privately — see [SECURITY.md](./SECURITY.md).
 
