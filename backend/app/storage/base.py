@@ -152,3 +152,7 @@ def risk_columns(result: dict[str, Any] | None) -> tuple[Any, Any, Any]:
     """The summary columns denormalised from a report, so history can list scans without it."""
     risk = (result or {}).get("risk_assessment") or {}
     return risk.get("score"), risk.get("severity"), risk.get("recommendation")
+
+    def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
+        """Record a hit for key if fewer than `limit` fell within the window; None when recorded,
+        otherwise seconds until one frees up. Expired hits of every key are dropped on the way."""

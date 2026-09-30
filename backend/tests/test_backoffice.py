@@ -7,7 +7,6 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from app import rate_limit
 from app.auth import passwords
 from app.core.config import get_settings
 from app.main import app
@@ -73,7 +72,6 @@ def client(temp_db, fake_runner, monkeypatch):
     monkeypatch.setattr(settings, "allow_signup", None)
     for field in ("smtp_host", "mail_from", "public_url"):
         monkeypatch.setattr(settings, field, None)
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     return TestClient(app)
 
 

@@ -1,8 +1,13 @@
+// BotID (Vercel bot detection) guards scan submissions on the hosted version only; it needs
+// Vercel's edge, so self-hosted builds leave it out. Read at build time and at runtime.
+const botId = process.env.NUXT_PUBLIC_BOTID === 'true'
+
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@nuxt/fonts'
+    '@nuxt/fonts',
+    ...(botId ? ['botid/nuxt'] : [])
   ],
 
   devtools: {
@@ -23,7 +28,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     apiBase: process.env.NUXT_API_BASE || 'http://localhost:8000',
-    trustProxy: false
+    trustProxy: false,
+    public: {
+      botid: botId
+    }
   },
 
   compatibilityDate: '2026-09-03',

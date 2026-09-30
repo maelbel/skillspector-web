@@ -23,7 +23,9 @@ def _reset_postgres(url: str) -> None:
     import psycopg
 
     with psycopg.connect(url, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS scans, app_settings, schema_migrations, scan_log_lines, users, sessions, password_resets, audit_log, llm_credentials, scan_secrets")
+        # Every table, including ones added by later migrations, without listing them here.
+        conn.execute("DROP SCHEMA public CASCADE")
+        conn.execute("CREATE SCHEMA public")
 
 
 @pytest.fixture(
@@ -80,3 +82,13 @@ def fake_runner(monkeypatch):
     runner = FakeRunner()
     monkeypatch.setattr(scan_routes, "get_runner", lambda: runner)
     return runner
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """Every test starts with no hits counted, and the limiter re-reads the settings."""
+    from app import rate_limit
+
+    rate_limit.reset()
+    yield
+    rate_limit.reset()

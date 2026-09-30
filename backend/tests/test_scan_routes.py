@@ -3,13 +3,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, rate_limit
+from app import db
 from app.main import app
 
 
 @pytest.fixture
 def client(temp_db, fake_runner, monkeypatch):
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     client = TestClient(app)
     client.scheduled = fake_runner.submitted
     return client

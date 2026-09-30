@@ -139,6 +139,21 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN llm_model TEXT",
         ],
     ),
+    (
+        7,
+        [
+            """
+            CREATE TABLE rate_limit_hits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL,
+                hit_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_rate_limit_hits_key ON rate_limit_hits (key, hit_at DESC)",
+            "CREATE INDEX idx_rate_limit_hits_expires ON rate_limit_hits (expires_at)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -590,3 +605,22 @@ class SQLiteStore:
     def delete_scan_secret(self, scan_id: str) -> None:
         self._conn.execute("DELETE FROM scan_secrets WHERE scan_id = ?", (scan_id,))
         self._conn.commit()
+
+    # Rate limits (app/rate_limit.py), when SKILLSPECTOR_WEB_RATE_LIMIT_STORE=database.
+
+    @_locked
+    def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
+        self._conn.execute("DELETE FROM rate_limit_hits WHERE expires_at <= ?", (now,))
+        recent = self._conn.execute(
+            "SELECT hit_at FROM rate_limit_hits WHERE key = ? AND hit_at > ? ORDER BY hit_at DESC LIMIT ?",
+            (key, now - window_seconds, limit),
+        ).fetchall()
+        if len(recent) >= limit:
+            self._conn.commit()
+            return recent[-1]["hit_at"] + window_seconds - now
+        self._conn.execute(
+            "INSERT INTO rate_limit_hits (key, hit_at, expires_at) VALUES (?, ?, ?)",
+            (key, now, now + window_seconds),
+        )
+        self._conn.commit()
+        return None

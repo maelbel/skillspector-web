@@ -22,7 +22,6 @@ class Mode(StrEnum):
 # Hosted-mode pieces that don't exist yet, with the issue tracking each. Remove an entry when its
 # hosted implementation lands; until this is empty, `hosted` refuses to start rather than half-work.
 HOSTED_NOT_IMPLEMENTED: dict[str, str] = {
-    "shared rate limiting": "#47",
     "scheduled retention": "#48",
 }
 
@@ -54,6 +53,9 @@ def check_mode(settings: Settings) -> None:
     if settings.log_store == "memory":
         # Scans run in another instance than the one serving their logs.
         problems.append("SKILLSPECTOR_WEB_LOG_STORE=memory can't work across instances; leave it unset")
+    if settings.rate_limit_store == "memory":
+        # Each instance would count on its own, multiplying every limit.
+        problems.append("SKILLSPECTOR_WEB_RATE_LIMIT_STORE=memory can't hold limits across instances; leave it unset")
     if HOSTED_NOT_IMPLEMENTED:
         missing = ", ".join(f"{piece} ({issue})" for piece, issue in HOSTED_NOT_IMPLEMENTED.items())
         problems.append(f"still missing: {missing}")

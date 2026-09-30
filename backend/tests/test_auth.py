@@ -5,7 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, db, rate_limit
+from app import auth, db
 from app.auth import passwords
 from app.core.config import Settings, get_settings
 from app.core.mode import Mode, ModeConfigError, check_mode
@@ -27,14 +27,12 @@ def _fast_hashing(monkeypatch):
 def client(temp_db, fake_runner, monkeypatch):
     monkeypatch.setattr(get_settings(), "auth", "accounts")
     monkeypatch.setattr(get_settings(), "allow_signup", None)
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     return TestClient(app)
 
 
 @pytest.fixture
 def open_client(temp_db, fake_runner, monkeypatch):
     monkeypatch.setattr(get_settings(), "auth", "none")
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     return TestClient(app)
 
 

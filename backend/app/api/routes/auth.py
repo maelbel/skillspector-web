@@ -44,8 +44,7 @@ class TokenResponse(BaseModel):
 def _rate_limit_login(request: Request) -> None:
     settings = get_settings()
     key = f"login:{rate_limit.client_key(request)}"
-    if not rate_limit.check(key, settings.login_rate_limit, settings.login_rate_limit_window_seconds):
-        raise HTTPException(status_code=429, detail="Too many attempts from this address — try again shortly")
+    rate_limit.enforce(key, settings.login_rate_limit, settings.login_rate_limit_window_seconds, "Too many attempts from this address")
 
 
 def _require_accounts() -> None:

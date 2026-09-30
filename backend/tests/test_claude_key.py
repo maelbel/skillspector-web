@@ -4,7 +4,7 @@ import anyio
 import pytest
 from fastapi.testclient import TestClient
 
-from app import claude_key, db, rate_limit, scanner, secrets_box
+from app import claude_key, db, scanner, secrets_box
 from app.auth import passwords
 from app.core.config import Settings, get_settings
 from app.core.mode import Mode
@@ -50,7 +50,6 @@ def client(temp_db, fake_runner, anthropic, monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "auth", "accounts")
     monkeypatch.setattr(settings, "secret_key", secrets_box.generate_key())
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     client = TestClient(app)
     client.submitted = fake_runner.submitted
     return client

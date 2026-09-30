@@ -51,8 +51,13 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
   - `admin` endpoints need the admin role (`403`).
 
 The web app keeps the token in an `httpOnly` cookie and adds the header when it proxies a request.
-Sign-in attempts and scan submissions are rate-limited per client IP (`429`), keyed on the
-`X-Forwarded-For` value the web proxy sets.
+Rate limits answer `429` with a `Retry-After` header and a message saying when to try again:
+
+- `POST /scan`: per signed-in user (`SCAN_RATE_LIMIT`, or per client IP with `AUTH=none`), plus a
+  per-IP cap across every account signed in from one address (`SCAN_IP_RATE_LIMIT`).
+- Sign-in, setup, sign-up, password reset and password change: per client IP (`LOGIN_RATE_LIMIT`).
+
+The client IP is the `X-Forwarded-For` value the web proxy sets.
 
 ### Starting a scan
 
@@ -136,6 +141,13 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     on the scan, so any instance can serve a scan another one is running. Lines are deleted with
     their scan, including by the retention sweep.
   - A scan that runs again (a queue redelivery) starts its log and progress afresh.
+- **Rate limits.** `SKILLSPECTOR_WEB_RATE_LIMIT_STORE` picks where hits are counted (`app/rate_limit.py`),
+  as sliding windows:
+  - `memory` (self-hosted default): in this process, for the 1000 most recently seen clients.
+  - `database` (hosted default): in `rate_limit_hits`, so every instance counts the same hits. On
+    Postgres each check holds an advisory lock on its key, so concurrent requests can't both take
+    the last slot. Expired hits are deleted as new ones come in.
+  - A refused request isn't counted, so retrying too early doesn't push the limit further out.
 - **Retention.** An hourly sweep deletes finished scans older than the configured number of days;
   scans still in progress are never swept.
 
