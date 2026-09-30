@@ -148,6 +148,18 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     Postgres each check holds an advisory lock on its key, so concurrent requests can't both take
     the last slot. Expired hits are deleted as new ones come in.
   - A refused request isn't counted, so retrying too early doesn't push the limit further out.
+- **Quotas and pausing** (`app/quotas.py`), checked by `POST /scan`:
+  - A paused server refuses every new scan with `503`, admins' included.
+  - Signed-in users other than admins are limited per rolling 24 hours and in progress at once;
+    either refusal is a `429`. The quota check runs last, so a scan refused for another reason
+    doesn't count.
+  - Daily scans are counted in `rate_limit_hits` whatever the rate-limit store, so the count
+    survives restarts and deleting a scan doesn't give it back. The in-progress limit counts the
+    user's pending and running scans. It isn't locked, so two requests sent at the same instant can
+    both pass it; the per-minute rate limit bounds that.
+  - Limits come from `app_settings` once an admin saves them (`PUT /settings`), otherwise from
+    `DAILY_SCAN_QUOTA` and `CONCURRENT_SCAN_QUOTA`, otherwise from the mode. `GET /account/usage`
+    reports them to the user with their counts.
 - **Retention.** The sweep deletes finished scans older than the configured number of days, with
   their log lines and held keys; scans still in progress are never swept. Changing the retention
   sweeps straight away.

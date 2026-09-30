@@ -156,6 +156,16 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_rate_limit_hits_expires ON rate_limit_hits (expires_at)",
         ],
     ),
+    (
+        8,
+        [
+            # Scan quotas and the pause switch (app/quotas.py). A NULL quota follows the server's
+            # configured default; 0 means no limit.
+            "ALTER TABLE app_settings ADD COLUMN scans_paused BOOLEAN",
+            "ALTER TABLE app_settings ADD COLUMN daily_scan_quota INTEGER",
+            "ALTER TABLE app_settings ADD COLUMN concurrent_scan_quota INTEGER",
+        ],
+    ),
 ]
 
 
@@ -249,9 +259,11 @@ class PostgresStore:
             (error, finished_at),
         )
 
-    def count_active_scans(self) -> int:
+    def count_active_scans(self, *, owner_id: str | None = None) -> int:
+        where, params = (" AND owner_id = %s", (owner_id,)) if owner_id is not None else ("", ())
+        query = f"SELECT COUNT(*) AS active FROM scans WHERE status IN ('pending', 'running'){where}"
         with self._pool.connection() as conn:
-            row = conn.execute("SELECT COUNT(*) AS active FROM scans WHERE status IN ('pending', 'running')").fetchone()
+            row = conn.execute(query, params).fetchone()
         return row["active"]
 
     def get_scan(self, id: str) -> ScanRow | None:
@@ -458,6 +470,21 @@ class PostgresStore:
     def set_allow_signup(self, value: bool | None) -> None:
         self._execute("UPDATE app_settings SET allow_signup = %s WHERE id = 1", (value,))
 
+    def get_scan_limits(self) -> dict[str, Any]:
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "SELECT scans_paused, daily_scan_quota, concurrent_scan_quota FROM app_settings WHERE id = 1"
+            ).fetchone()
+        return dict(row) if row else {"scans_paused": None, "daily_scan_quota": None, "concurrent_scan_quota": None}
+
+    def set_scan_limits(
+        self, *, scans_paused: bool | None, daily_scan_quota: int | None, concurrent_scan_quota: int | None
+    ) -> None:
+        self._execute(
+            "UPDATE app_settings SET scans_paused = %s, daily_scan_quota = %s, concurrent_scan_quota = %s WHERE id = 1",
+            (scans_paused, daily_scan_quota, concurrent_scan_quota),
+        )
+
     def add_audit(
         self,
         *,
@@ -553,7 +580,15 @@ class PostgresStore:
     def delete_scan_secret(self, scan_id: str) -> None:
         self._execute("DELETE FROM scan_secrets WHERE scan_id = %s", (scan_id,))
 
-    # Rate limits shared by every instance (app/rate_limit.py).
+    # Rate limits shared by every instance (app/rate_limit.py), and daily scan quotas (app/quotas.py).
+
+    def count_rate_limit_hits(self, key: str, *, window_seconds: float, now: float) -> int:
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS hits FROM rate_limit_hits WHERE key = %s AND hit_at > %s",
+                (key, now - window_seconds),
+            ).fetchone()
+        return row["hits"]
 
     def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
         with self._pool.connection() as conn, conn.transaction():

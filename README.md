@@ -115,6 +115,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per signed-in user (per client IP with `AUTH=none`) within the window. |
 | `SCAN_IP_RATE_LIMIT` | `20` | Scans allowed per client IP within the same window, however many accounts sign in from it. |
+| `DAILY_SCAN_QUOTA`<br>`CONCURRENT_SCAN_QUOTA` | *by mode* | With accounts, how many scans each user other than an admin may start per rolling 24 hours, and have in progress at once. `0` means no limit. Unset means no limits `self_hosted`, and 10 a day and 2 at once `hosted`. Admins change both from the backoffice, which takes precedence, and can pause new scans there too. |
 | `LOGIN_RATE_LIMIT`<br>`LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Sign-in, first-run setup and sign-up attempts allowed per client IP within the window. |
 | `SCAN_RETENTION_DAYS` | *unset* | Retention when the database is first created (unset keeps scans forever). Change it later from the admin page. |
 | `CRON_SECRET` (no prefix) | *unset* | Hosted only, and required there: Vercel's own variable, which Vercel Cron sends when it calls the daily retention sweep (`vercel.ts`). The sweep endpoint refuses callers without it, and doesn't exist while it's unset. Self-hosted servers sweep hourly in the background instead. Generate one with `openssl rand -hex 32`, and set it for the web app too. |
@@ -446,7 +447,12 @@ isn't protected:
   - Hosted servers offer Claude only, with no shared Claude login and no custom base URLs.
 - **Abuse limits.** Scans are limited per signed-in user, and per client IP across every account
   signed in from it; sign-in, sign-up and password reset attempts per client IP. A refused request
-  gets a `429` saying when to try again. Hosted, the counts live in the database so they hold
+  gets a `429` saying when to try again.
+  - **Quotas** (on by default when hosted) cap each user's scans per 24 hours and in progress at
+    once, and users see their usage on the Account page. Admins have no quota.
+  - **Pausing:** an admin can pause new scans for everyone from the backoffice (Settings → Scans),
+    without a redeploy. New scans then get a `503`, and scans already running finish.
+  - AI review always runs on the user's own Claude key when hosted, so its cost stays theirs. Hosted, the counts live in the database so they hold
   across instances, BotID screens scan submissions, and Vercel Firewall rules add an edge-level
   limit in front (see [docs/VERCEL_FIREWALL.md](./docs/VERCEL_FIREWALL.md)).
 

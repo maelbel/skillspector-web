@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     scan_rate_limit_window_seconds: float = 60.0
     # Scans allowed per client IP within the same window, across every account signed in from it.
     scan_ip_rate_limit: int = 20
+    # Quotas for signed-in users other than admins (app/quotas.py): scans per rolling 24 hours, and
+    # scans pending or running at once. 0 means no limit. Unset picks the mode's default (no limits,
+    # or 10 a day and 2 at once when hosted). Admins can change them from the backoffice, which
+    # overrides these.
+    daily_scan_quota: int | None = Field(default=None, ge=0)
+    concurrent_scan_quota: int | None = Field(default=None, ge=0)
     scan_retention_days: float | None = None
     # Vercel's own variable, without our prefix: Vercel Cron sends it as a bearer token, and
     # POST /internal/retention runs the sweep only for callers presenting it. Required in hosted mode.

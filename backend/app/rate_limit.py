@@ -108,8 +108,12 @@ def hit(key: str, limit: int, window_seconds: float) -> float | None:
 def enforce(key: str, limit: int, window_seconds: float, message: str) -> None:
     """Record a hit for key, or refuse the request with a 429 that says when to retry."""
     retry_after = hit(key, limit, window_seconds)
-    if retry_after is None:
-        return
+    if retry_after is not None:
+        refuse(retry_after, message)
+
+
+def refuse(retry_after: float, message: str) -> None:
+    """A 429 that says when to retry."""
     seconds = max(1, math.ceil(retry_after))
     raise HTTPException(
         status_code=429,
@@ -121,8 +125,11 @@ def enforce(key: str, limit: int, window_seconds: float, message: str) -> None:
 def _duration(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds} second{'s' if seconds != 1 else ''}"
-    minutes = math.ceil(seconds / 60)
-    return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    if seconds < 3600:
+        minutes = math.ceil(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    hours = math.ceil(seconds / 3600)
+    return f"{hours} hour{'s' if hours != 1 else ''}"
 
 
 def client_key(request: Request) -> str:
