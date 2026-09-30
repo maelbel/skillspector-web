@@ -77,8 +77,10 @@ jobs:
           jq -e '.crons | map(.path) | index("/api/internal/retention")' $out/config.json
           jq -e '[.routes[] | select(.destination.service?)] | map(.destination.service) == ["web"]' $out/config.json
           test -d $out/services/web/functions
-          ls $out/services/api/functions
-          test "$(ls -d $out/services/api/functions/*.func | wc -l)" -ge 2  # the app and the subscriber
+          test -d $out/services/api/functions/fastapi.func
+          # The scan subscriber: a function triggered by the `scans` topic.
+          jq -e -s 'map(.experimentalTriggers // [] | .[] | select(.topic == "scans")) | length > 0' \
+            $(find $out/services/api/functions/_py_subscribers -name .vc-config.json)
 
   docker:
     runs-on: ubuntu-latest
