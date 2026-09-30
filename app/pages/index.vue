@@ -1,12 +1,18 @@
 <script setup lang="ts">
 useSeoMeta({ title: 'Skillspector Web' })
 
+// With accounts on, signed-out visitors get the landing page instead of the scanner.
+const { accounts, user } = useAuth()
 const { data: health } = useHealth()
 const online = computed(() => health.value && health.value.status !== 'down')
 </script>
 
 <template>
-  <UContainer class="flex flex-col gap-16 pt-8 pb-12 sm:pt-10 lg:gap-24 lg:pt-12">
+  <LandingPage v-if="accounts && !user" />
+  <UContainer
+    v-else
+    class="flex flex-col gap-16 pt-8 pb-12 sm:pt-10 lg:gap-24 lg:pt-12"
+  >
     <div class="grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
       <section class="flex flex-col gap-8">
         <div class="flex flex-col items-start gap-5">

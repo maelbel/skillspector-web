@@ -95,6 +95,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_password_resets_user ON password_resets (user_id)",
         ],
     ),
+    (
+        5,
+        [
+            "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+            "ALTER TABLE users ADD COLUMN last_login_at REAL",
+            "ALTER TABLE app_settings ADD COLUMN allow_signup INTEGER",
+            """
+            CREATE TABLE audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                actor_id TEXT,
+                actor_email TEXT,
+                action TEXT NOT NULL,
+                target_id TEXT,
+                target_email TEXT,
+                detail TEXT
+            )
+            """,
+            "CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -311,8 +332,16 @@ class SQLiteStore:
         return dict(row) if row else None
 
     @_locked
-    def list_users(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute("SELECT id, email, role, created_at FROM users ORDER BY created_at")
+    def list_users(self, *, query: str | None = None) -> list[dict[str, Any]]:
+        where, params = ("WHERE users.email LIKE ?", (f"%{query.lower()}%",)) if query else ("", ())
+        rows = self._conn.execute(f"""
+            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at, COALESCE(counts.scans, 0) AS scan_count
+            FROM users
+            LEFT JOIN (SELECT owner_id, COUNT(*) AS scans FROM scans GROUP BY owner_id) AS counts
+                ON counts.owner_id = users.id
+            {where}
+            ORDER BY users.created_at
+""", params)
         return [dict(row) for row in rows]
 
     @_locked
@@ -338,9 +367,9 @@ class SQLiteStore:
     def get_session_user(self, token_hash: str, *, now: float) -> dict[str, Any] | None:
         row = self._conn.execute(
             """
-            SELECT users.id, users.email, users.role, users.created_at
+            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at
             FROM sessions JOIN users ON users.id = sessions.user_id
-            WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+            WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND users.status = 'active'
             """,
             (token_hash, now),
         ).fetchone()
@@ -392,3 +421,91 @@ class SQLiteStore:
         ).fetchone()
         self._conn.commit()
         return row["user_id"] if row else None
+
+    @_locked
+    def update_user(self, user_id: str, *, role: str | None = None, status: str | None = None) -> None:
+        self._conn.execute(
+            "UPDATE users SET role = COALESCE(?, role), status = COALESCE(?, status) WHERE id = ?",
+            (role, status, user_id),
+        )
+        self._conn.commit()
+
+    @_locked
+    def record_login(self, user_id: str, at: float) -> None:
+        self._conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (at, user_id))
+        self._conn.commit()
+
+    @_locked
+    def count_active_admins(self) -> int:
+        return self._conn.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'"
+        ).fetchone()[0]
+
+    @_locked
+    def get_allow_signup(self) -> bool | None:
+        row = self._conn.execute("SELECT allow_signup FROM app_settings WHERE id = 1").fetchone()
+        return None if row is None or row["allow_signup"] is None else bool(row["allow_signup"])
+
+    @_locked
+    def set_allow_signup(self, value: bool | None) -> None:
+        self._conn.execute(
+            "UPDATE app_settings SET allow_signup = ? WHERE id = 1", (None if value is None else int(value),)
+        )
+        self._conn.commit()
+
+    @_locked
+    def add_audit(
+        self,
+        *,
+        created_at: float,
+        actor_id: str | None,
+        actor_email: str | None,
+        action: str,
+        target_id: str | None,
+        target_email: str | None,
+        detail: str | None,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO audit_log (created_at, actor_id, actor_email, action, target_id, target_email, detail)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (created_at, actor_id, actor_email, action, target_id, target_email, detail),
+        )
+        self._conn.commit()
+
+    @_locked
+    def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
+        where, params = ("WHERE target_id = ?", (target_id,)) if target_id else ("", ())
+        rows = self._conn.execute(
+            f"SELECT * FROM audit_log {where} ORDER BY id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
+        ).fetchall()
+        total = self._conn.execute(f"SELECT COUNT(*) FROM audit_log {where}", params).fetchone()[0]
+        return [dict(row) for row in rows], total
+
+    @_locked
+    def overview_stats(self, *, since: float) -> dict[str, Any]:
+        users = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(role = 'admin'), 0) AS admins,
+                   COALESCE(SUM(status = 'suspended'), 0) AS suspended,
+                   COALESCE(SUM(created_at >= ?), 0) AS new
+            FROM users
+            """,
+            (since,),
+        ).fetchone()
+        scans = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(created_at >= ?), 0) AS recent,
+                   COALESCE(SUM(recommendation = 'DO_NOT_INSTALL'), 0) AS do_not_install,
+                   COALESCE(SUM(recommendation = 'CAUTION'), 0) AS caution,
+                   COALESCE(SUM(recommendation = 'SAFE'), 0) AS safe,
+                   COALESCE(SUM(status = 'error'), 0) AS failed,
+                   COALESCE(SUM(status IN ('pending', 'running')), 0) AS active
+            FROM scans
+            """,
+            (since,),
+        ).fetchone()
+        return {"users": dict(users), "scans": dict(scans)}

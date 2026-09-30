@@ -99,8 +99,11 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 |---|---|---|
 | `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start until its pieces are built; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
 | `AUTH` | *by mode* | Who can use the server: `none` (the `self_hosted` default: no sign-in, every visitor has full access, admin page included) or `accounts` (sign-in required; the first account becomes the admin, users see only their own scans, admins see all and manage the server). Always `accounts` when hosted. |
-| `ALLOW_SIGNUP` | *by mode* | With accounts, whether anyone may create one. Off when self-hosted (admins add users from the admin page), on when hosted. |
+| `ALLOW_SIGNUP` | *unset* | With accounts, whether visitors may create their own account from the landing page. Unset allows it; admins can also turn it on and off in the backoffice, which takes precedence. The very first account is always the admin. |
 | `SESSION_DAYS` | `30` | How long a sign-in lasts. |
+| `SMTP_HOST`<br>`SMTP_PORT`<br>`SMTP_USERNAME`<br>`SMTP_PASSWORD`<br>`SMTP_SECURITY` | *unset*<br>`587`<br>*unset*<br>*unset*<br>`starttls` | SMTP server for password reset emails: any provider works (your own, your mailbox provider's, or a sending service such as Resend). `SMTP_SECURITY` is `starttls` (port 587), `ssl` (465) or `none` (a local relay only). |
+| `MAIL_FROM` | *unset* | Sender of those emails, e.g. `Skillspector <noreply@example.com>`. |
+| `PUBLIC_URL` | *unset* | This app's public address, e.g. `https://skillspector.example.com`, used for links in emails. Email features switch on when `SMTP_HOST`, `MAIL_FROM` and `PUBLIC_URL` are all set. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
 | `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
 | `SCAN_EXECUTOR` | *by mode* | Where a scan's fetch and analysis happen: `local` (the `self_hosted` default: inside the API) or `sandbox` (the `hosted` default: a fresh Vercel Sandbox microVM per scan). |
@@ -388,12 +391,22 @@ isn't protected:
     kept in an `httpOnly`, `SameSite=Lax` cookie that page scripts can't read, and expire after
     `SESSION_DAYS`.
   - Sign-in and password-reset attempts are rate-limited per client IP.
-  - **Forgotten passwords:** there's no email on a self-hosted server, so an admin creates a
-    one-time reset link from the admin page (valid 24 hours, stored only as a hash, and cancelled
-    by a newer link) and passes it on. Using it signs the person out everywhere else. Anyone
-    signed in can change their password from the Account page. An admin locked out of their own
-    account can print a link on the server:
-    `docker exec skillspector-api uv run python -m app.auth.reset_link you@example.com`.
+  - **Forgotten passwords:** reset links are one-time, valid for 24 hours, stored only as a hash,
+    and cancelled by a newer link. Using one signs the person out everywhere else.
+    - With SMTP configured, "Forgot password?" on the sign-in page emails a link. The answer and
+      its timing are the same whether or not the address has an account, and links always use
+      `PUBLIC_URL`, never the request's `Host` header.
+    - Without SMTP, an admin copies a link from the user's page in the backoffice and passes it on.
+    - Anyone signed in can change their password from the Account page.
+    - An admin locked out of their own account can print a link on the server:
+      `docker exec skillspector-api uv run python -m app.auth.reset_link you@example.com`.
+  - **Backoffice** (`/admin`, admins only):
+    - An overview, and a user directory with each user's role, status, scans and last sign-in.
+    - Per-user actions: promote or demote, suspend (which signs them out and blocks sign-in) or
+      reactivate, send or copy a reset link, delete. Admins can't demote, suspend or delete
+      themselves, and there's always at least one active admin.
+    - An activity log of who created, changed, suspended, reset or deleted what, and when.
+    - Server settings: sign-up, email status, retention and the Claude login.
 - **The server's Claude login is shared.** When it's signed in, every visitor can run
   Claude-backed scans on it.
 - **Scan targets are constrained** by skillspector: https only, an allowlist of Git and download

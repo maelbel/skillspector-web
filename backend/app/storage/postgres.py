@@ -97,6 +97,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_password_resets_user ON password_resets (user_id)",
         ],
     ),
+    (
+        5,
+        [
+            "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+            "ALTER TABLE users ADD COLUMN last_login_at DOUBLE PRECISION",
+            "ALTER TABLE app_settings ADD COLUMN allow_signup BOOLEAN",
+            """
+            CREATE TABLE audit_log (
+                id BIGSERIAL PRIMARY KEY,
+                created_at DOUBLE PRECISION NOT NULL,
+                actor_id TEXT,
+                actor_email TEXT,
+                action TEXT NOT NULL,
+                target_id TEXT,
+                target_email TEXT,
+                detail TEXT
+            )
+            """,
+            "CREATE INDEX idx_audit_log_created ON audit_log (created_at DESC)",
+        ],
+    ),
 ]
 
 
@@ -286,9 +307,21 @@ class PostgresStore:
         with self._pool.connection() as conn:
             return conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
 
-    def list_users(self) -> list[dict[str, Any]]:
+    def list_users(self, *, query: str | None = None) -> list[dict[str, Any]]:
+        where, params = ("WHERE users.email LIKE %s", (f"%{query.lower()}%",)) if query else ("", ())
         with self._pool.connection() as conn:
-            return conn.execute("SELECT id, email, role, created_at FROM users ORDER BY created_at").fetchall()
+            return conn.execute(
+                f"""
+                SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                       COALESCE(counts.scans, 0) AS scan_count
+                FROM users
+                LEFT JOIN (SELECT owner_id, COUNT(*) AS scans FROM scans GROUP BY owner_id) AS counts
+                    ON counts.owner_id = users.id
+                {where}
+                ORDER BY users.created_at
+                """,
+                params,
+            ).fetchall()
 
     def count_users(self) -> int:
         with self._pool.connection() as conn:
@@ -310,9 +343,9 @@ class PostgresStore:
         with self._pool.connection() as conn:
             return conn.execute(
                 """
-                SELECT users.id, users.email, users.role, users.created_at
+                SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at
                 FROM sessions JOIN users ON users.id = sessions.user_id
-                WHERE sessions.token_hash = %s AND sessions.expires_at > %s
+                WHERE sessions.token_hash = %s AND sessions.expires_at > %s AND users.status = 'active'
                 """,
                 (token_hash, now),
             ).fetchone()
@@ -352,3 +385,81 @@ class PostgresStore:
                 (now, token_hash, now),
             ).fetchone()
         return row["user_id"] if row else None
+
+    def update_user(self, user_id: str, *, role: str | None = None, status: str | None = None) -> None:
+        self._execute(
+            "UPDATE users SET role = COALESCE(%s, role), status = COALESCE(%s, status) WHERE id = %s",
+            (role, status, user_id),
+        )
+
+    def record_login(self, user_id: str, at: float) -> None:
+        self._execute("UPDATE users SET last_login_at = %s WHERE id = %s", (at, user_id))
+
+    def count_active_admins(self) -> int:
+        with self._pool.connection() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) AS admins FROM users WHERE role = 'admin' AND status = 'active'"
+            ).fetchone()["admins"]
+
+    def get_allow_signup(self) -> bool | None:
+        with self._pool.connection() as conn:
+            row = conn.execute("SELECT allow_signup FROM app_settings WHERE id = 1").fetchone()
+        return None if row is None else row["allow_signup"]
+
+    def set_allow_signup(self, value: bool | None) -> None:
+        self._execute("UPDATE app_settings SET allow_signup = %s WHERE id = 1", (value,))
+
+    def add_audit(
+        self,
+        *,
+        created_at: float,
+        actor_id: str | None,
+        actor_email: str | None,
+        action: str,
+        target_id: str | None,
+        target_email: str | None,
+        detail: str | None,
+    ) -> None:
+        self._execute(
+            """
+            INSERT INTO audit_log (created_at, actor_id, actor_email, action, target_id, target_email, detail)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (created_at, actor_id, actor_email, action, target_id, target_email, detail),
+        )
+
+    def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
+        where, params = ("WHERE target_id = %s", (target_id,)) if target_id else ("", ())
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM audit_log {where} ORDER BY id DESC LIMIT %s OFFSET %s", (*params, limit, offset)
+            ).fetchall()
+            total = conn.execute(f"SELECT COUNT(*) AS total FROM audit_log {where}", params).fetchone()["total"]
+        return rows, total
+
+    def overview_stats(self, *, since: float) -> dict[str, Any]:
+        with self._pool.connection() as conn:
+            users = conn.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE role = 'admin') AS admins,
+                       COUNT(*) FILTER (WHERE status = 'suspended') AS suspended,
+                       COUNT(*) FILTER (WHERE created_at >= %s) AS new
+                FROM users
+                """,
+                (since,),
+            ).fetchone()
+            scans = conn.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE created_at >= %s) AS recent,
+                       COUNT(*) FILTER (WHERE recommendation = 'DO_NOT_INSTALL') AS do_not_install,
+                       COUNT(*) FILTER (WHERE recommendation = 'CAUTION') AS caution,
+                       COUNT(*) FILTER (WHERE recommendation = 'SAFE') AS safe,
+                       COUNT(*) FILTER (WHERE status = 'error') AS failed,
+                       COUNT(*) FILTER (WHERE status IN ('pending', 'running')) AS active
+                FROM scans
+                """,
+                (since,),
+            ).fetchone()
+        return {"users": users, "scans": scans}

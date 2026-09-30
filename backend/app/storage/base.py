@@ -68,7 +68,9 @@ class ScanStore(Protocol):
 
     def get_user_by_email(self, email: str) -> dict[str, Any] | None: ...
 
-    def list_users(self) -> list[dict[str, Any]]: ...
+    def list_users(self, *, query: str | None = None) -> list[dict[str, Any]]:
+        """Users with their scan counts, oldest first; `query` filters by email."""
+        ...
 
     def count_users(self) -> int: ...
 
@@ -89,6 +91,36 @@ class ScanStore(Protocol):
     def create_password_reset(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None: ...
 
     def consume_password_reset(self, token_hash: str, *, now: float) -> str | None: ...
+
+    # Backoffice.
+
+    def update_user(self, user_id: str, *, role: str | None = None, status: str | None = None) -> None: ...
+
+    def record_login(self, user_id: str, at: float) -> None: ...
+
+    def count_active_admins(self) -> int: ...
+
+    def get_allow_signup(self) -> bool | None:
+        """The admin's sign-up setting, or None when it was never changed."""
+        ...
+
+    def set_allow_signup(self, value: bool | None) -> None: ...
+
+    def add_audit(
+        self,
+        *,
+        created_at: float,
+        actor_id: str | None,
+        actor_email: str | None,
+        action: str,
+        target_id: str | None,
+        target_email: str | None,
+        detail: str | None,
+    ) -> None: ...
+
+    def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]: ...
+
+    def overview_stats(self, *, since: float) -> dict[str, Any]: ...
 
 
 

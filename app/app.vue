@@ -24,6 +24,11 @@ const nav = computed(() => [
   ...(isAdmin.value ? [{ to: '/admin', label: 'Admin', icon: 'i-lucide-settings' }] : [])
 ])
 
+// The Admin tab stays lit across the backoffice's sections.
+function isCurrent(to: string) {
+  return to === '/admin' ? route.path.startsWith('/admin') : route.path === to
+}
+
 const accountMenu = computed(() => [
   [{ label: user.value?.email ?? '', type: 'label' as const }],
   [
@@ -68,9 +73,9 @@ const accountMenu = computed(() => [
             v-for="item in signedIn ? nav : []"
             :key="item.to"
             :to="item.to"
-            :aria-current="route.path === item.to ? 'page' : undefined"
+            :aria-current="isCurrent(item.to) ? 'page' : undefined"
             class="relative flex min-w-10 items-center justify-center gap-2 px-2 text-sm font-bold transition-colors sm:min-w-11 sm:px-4"
-            :class="route.path === item.to ? 'text-white' : 'text-graphite-400 hover:text-white'"
+            :class="isCurrent(item.to) ? 'text-white' : 'text-graphite-400 hover:text-white'"
           >
             <UIcon
               :name="item.icon"
@@ -78,7 +83,7 @@ const accountMenu = computed(() => [
             />
             <span class="max-sm:sr-only">{{ item.label }}</span>
             <span
-              v-if="route.path === item.to"
+              v-if="isCurrent(item.to)"
               aria-hidden="true"
               class="absolute inset-x-2 bottom-0 h-[3px] bg-brand sm:inset-x-4"
             />

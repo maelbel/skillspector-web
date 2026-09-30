@@ -370,10 +370,10 @@ async function submit() {
               Get a key
             </ULink>
           </template>
-          <UInput
+          <PasswordInput
             id="scan-api-key"
             v-model="apiKey"
-            type="password"
+            subject="API key"
             placeholder="sk-..."
             class="w-full"
             :disabled="submitting"

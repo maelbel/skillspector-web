@@ -62,10 +62,9 @@ async function save() {
             </p>
           </div>
           <UFormField label="Current password">
-            <UInput
+            <PasswordInput
               id="account-current-password"
               v-model="current"
-              type="password"
               autocomplete="current-password"
               class="w-full"
               required
@@ -75,10 +74,9 @@ async function save() {
             label="New password"
             description="At least 10 characters."
           >
-            <UInput
+            <PasswordInput
               id="account-new-password"
               v-model="next"
-              type="password"
               autocomplete="new-password"
               class="w-full"
               required
@@ -88,10 +86,9 @@ async function save() {
             label="Confirm new password"
             :error="mismatch ? 'The passwords don’t match' : undefined"
           >
-            <UInput
+            <PasswordInput
               id="account-confirm-password"
               v-model="confirm"
-              type="password"
               autocomplete="new-password"
               class="w-full"
               required

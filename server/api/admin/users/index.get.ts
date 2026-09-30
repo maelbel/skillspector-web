@@ -1,5 +1,9 @@
-import type { User } from '~~/shared/types/auth'
+import type { DirectoryUser } from '~~/shared/types/backoffice'
 
 export default defineEventHandler(async (event) => {
-  return await backendFetch<User[]>(event, '/admin/users', { fallbackMessage: 'Failed to load users' })
+  const { query } = getQuery<{ query?: string }>(event)
+  return await backendFetch<DirectoryUser[]>(event, '/admin/users', {
+    query: query ? { query } : undefined,
+    fallbackMessage: 'Failed to load users'
+  })
 })

@@ -19,7 +19,7 @@ from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
 from app import retention
-from app.api.routes import admin, auth, scan, users
+from app.api.routes import admin, auth, backoffice, scan, users
 from app.api.routes import settings as settings_routes
 from app.auth import auth_mode
 from app.claude_login import is_claude_cli_available, kill_pending
@@ -61,6 +61,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(backoffice.router)
 app.include_router(scan.router)
 app.include_router(admin.router)
 app.include_router(settings_routes.router)
