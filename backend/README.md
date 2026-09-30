@@ -176,7 +176,7 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     carries `Authorization: Bearer $CRON_SECRET`, as Vercel Cron's do, and `404` while
     `CRON_SECRET` is unset.
 
-Configuration options are listed in the [main README](../README.md#configuration).
+Configuration options are listed in the [configuration reference](../docs/CONFIGURATION.md).
 
 ## Development
 
