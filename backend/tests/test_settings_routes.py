@@ -17,7 +17,7 @@ def test_settings_are_readable(client):
     response = client.get("/settings")
 
     assert response.status_code == 200
-    assert response.json() == {"scan_retention_days": None, "allow_signup": False}
+    assert response.json() == {"scan_retention_days": None, "allow_signup": False, "scans_paused": False, "daily_scan_quota": None, "concurrent_scan_quota": None}
 
 
 def test_without_accounts_anyone_can_update_retention(client):

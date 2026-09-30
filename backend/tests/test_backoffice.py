@@ -263,7 +263,7 @@ def test_changing_one_setting_leaves_the_other_alone(client):
 
     settings = client.put("/settings", json={"allow_signup": False}, headers=_bearer(admin)).json()
 
-    assert settings == {"scan_retention_days": 14, "allow_signup": False}
+    assert settings == {"scan_retention_days": 14, "allow_signup": False, "scans_paused": False, "daily_scan_quota": None, "concurrent_scan_quota": None}
 
 
 # Email

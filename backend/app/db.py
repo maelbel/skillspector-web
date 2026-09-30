@@ -71,9 +71,9 @@ def fail_unfinished_scans(*, error: str, finished_at: float) -> int:
     return _store_or_raise().fail_unfinished_scans(error=error, finished_at=finished_at)
 
 
-def count_active_scans() -> int:
-    """Scans still pending or running."""
-    return _store_or_raise().count_active_scans()
+def count_active_scans(*, owner_id: str | None = None) -> int:
+    """Scans still pending or running; with owner_id, only that user's."""
+    return _store_or_raise().count_active_scans(owner_id=owner_id)
 
 
 def get_scan(id: str) -> ScanRow | None:
@@ -204,6 +204,16 @@ def set_allow_signup(value: bool | None) -> None:
     _store_or_raise().set_allow_signup(value)
 
 
+def get_scan_limits() -> dict[str, Any]:
+    return _store_or_raise().get_scan_limits()
+
+
+def set_scan_limits(*, scans_paused: bool | None, daily_scan_quota: int | None, concurrent_scan_quota: int | None) -> None:
+    _store_or_raise().set_scan_limits(
+        scans_paused=scans_paused, daily_scan_quota=daily_scan_quota, concurrent_scan_quota=concurrent_scan_quota
+    )
+
+
 def add_audit(
     *,
     created_at: float,
@@ -257,6 +267,10 @@ def get_scan_secret(scan_id: str) -> str | None:
 
 def delete_scan_secret(scan_id: str) -> None:
     _store_or_raise().delete_scan_secret(scan_id)
+
+
+def count_rate_limit_hits(key: str, *, window_seconds: float, now: float) -> int:
+    return _store_or_raise().count_rate_limit_hits(key, window_seconds=window_seconds, now=now)
 
 
 def rate_limit_hit(key: str, *, limit: int, window_seconds: float, now: float) -> float | None:

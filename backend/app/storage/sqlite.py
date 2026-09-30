@@ -154,6 +154,16 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_rate_limit_hits_expires ON rate_limit_hits (expires_at)",
         ],
     ),
+    (
+        8,
+        [
+            # Scan quotas and the pause switch (app/quotas.py). A NULL quota follows the server's
+            # configured default; 0 means no limit.
+            "ALTER TABLE app_settings ADD COLUMN scans_paused INTEGER",
+            "ALTER TABLE app_settings ADD COLUMN daily_scan_quota INTEGER",
+            "ALTER TABLE app_settings ADD COLUMN concurrent_scan_quota INTEGER",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -262,8 +272,10 @@ class SQLiteStore:
         return cursor.rowcount
 
     @_locked
-    def count_active_scans(self) -> int:
-        return self._conn.execute("SELECT COUNT(*) FROM scans WHERE status IN ('pending', 'running')").fetchone()[0]
+    def count_active_scans(self, *, owner_id: str | None = None) -> int:
+        where, params = (" AND owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
+        query = f"SELECT COUNT(*) FROM scans WHERE status IN ('pending', 'running'){where}"
+        return self._conn.execute(query, params).fetchone()[0]
 
     @_locked
     def get_scan(self, id: str) -> ScanRow | None:
@@ -496,6 +508,30 @@ class SQLiteStore:
         return None if row is None or row["allow_signup"] is None else bool(row["allow_signup"])
 
     @_locked
+    def get_scan_limits(self) -> dict[str, Any]:
+        row = self._conn.execute(
+            "SELECT scans_paused, daily_scan_quota, concurrent_scan_quota FROM app_settings WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return {"scans_paused": None, "daily_scan_quota": None, "concurrent_scan_quota": None}
+        paused = row["scans_paused"]
+        return {
+            "scans_paused": None if paused is None else bool(paused),
+            "daily_scan_quota": row["daily_scan_quota"],
+            "concurrent_scan_quota": row["concurrent_scan_quota"],
+        }
+
+    @_locked
+    def set_scan_limits(
+        self, *, scans_paused: bool | None, daily_scan_quota: int | None, concurrent_scan_quota: int | None
+    ) -> None:
+        self._conn.execute(
+            "UPDATE app_settings SET scans_paused = ?, daily_scan_quota = ?, concurrent_scan_quota = ? WHERE id = 1",
+            (None if scans_paused is None else int(scans_paused), daily_scan_quota, concurrent_scan_quota),
+        )
+        self._conn.commit()
+
+    @_locked
     def set_allow_signup(self, value: bool | None) -> None:
         self._conn.execute(
             "UPDATE app_settings SET allow_signup = ? WHERE id = 1", (None if value is None else int(value),)
@@ -606,7 +642,13 @@ class SQLiteStore:
         self._conn.execute("DELETE FROM scan_secrets WHERE scan_id = ?", (scan_id,))
         self._conn.commit()
 
-    # Rate limits (app/rate_limit.py), when SKILLSPECTOR_WEB_RATE_LIMIT_STORE=database.
+    # Rate limits (app/rate_limit.py), when SKILLSPECTOR_WEB_RATE_LIMIT_STORE=database, and daily
+    # scan quotas (app/quotas.py), always.
+
+    @_locked
+    def count_rate_limit_hits(self, key: str, *, window_seconds: float, now: float) -> int:
+        query = "SELECT COUNT(*) FROM rate_limit_hits WHERE key = ? AND hit_at > ?"
+        return self._conn.execute(query, (key, now - window_seconds)).fetchone()[0]
 
     @_locked
     def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:

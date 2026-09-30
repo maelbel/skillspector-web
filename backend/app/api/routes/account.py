@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app import claude_key
+from app import claude_key, quotas
 from app.auth import AuthError
 from app.auth.deps import CurrentViewer
 
@@ -17,6 +17,17 @@ class ClaudeKeyStatus(BaseModel):
 
 class ConnectClaudeRequest(BaseModel):
     api_key: str
+
+
+class UsageResponse(BaseModel):
+    scans_paused: bool
+    # False for admins, and without accounts: no quota applies to them.
+    quotas_apply: bool
+    # Scans started in the last 24 hours, including deleted ones.
+    scans_today: int
+    daily_scan_quota: int | None
+    active_scans: int
+    concurrent_scan_quota: int | None
 
 
 def _signed_in_user(viewer) -> dict:
@@ -43,3 +54,16 @@ def connect_claude(req: ConnectClaudeRequest, viewer: CurrentViewer) -> ClaudeKe
 @router.delete("/claude", status_code=204)
 def disconnect_claude(viewer: CurrentViewer) -> None:
     claude_key.disconnect(_signed_in_user(viewer))
+
+
+@router.get("/usage", response_model=UsageResponse)
+def read_usage(viewer: CurrentViewer) -> UsageResponse:
+    usage = quotas.usage(viewer)
+    return UsageResponse(
+        scans_paused=usage.limits.paused,
+        quotas_apply=usage.applies,
+        scans_today=usage.scans_today,
+        daily_scan_quota=usage.limits.daily,
+        active_scans=usage.active_scans,
+        concurrent_scan_quota=usage.limits.concurrent,
+    )

@@ -14,7 +14,10 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'account.claude_connected': { verb: 'connected a Claude key for', icon: 'i-lucide-plug' },
   'account.claude_disconnected': { verb: 'disconnected the Claude key of', icon: 'i-lucide-unplug' },
   'settings.retention_changed': { verb: 'changed scan retention', icon: 'i-lucide-archive' },
-  'settings.signup_changed': { verb: 'turned sign-up', icon: 'i-lucide-door-open' }
+  'settings.signup_changed': { verb: 'turned sign-up', icon: 'i-lucide-door-open' },
+  'settings.scans_paused': { verb: 'paused new scans', icon: 'i-lucide-circle-pause' },
+  'settings.scans_resumed': { verb: 'resumed scans', icon: 'i-lucide-circle-play' },
+  'settings.quotas_changed': { verb: 'changed scan quotas', icon: 'i-lucide-gauge' }
 }
 
 export interface ActivityLine {

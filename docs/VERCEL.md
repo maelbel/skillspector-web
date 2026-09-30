@@ -108,6 +108,10 @@ Run everything from the repository root.
 
 7. **Add the edge rules** from [VERCEL_FIREWALL.md](./VERCEL_FIREWALL.md).
 
+8. **Check the scan limits** in the backoffice under **Settings → Scans**. Each user gets 10 scans
+   per 24 hours and 2 at once until you change them. Pause new scans there if costs run away. It
+   takes effect immediately, with no redeploy.
+
 ## Environment variables
 
 Every service in the project sees the same variables. Scope each one as shown:

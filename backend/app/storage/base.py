@@ -38,7 +38,9 @@ class ScanStore(Protocol):
 
     def fail_unfinished_scans(self, *, error: str, finished_at: float) -> int: ...
 
-    def count_active_scans(self) -> int: ...
+    def count_active_scans(self, *, owner_id: str | None = None) -> int:
+        """Scans pending or running; with owner_id, only that user's."""
+        ...
 
     def get_scan(self, id: str) -> ScanRow | None: ...
 
@@ -114,6 +116,15 @@ class ScanStore(Protocol):
 
     def set_allow_signup(self, value: bool | None) -> None: ...
 
+    def get_scan_limits(self) -> dict[str, Any]:
+        """The admin's scan settings: `scans_paused`, `daily_scan_quota` and `concurrent_scan_quota`,
+        each None when never changed. A quota of 0 means no limit."""
+        ...
+
+    def set_scan_limits(
+        self, *, scans_paused: bool | None, daily_scan_quota: int | None, concurrent_scan_quota: int | None
+    ) -> None: ...
+
     def add_audit(
         self,
         *,
@@ -152,6 +163,9 @@ def risk_columns(result: dict[str, Any] | None) -> tuple[Any, Any, Any]:
     """The summary columns denormalised from a report, so history can list scans without it."""
     risk = (result or {}).get("risk_assessment") or {}
     return risk.get("score"), risk.get("severity"), risk.get("recommendation")
+
+    def count_rate_limit_hits(self, key: str, *, window_seconds: float, now: float) -> int:
+        """Hits recorded for key within the window."""
 
     def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
         """Record a hit for key if fewer than `limit` fell within the window; None when recorded,

@@ -48,6 +48,8 @@ async function save() {
         </p>
       </div>
 
+      <UsageCard />
+
       <ClaudeKeyCard v-if="session?.claude_key_available" />
       <UAlert
         v-else-if="user?.role === 'admin'"

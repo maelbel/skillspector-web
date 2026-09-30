@@ -97,6 +97,56 @@ async function setSignup(allowSignup: boolean) {
   }
 }
 
+const savingPause = ref(false)
+const pauseError = ref('')
+
+async function setPaused(scansPaused: boolean) {
+  savingPause.value = true
+  pauseError.value = ''
+  try {
+    settingsData.value = await $fetch<SettingsResponse>('/api/settings', { method: 'PUT', body: { scansPaused } })
+  } catch (err) {
+    pauseError.value = apiErrorMessage(err, 'Failed to save')
+  } finally {
+    savingPause.value = false
+  }
+}
+
+// An empty field means no limit.
+const dailyQuota = ref<number | ''>('')
+const concurrentQuota = ref<number | ''>('')
+const savingQuotas = ref(false)
+const quotasError = ref('')
+const quotasSaved = ref(false)
+
+watch(settingsData, (value) => {
+  if (!value) return
+  dailyQuota.value = value.daily_scan_quota ?? ''
+  concurrentQuota.value = value.concurrent_scan_quota ?? ''
+}, { immediate: true })
+
+const quotaValid = (value: number | '') => value === '' || (Number.isInteger(value) && value >= 1)
+
+async function saveQuotas() {
+  savingQuotas.value = true
+  quotasError.value = ''
+  quotasSaved.value = false
+  try {
+    settingsData.value = await $fetch<SettingsResponse>('/api/settings', {
+      method: 'PUT',
+      body: {
+        dailyScanQuota: dailyQuota.value === '' ? null : dailyQuota.value,
+        concurrentScanQuota: concurrentQuota.value === '' ? null : concurrentQuota.value
+      }
+    })
+    quotasSaved.value = true
+  } catch (err) {
+    quotasError.value = apiErrorMessage(err, 'Failed to save')
+  } finally {
+    savingQuotas.value = false
+  }
+}
+
 async function saveRetention() {
   savingRetention.value = true
   retentionError.value = ''
@@ -123,7 +173,7 @@ async function saveRetention() {
   <div class="flex flex-col gap-6">
     <BackofficeHeader
       title="Settings"
-      lead="How this server runs: accounts, email, the Claude login and scan retention."
+      lead="How this server runs: accounts, scans, email, the Claude login and scan retention."
     />
 
     <div class="flex max-w-2xl flex-col gap-6">
@@ -155,6 +205,89 @@ async function saveRetention() {
             variant="subtle"
             :title="signupError"
           />
+        </div>
+      </UCard>
+
+      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
+        <div class="flex flex-col gap-4">
+          <div>
+            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
+              Scans
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Pausing refuses new scans for everyone, admins included, until you resume. Scans
+              already running finish.
+            </p>
+          </div>
+          <USwitch
+            :model-value="settingsData?.scans_paused ?? false"
+            :loading="savingPause"
+            label="Pause new scans"
+            @update:model-value="setPaused"
+          />
+          <UAlert
+            v-if="pauseError"
+            color="error"
+            variant="subtle"
+            :title="pauseError"
+          />
+
+          <template v-if="accounts">
+            <div class="border-t border-default pt-4">
+              <h3 class="text-sm font-semibold text-highlighted">
+                Quotas per user
+              </h3>
+              <p class="mt-1 text-sm text-muted">
+                Limits for each signed-in user; admins have none. Leave a field empty for no limit.
+              </p>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Scans per 24 hours">
+                <UInput
+                  id="daily-scan-quota"
+                  v-model.number="dailyQuota"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="No limit"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Scans in progress at once">
+                <UInput
+                  id="concurrent-scan-quota"
+                  v-model.number="concurrentQuota"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="No limit"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <UButton
+              icon="i-lucide-save"
+              class="self-start"
+              :loading="savingQuotas"
+              :disabled="!quotaValid(dailyQuota) || !quotaValid(concurrentQuota)"
+              @click="saveQuotas"
+            >
+              Save quotas
+            </UButton>
+            <UAlert
+              v-if="quotasSaved"
+              color="primary"
+              variant="subtle"
+              icon="i-lucide-check-circle-2"
+              title="Saved"
+            />
+            <UAlert
+              v-if="quotasError"
+              color="error"
+              variant="subtle"
+              :title="quotasError"
+            />
+          </template>
         </div>
       </UCard>
 

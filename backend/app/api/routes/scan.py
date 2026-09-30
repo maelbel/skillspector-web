@@ -3,7 +3,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
-from app import claude_key, db, rate_limit
+from app import claude_key, db, quotas, rate_limit
 from app.auth import Viewer
 from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
@@ -128,6 +128,8 @@ def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
+    limits = quotas.current()
+    quotas.ensure_not_paused(limits)
     llm = _resolve_llm(req.llm, viewer)
     runner = get_runner()
     try:
@@ -136,6 +138,8 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if runner.is_full():
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
+    # Last, so a scan refused for any other reason doesn't count towards today's quota.
+    quotas.enforce(viewer, limits)
     job = create_job(req.target, llm, owner_id=viewer.user_id)
     try:
         await runner.submit(job)
