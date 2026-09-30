@@ -141,6 +141,21 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN llm_model TEXT",
         ],
     ),
+    (
+        7,
+        [
+            """
+            CREATE TABLE rate_limit_hits (
+                id BIGSERIAL PRIMARY KEY,
+                key TEXT NOT NULL,
+                hit_at DOUBLE PRECISION NOT NULL,
+                expires_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_rate_limit_hits_key ON rate_limit_hits (key, hit_at DESC)",
+            "CREATE INDEX idx_rate_limit_hits_expires ON rate_limit_hits (expires_at)",
+        ],
+    ),
 ]
 
 
@@ -537,3 +552,22 @@ class PostgresStore:
 
     def delete_scan_secret(self, scan_id: str) -> None:
         self._execute("DELETE FROM scan_secrets WHERE scan_id = %s", (scan_id,))
+
+    # Rate limits shared by every instance (app/rate_limit.py).
+
+    def rate_limit_hit(self, key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
+        with self._pool.connection() as conn, conn.transaction():
+            # One check at a time per key, so concurrent requests can't both take the last slot.
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (key,))
+            conn.execute("DELETE FROM rate_limit_hits WHERE expires_at <= %s", (now,))
+            recent = conn.execute(
+                "SELECT hit_at FROM rate_limit_hits WHERE key = %s AND hit_at > %s ORDER BY hit_at DESC LIMIT %s",
+                (key, now - window_seconds, limit),
+            ).fetchall()
+            if len(recent) >= limit:
+                return recent[-1]["hit_at"] + window_seconds - now
+            conn.execute(
+                "INSERT INTO rate_limit_hits (key, hit_at, expires_at) VALUES (%s, %s, %s)",
+                (key, now, now + window_seconds),
+            )
+            return None

@@ -95,3 +95,14 @@ def test_hosted_requires_a_secret_key(monkeypatch):
 
     with pytest.raises(ModeConfigError, match="SECRET_KEY"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1"))
+
+
+def test_hosted_refuses_in_memory_rate_limits(monkeypatch):
+    monkeypatch.setattr("app.core.mode.HOSTED_NOT_IMPLEMENTED", {})
+
+    with pytest.raises(ModeConfigError, match="RATE_LIMIT_STORE=memory"):
+        check_mode(
+            _settings(
+                Mode.HOSTED, "postgresql://db/skillspector", sandbox_snapshot_id="snap_1", secret_key=SECRET, rate_limit_store="memory"
+            )
+        )

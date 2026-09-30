@@ -17,6 +17,7 @@
     "@iconify-json/lucide": "^1.2.122",
     "@nuxt/fonts": "^0.14.0",
     "@nuxt/ui": "^4.10.0",
+    "botid": "^1.5.11",
     "nuxt": "^4.5.2"
   },
   "devDependencies": {

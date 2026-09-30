@@ -257,3 +257,7 @@ def get_scan_secret(scan_id: str) -> str | None:
 
 def delete_scan_secret(scan_id: str) -> None:
     _store_or_raise().delete_scan_secret(scan_id)
+
+
+def rate_limit_hit(key: str, *, limit: int, window_seconds: float, now: float) -> float | None:
+    return _store_or_raise().rate_limit_hit(key, limit=limit, window_seconds=window_seconds, now=now)

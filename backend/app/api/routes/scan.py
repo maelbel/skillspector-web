@@ -24,11 +24,16 @@ from app.scanner import (
 router = APIRouter(prefix="/scan", tags=["scan"])
 
 
-def _rate_limit_scan(request: Request) -> None:
+def _rate_limit_scan(request: Request, viewer: CurrentViewer) -> None:
+    """Per signed-in user (per address without accounts), plus a cap per address shared by every
+    account signed in from it, so opening more accounts doesn't buy more scans."""
     settings = get_settings()
-    key = f"scan:{rate_limit.client_key(request)}"
-    if not rate_limit.check(key, settings.scan_rate_limit, settings.scan_rate_limit_window_seconds):
-        raise HTTPException(status_code=429, detail="Too many scans from this address — try again shortly")
+    window = settings.scan_rate_limit_window_seconds
+    subject = rate_limit.subject_key(request, viewer)
+    rate_limit.enforce(f"scan:{subject}", settings.scan_rate_limit, window, "You've started a lot of scans")
+    if viewer.user_id:
+        address = rate_limit.client_key(request)
+        rate_limit.enforce(f"scan:ip:{address}", settings.scan_ip_rate_limit, window, "Too many scans from this address")
 
 
 class ScanRequest(BaseModel):

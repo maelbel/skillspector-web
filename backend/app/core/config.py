@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     job_runner: Literal["in_process", "vercel_queues"] | None = None
     # Where live scan logs and progress go; unset picks the mode's default (memory, or database when hosted).
     log_store: Literal["memory", "database"] | None = None
+    # Where rate limits count hits; unset picks the mode's default (memory, or database when hosted).
+    rate_limit_store: Literal["memory", "database"] | None = None
     # Where a scan's fetch and analysis happen: local (this process) or sandbox (a Vercel Sandbox
     # microVM); unset picks the mode's default (local, or sandbox when hosted).
     scan_executor: Literal["local", "sandbox"] | None = None
@@ -63,8 +65,11 @@ class Settings(BaseSettings):
     # Encrypts stored API keys at rest (app/secrets_box.py); generate with `python -m app.secrets_box`.
     # Without it users can't save a Claude key. Required in hosted mode.
     secret_key: str | None = None
+    # Scans allowed per signed-in user (or, without accounts, per client IP) within the window.
     scan_rate_limit: int = 5
     scan_rate_limit_window_seconds: float = 60.0
+    # Scans allowed per client IP within the same window, across every account signed in from it.
+    scan_ip_rate_limit: int = 20
     scan_retention_days: float | None = None
     # Sign-in, first-run setup and sign-up attempts allowed per client IP within the window.
     login_rate_limit: int = 10

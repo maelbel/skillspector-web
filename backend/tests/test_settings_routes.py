@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app import rate_limit
 from app.core.config import get_settings
 from app.main import app
 
@@ -11,7 +10,6 @@ from app.main import app
 @pytest.fixture
 def client(temp_db, monkeypatch):
     monkeypatch.setattr(get_settings(), "auth", "none")
-    monkeypatch.setattr(rate_limit, "_hits", rate_limit.OrderedDict())
     return TestClient(app)
 
 

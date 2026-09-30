@@ -1,6 +1,7 @@
 import type { LLMConfig } from '~~/shared/types/scan'
 
 export default defineEventHandler(async (event) => {
+  await refuseBots(event)
   const { target, llm } = await readBody<{ target?: string, llm?: LLMConfig }>(event)
 
   if (!target || typeof target !== 'string') {
