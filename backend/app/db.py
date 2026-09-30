@@ -151,3 +151,21 @@ def delete_session(token_hash: str) -> None:
 
 def delete_expired_sessions(now: float) -> int:
     return _store_or_raise().delete_expired_sessions(now)
+
+
+def set_password_hash(user_id: str, password_hash: str) -> None:
+    _store_or_raise().set_password_hash(user_id, password_hash)
+
+
+def delete_sessions_for_user(user_id: str, *, keep_token_hash: str | None = None) -> None:
+    _store_or_raise().delete_sessions_for_user(user_id, keep_token_hash=keep_token_hash)
+
+
+def create_password_reset(*, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
+    _store_or_raise().create_password_reset(
+        token_hash=token_hash, user_id=user_id, created_at=created_at, expires_at=expires_at
+    )
+
+
+def consume_password_reset(token_hash: str, *, now: float) -> str | None:
+    return _store_or_raise().consume_password_reset(token_hash, now=now)

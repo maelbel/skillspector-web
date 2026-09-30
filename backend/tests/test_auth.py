@@ -308,3 +308,126 @@ def test_passwords_hash_and_verify():
     assert passwords.verify_password(PASSWORD, encoded)
     assert not passwords.verify_password("something else", encoded)
     assert not passwords.verify_password(PASSWORD, "garbage")
+
+
+# Password reset and change
+
+
+def _user_id(client, token: str) -> str:
+    return client.get("/auth/session", headers=_bearer(token)).json()["user"]["id"]
+
+
+def _reset_link(client, admin: str, user_id: str) -> str:
+    response = client.post(f"/admin/users/{user_id}/reset", headers=_bearer(admin))
+    assert response.status_code == 200
+    path = response.json()["path"]
+    assert path.startswith("/reset-password?token=")
+    return path.split("token=", 1)[1]
+
+
+def test_a_reset_link_sets_a_new_password_and_signs_out_elsewhere(client):
+    admin = _setup_admin(client)
+    alice = _add_user(client, admin, "alice@example.com")
+    token = _reset_link(client, admin, _user_id(client, alice))
+
+    response = client.post("/auth/reset", json={"token": token, "password": "a brand new password"})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "alice@example.com"
+    assert client.get("/scan", headers=_bearer(alice)).status_code == 401  # Old session ended.
+    assert client.post("/auth/login", json={"email": "alice@example.com", "password": PASSWORD}).status_code == 401
+    assert client.post("/auth/login", json={"email": "alice@example.com", "password": "a brand new password"}).status_code == 200
+
+
+def test_a_reset_link_works_once(client):
+    admin = _setup_admin(client)
+    token = _reset_link(client, admin, _user_id(client, admin))
+
+    assert client.post("/auth/reset", json={"token": token, "password": "first new password"}).status_code == 200
+    again = client.post("/auth/reset", json={"token": token, "password": "second new password"})
+
+    assert again.status_code == 400
+    assert "already used" in again.json()["detail"]
+
+
+def test_a_new_reset_link_cancels_the_previous_one(client):
+    admin = _setup_admin(client)
+    user_id = _user_id(client, admin)
+    first = _reset_link(client, admin, user_id)
+    second = _reset_link(client, admin, user_id)
+
+    assert client.post("/auth/reset", json={"token": first, "password": "a brand new password"}).status_code == 400
+    assert client.post("/auth/reset", json={"token": second, "password": "a brand new password"}).status_code == 200
+
+
+def test_an_expired_reset_link_is_refused(client, monkeypatch):
+    admin = _setup_admin(client)
+    token = _reset_link(client, admin, _user_id(client, admin))
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + auth.RESET_LINK_HOURS * 3600 + 1)
+
+    assert client.post("/auth/reset", json={"token": token, "password": "a brand new password"}).status_code == 400
+
+
+def test_a_reset_needs_a_strong_password_and_keeps_the_link_usable(client):
+    admin = _setup_admin(client)
+    token = _reset_link(client, admin, _user_id(client, admin))
+
+    assert client.post("/auth/reset", json={"token": token, "password": "short"}).status_code == 400
+    assert client.post("/auth/reset", json={"token": token, "password": "a brand new password"}).status_code == 200
+
+
+def test_only_admins_issue_reset_links(client):
+    admin = _setup_admin(client)
+    alice = _add_user(client, admin, "alice@example.com")
+
+    assert client.post(f"/admin/users/{_user_id(client, admin)}/reset", headers=_bearer(alice)).status_code == 403
+    assert client.post("/admin/users/nobody/reset", headers=_bearer(admin)).status_code == 404
+
+
+def test_reset_links_are_stored_hashed(client):
+    admin = _setup_admin(client)
+    token = _reset_link(client, admin, _user_id(client, admin))
+
+    assert db.consume_password_reset(token, now=time.time()) is None  # The raw token isn't a key.
+
+
+def test_changing_your_password_keeps_this_session_and_ends_the_others(client):
+    admin = _setup_admin(client)
+    other_device = client.post("/auth/login", json={"email": "admin@example.com", "password": PASSWORD}).json()["token"]
+
+    response = client.post(
+        "/auth/password",
+        json={"current_password": PASSWORD, "new_password": "a brand new password"},
+        headers=_bearer(admin),
+    )
+
+    assert response.status_code == 204
+    assert client.get("/scan", headers=_bearer(admin)).status_code == 200
+    assert client.get("/scan", headers=_bearer(other_device)).status_code == 401
+    assert client.post("/auth/login", json={"email": "admin@example.com", "password": "a brand new password"}).status_code == 200
+
+
+def test_changing_your_password_needs_the_current_one(client):
+    admin = _setup_admin(client)
+
+    response = client.post(
+        "/auth/password",
+        json={"current_password": "not my password", "new_password": "a brand new password"},
+        headers=_bearer(admin),
+    )
+
+    assert response.status_code == 400
+    assert client.post("/auth/password", json={"current_password": PASSWORD, "new_password": "x"}).status_code == 401
+
+
+def test_the_lockout_command_prints_a_working_link(client, capsys):
+    from app.auth import reset_link
+
+    _setup_admin(client)
+
+    assert reset_link.main(["reset_link", "Admin@Example.com"]) == 0
+    path = capsys.readouterr().out.strip().splitlines()[-1]
+    token = path.split("token=", 1)[1]
+    assert client.post("/auth/reset", json={"token": token, "password": "a brand new password"}).status_code == 200
+    assert reset_link.main(["reset_link", "nobody@example.com"]) == 1

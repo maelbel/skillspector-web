@@ -32,6 +32,40 @@ async function addUser() {
 const removing = ref<User | null>(null)
 const removeError = ref('')
 
+// A one-time link the admin passes on to the user: there's no email on this server.
+const resetFor = ref<User | null>(null)
+const resetLink = ref<{ url: string, expiresAt: number } | null>(null)
+const resetError = ref('')
+const copied = ref(false)
+const copyFailed = ref(false)
+const resetLinkEl = useTemplateRef<HTMLElement>('resetLinkEl')
+
+async function createResetLink(user: User) {
+  resetFor.value = user
+  resetLink.value = null
+  resetError.value = ''
+  copied.value = false
+  copyFailed.value = false
+  try {
+    resetLink.value = await $fetch<{ url: string, expiresAt: number }>(`/api/admin/users/${user.id}/reset`, { method: 'POST' })
+  } catch (err) {
+    resetError.value = apiErrorMessage(err, 'Failed to create a reset link')
+  }
+}
+
+async function copyResetLink() {
+  if (!resetLink.value) return
+  try {
+    await navigator.clipboard.writeText(resetLink.value.url)
+    copied.value = true
+  } catch {
+    // No clipboard access (e.g. plain HTTP): select the link so it can be copied by hand.
+    copyFailed.value = true
+    const el = resetLinkEl.value
+    if (el) window.getSelection()?.selectAllChildren(el)
+  }
+}
+
 async function confirmRemove() {
   if (!removing.value) return
   removeError.value = ''
@@ -86,15 +120,27 @@ async function confirmRemove() {
               {{ user.role }}
             </p>
           </div>
-          <UButton
+          <div
             v-if="user.id !== me?.id"
-            icon="i-lucide-trash-2"
-            color="neutral"
-            variant="ghost"
-            :aria-label="`Remove ${user.email}`"
-            class="size-10 justify-center text-dimmed hover:text-critical-ink"
-            @click="removing = user; removeError = ''"
-          />
+            class="flex shrink-0 items-center"
+          >
+            <UButton
+              icon="i-lucide-key-round"
+              color="neutral"
+              variant="ghost"
+              :aria-label="`Create a password reset link for ${user.email}`"
+              class="size-10 justify-center text-dimmed hover:text-highlighted"
+              @click="createResetLink(user)"
+            />
+            <UButton
+              icon="i-lucide-trash-2"
+              color="neutral"
+              variant="ghost"
+              :aria-label="`Remove ${user.email}`"
+              class="size-10 justify-center text-dimmed hover:text-critical-ink"
+              @click="removing = user; removeError = ''"
+            />
+          </div>
         </li>
       </ul>
 
@@ -157,6 +203,67 @@ async function confirmRemove() {
         </UButton>
       </form>
     </div>
+
+    <UModal
+      :open="!!resetFor"
+      title="Password reset link"
+      :description="`Send this to ${resetFor?.email ?? 'them'} yourself. It works once, for 24 hours, and cancels any earlier link.`"
+      @update:open="(value) => { if (!value) resetFor = null }"
+    >
+      <template #body>
+        <div class="flex flex-col gap-3">
+          <UAlert
+            v-if="resetError"
+            color="error"
+            variant="subtle"
+            :title="resetError"
+          />
+          <template v-else-if="resetLink">
+            <code
+              ref="resetLinkEl"
+              class="block rounded-xs bg-muted p-3 font-mono text-xs break-all text-highlighted select-all"
+            >{{ resetLink.url }}</code>
+            <p
+              v-if="copyFailed"
+              class="text-xs text-warning"
+            >
+              Couldn’t copy automatically: the link is selected, copy it with Ctrl+C or ⌘C.
+            </p>
+            <p class="text-xs text-muted">
+              Expires <NuxtTime
+                :datetime="resetLink.expiresAt * 1000"
+                relative
+              />.
+            </p>
+          </template>
+          <p
+            v-else
+            class="text-sm text-muted"
+          >
+            Creating the link…
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            variant="ghost"
+            color="neutral"
+            @click="resetFor = null"
+          >
+            Done
+          </UButton>
+          <UButton
+            v-if="resetLink"
+            color="primary"
+            :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+            @click="copyResetLink"
+          >
+            {{ copied ? 'Copied' : 'Copy link' }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       :open="!!removing"

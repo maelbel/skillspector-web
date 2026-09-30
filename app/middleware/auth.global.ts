@@ -1,4 +1,5 @@
-// With accounts on, every page but /login needs a session, and /admin needs the admin role.
+// With accounts on, every page but /login and /reset-password needs a session, and /admin needs the
+// admin role.
 export default defineNuxtRouteMiddleware(async (to) => {
   const { session, accounts, user, isAdmin, refresh } = useAuth()
   if (!session.value) await refresh()
@@ -8,6 +9,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (!accounts.value || user.value) return navigateTo(typeof to.query.redirect === 'string' ? to.query.redirect : '/')
     return
   }
+  if (to.path === '/reset-password') return
   if (accounts.value && !user.value) {
     return navigateTo({ path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} })
   }

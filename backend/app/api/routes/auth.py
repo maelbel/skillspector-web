@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from app import auth, db, rate_limit
-from app.auth.deps import bearer_token
+from app.auth.deps import CurrentViewer, bearer_token
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -93,6 +93,33 @@ def signup(req: CredentialsRequest) -> TokenResponse:
         raise HTTPException(status_code=403, detail="Ask an admin of this server for an account")
     try:
         return _signed_in(auth.create_user(req.email, req.password))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+
+
+class ResetRequest(BaseModel):
+    token: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/reset", response_model=TokenResponse, dependencies=[Depends(_require_accounts), Depends(_rate_limit_login)])
+def reset_password(req: ResetRequest) -> TokenResponse:
+    """Set a new password from a one-time reset link, and sign in."""
+    try:
+        return _signed_in(auth.reset_password(req.token, req.password))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+
+
+@router.post("/password", status_code=204, dependencies=[Depends(_require_accounts), Depends(_rate_limit_login)])
+def change_password(req: ChangePasswordRequest, viewer: CurrentViewer, authorization: str | None = Header(default=None)) -> None:
+    try:
+        auth.change_password(viewer.user_id, req.current_password, req.new_password, current_token=bearer_token(authorization))
     except auth.AuthError as exc:
         raise _auth_error(exc) from exc
 

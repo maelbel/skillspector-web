@@ -149,3 +149,44 @@ class Viewer:
 
 # Without accounts every visitor has full access, as before accounts existed.
 ANONYMOUS_ADMIN = Viewer(user=None, is_admin=True)
+
+
+# Password changes and resets. There's no email here: an admin issues a one-time reset link and
+# passes it on (or, when locked out, runs `python -m app.auth.reset_link <email>` on the server).
+
+RESET_LINK_HOURS = 24
+
+
+def reset_link_path(token: str) -> str:
+    return f"/reset-password?token={token}"
+
+
+def issue_password_reset(user_id: str) -> tuple[str, float]:
+    """A one-time reset token and when it expires; issuing one cancels the user's earlier links."""
+    now = time.time()
+    token = secrets.token_urlsafe(32)
+    expires_at = now + RESET_LINK_HOURS * 3600
+    db.create_password_reset(token_hash=_token_hash(token), user_id=user_id, created_at=now, expires_at=expires_at)
+    return token, expires_at
+
+
+def reset_password(token: str, new_password: str) -> dict[str, Any]:
+    """Set a new password from a reset link, and sign the user out everywhere else."""
+    check_password(new_password)
+    user_id = db.consume_password_reset(_token_hash(token), now=time.time())
+    user = db.get_user(user_id) if user_id else None
+    if user is None:
+        raise AuthError("This reset link is invalid, expired or already used. Ask an admin for a new one.", 400)
+    db.set_password_hash(user["id"], hash_password(new_password))
+    db.delete_sessions_for_user(user["id"])
+    return user
+
+
+def change_password(user_id: str, current_password: str, new_password: str, *, current_token: str | None) -> None:
+    """Change a signed-in user's password; their other sessions end, this one stays."""
+    user = db.get_user(user_id)
+    if user is None or not verify_password(current_password, user["password_hash"]):
+        raise AuthError("Your current password is wrong", 400)
+    check_password(new_password)
+    db.set_password_hash(user_id, hash_password(new_password))
+    db.delete_sessions_for_user(user_id, keep_token_hash=_token_hash(current_token) if current_token else None)

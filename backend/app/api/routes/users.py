@@ -34,6 +34,21 @@ def create_user(req: CreateUserRequest, viewer: AdminViewer) -> UserResponse:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
+class ResetLinkResponse(BaseModel):
+    # Relative to the web app, e.g. /reset-password?token=…; the web proxy makes it absolute.
+    path: str
+    expires_at: float
+
+
+@router.post("/{user_id}/reset", response_model=ResetLinkResponse, dependencies=[Depends(_require_accounts)])
+def create_reset_link(user_id: str, viewer: AdminViewer) -> ResetLinkResponse:
+    """A one-time link to choose a new password, for the admin to pass on; cancels earlier links."""
+    if db.get_user(user_id) is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    token, expires_at = auth.issue_password_reset(user_id)
+    return ResetLinkResponse(path=auth.reset_link_path(token), expires_at=expires_at)
+
+
 @router.delete("/{user_id}", status_code=204, dependencies=[Depends(_require_accounts)])
 def delete_user(user_id: str, viewer: AdminViewer) -> None:
     if user_id == viewer.user_id:

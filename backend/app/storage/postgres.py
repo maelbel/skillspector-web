@@ -82,6 +82,21 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_scans_owner ON scans (owner_id, created_at DESC)",
         ],
     ),
+    (
+        4,
+        [
+            """
+            CREATE TABLE password_resets (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                expires_at DOUBLE PRECISION NOT NULL,
+                used_at DOUBLE PRECISION
+            )
+            """,
+            "CREATE INDEX idx_password_resets_user ON password_resets (user_id)",
+        ],
+    ),
 ]
 
 
@@ -307,3 +322,33 @@ class PostgresStore:
 
     def delete_expired_sessions(self, now: float) -> int:
         return self._execute("DELETE FROM sessions WHERE expires_at <= %s", (now,))
+
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        self._execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+
+    def delete_sessions_for_user(self, user_id: str, *, keep_token_hash: str | None = None) -> None:
+        self._execute(
+            "DELETE FROM sessions WHERE user_id = %s AND token_hash IS DISTINCT FROM %s", (user_id, keep_token_hash)
+        )
+
+    def create_password_reset(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
+        # Only the newest link works: issuing one cancels the user's earlier links.
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute("DELETE FROM password_resets WHERE user_id = %s", (user_id,))
+            conn.execute(
+                "INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (%s, %s, %s, %s)",
+                (token_hash, user_id, created_at, expires_at),
+            )
+
+    def consume_password_reset(self, token_hash: str, *, now: float) -> str | None:
+        """Mark an unused, unexpired reset as used and return its user id, in one statement."""
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE password_resets SET used_at = %s
+                WHERE token_hash = %s AND used_at IS NULL AND expires_at > %s
+                RETURNING user_id
+                """,
+                (now, token_hash, now),
+            ).fetchone()
+        return row["user_id"] if row else None

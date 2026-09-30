@@ -80,6 +80,21 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_scans_owner ON scans (owner_id, created_at DESC)",
         ],
     ),
+    (
+        4,
+        [
+            """
+            CREATE TABLE password_resets (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                used_at REAL
+            )
+            """,
+            "CREATE INDEX idx_password_resets_user ON password_resets (user_id)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -341,3 +356,39 @@ class SQLiteStore:
         cursor = self._conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
         self._conn.commit()
         return cursor.rowcount
+
+    @_locked
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        self._conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        self._conn.commit()
+
+    @_locked
+    def delete_sessions_for_user(self, user_id: str, *, keep_token_hash: str | None = None) -> None:
+        self._conn.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND token_hash IS NOT ?", (user_id, keep_token_hash)
+        )
+        self._conn.commit()
+
+    @_locked
+    def create_password_reset(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
+        # Only the newest link works: issuing one cancels the user's earlier links.
+        self._conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+        self._conn.execute(
+            "INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token_hash, user_id, created_at, expires_at),
+        )
+        self._conn.commit()
+
+    @_locked
+    def consume_password_reset(self, token_hash: str, *, now: float) -> str | None:
+        """Mark an unused, unexpired reset as used and return its user id, in one statement."""
+        row = self._conn.execute(
+            """
+            UPDATE password_resets SET used_at = ?
+            WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+            RETURNING user_id
+            """,
+            (now, token_hash, now),
+        ).fetchone()
+        self._conn.commit()
+        return row["user_id"] if row else None

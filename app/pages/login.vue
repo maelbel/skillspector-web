@@ -154,7 +154,8 @@ function switchTo(next: Step) {
         v-else-if="step === 'signin'"
         class="text-sm text-muted"
       >
-        No account? Ask an admin of this server to add you.
+        No account, or forgot your password? Ask an admin of this server: they can add you or send
+        you a reset link.
       </p>
     </div>
   </UContainer>

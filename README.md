@@ -387,7 +387,13 @@ isn't protected:
   - Passwords are hashed with scrypt. Sessions are random tokens stored only as SHA-256 hashes,
     kept in an `httpOnly`, `SameSite=Lax` cookie that page scripts can't read, and expire after
     `SESSION_DAYS`.
-  - Sign-in attempts are rate-limited per client IP.
+  - Sign-in and password-reset attempts are rate-limited per client IP.
+  - **Forgotten passwords:** there's no email on a self-hosted server, so an admin creates a
+    one-time reset link from the admin page (valid 24 hours, stored only as a hash, and cancelled
+    by a newer link) and passes it on. Using it signs the person out everywhere else. Anyone
+    signed in can change their password from the Account page. An admin locked out of their own
+    account can print a link on the server:
+    `docker exec skillspector-api uv run python -m app.auth.reset_link you@example.com`.
 - **The server's Claude login is shared.** When it's signed in, every visitor can run
   Claude-backed scans on it.
 - **Scan targets are constrained** by skillspector: https only, an allowlist of Git and download
