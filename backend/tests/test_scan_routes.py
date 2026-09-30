@@ -28,6 +28,15 @@ def test_start_scan_queues_a_pending_job(client):
     assert client.scheduled[0].target == "https://example.com/skill.zip"
 
 
+def test_a_github_file_link_is_scanned_as_the_raw_file(client):
+    response = client.post("/scan", json={"target": "https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md"})
+
+    raw = "https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md"
+    assert client.scheduled[0].target == raw
+    # The history shows what was scanned.
+    assert client.get(f"/scan/{response.json()['id']}").json()["target"] == raw
+
+
 @pytest.mark.parametrize("target", ["", "   ", "file:///etc/passwd", "/local/path", "ftp://example.com/x"])
 def test_start_scan_rejects_non_http_targets(client, target):
     response = client.post("/scan", json={"target": target})
