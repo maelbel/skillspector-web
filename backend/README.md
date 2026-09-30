@@ -89,8 +89,8 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
 ## Behaviour worth knowing
 
 - **Deployment mode.** `SKILLSPECTOR_WEB_MODE` is `self_hosted` by default, which is everything
-  described here. `hosted` (Vercel) is being built piece by piece; until every piece exists, the
-  service refuses to start in that mode and lists what's missing.
+  described here. `hosted` (Vercel) swaps in the hosted piece of each part below, and refuses to
+  start while a setting it needs is missing, listing each one.
 - **Storage.** `app/db.py` is the only module the app calls; it delegates to a SQLite or Postgres
   store (`app/storage/`). Each store applies its versioned migrations on startup and records them in
   `schema_migrations`; existing SQLite databases are adopted as they are. Scans aren't copied
@@ -148,8 +148,15 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
     Postgres each check holds an advisory lock on its key, so concurrent requests can't both take
     the last slot. Expired hits are deleted as new ones come in.
   - A refused request isn't counted, so retrying too early doesn't push the limit further out.
-- **Retention.** An hourly sweep deletes finished scans older than the configured number of days;
-  scans still in progress are never swept.
+- **Retention.** The sweep deletes finished scans older than the configured number of days, with
+  their log lines and held keys; scans still in progress are never swept. Changing the retention
+  sweeps straight away.
+  - Self-hosted: a background task in the API process sweeps every hour.
+  - Hosted: no process lives that long, so there is no background task. Vercel Cron calls
+    `GET /api/internal/retention` on the web app daily (`vercel.ts` at the repository root), which
+    forwards to `POST /internal/retention` here. That endpoint answers `401` unless the request
+    carries `Authorization: Bearer $CRON_SECRET`, as Vercel Cron's do, and `404` while
+    `CRON_SECRET` is unset.
 
 Configuration options are listed in the [main README](../README.md#configuration).
 

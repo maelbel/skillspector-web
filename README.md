@@ -97,7 +97,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start until its pieces are built; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
+| `MODE` | `self_hosted` | Deployment mode: `self_hosted` (one server, as documented here) or `hosted` (Vercel). `hosted` refuses to start while a setting it needs is missing, and names it; see the [Hosted version milestone](https://github.com/maelbel/skillspector-web/milestone/1). |
 | `AUTH` | *by mode* | Who can use the server: `none` (the `self_hosted` default: no sign-in, every visitor has full access, admin page included) or `accounts` (sign-in required; the first account becomes the admin, users see only their own scans, admins see all and manage the server). Always `accounts` when hosted. |
 | `ALLOW_SIGNUP` | *unset* | With accounts, whether visitors may create their own account from the landing page. Unset allows it; admins can also turn it on and off in the backoffice, which takes precedence. The very first account is always the admin. |
 | `SESSION_DAYS` | `30` | How long a sign-in lasts. |
@@ -117,6 +117,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `SCAN_IP_RATE_LIMIT` | `20` | Scans allowed per client IP within the same window, however many accounts sign in from it. |
 | `LOGIN_RATE_LIMIT`<br>`LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `10`<br>`300` | Sign-in, first-run setup and sign-up attempts allowed per client IP within the window. |
 | `SCAN_RETENTION_DAYS` | *unset* | Retention when the database is first created (unset keeps scans forever). Change it later from the admin page. |
+| `CRON_SECRET` (no prefix) | *unset* | Hosted only, and required there: Vercel's own variable, which Vercel Cron sends when it calls the daily retention sweep (`vercel.ts`). The sweep endpoint refuses callers without it, and doesn't exist while it's unset. Self-hosted servers sweep hourly in the background instead. Generate one with `openssl rand -hex 32`, and set it for the web app too. |
 | `DATABASE_URL` | *unset* | A `postgres://` or `postgresql://` URL stores scans in Postgres instead of SQLite. Required in hosted mode. The schema is created and migrated on startup. |
 | `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`, used when `DATABASE_URL` is unset. |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Origins allowed to call the API directly. The UI goes through its own proxy, so this rarely matters. |
@@ -369,7 +370,7 @@ backend/app/            FastAPI service
   scanner.py            job queue and skillspector pipeline runner
   db.py                 SQLite scan history and settings
   scan_logs.py          per-scan log capture and progress
-  retention.py          hourly sweep of expired scans
+  retention.py          sweep of expired scans: hourly in-process, or Vercel Cron when hosted
   claude_login.py       server-side `claude auth login` flow and status probe
 backend/tests/          pytest suite
 test/                   Vitest suite
