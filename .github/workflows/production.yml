@@ -1,0 +1,46 @@
+name: Deploy production
+
+# Production is whatever the `production` branch points to: Vercel deploys that branch to
+# production, and `main` as a preview behind the preprod domain (see docs/VERCEL.md). This points
+# the branch at a release tag. Release runs it for each new release; run it by hand (Actions →
+# Deploy production → Run workflow) with an older tag to roll back, or the current one to redeploy.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy, for example v1.2.0
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+# One deployment at a time; a newer request waits rather than racing the branch.
+concurrency:
+  group: production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Point production at ${{ inputs.tag }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "::error::No tag $TAG"
+            exit 1
+          fi
+          commit=$(git rev-parse "refs/tags/$TAG^{commit}")
+          # Forced, so a rollback can move the branch back to an older release.
+          git push --force origin "$commit:refs/heads/production"
+          echo "production → $TAG ($commit). Vercel deploys it to production." >> "$GITHUB_STEP_SUMMARY"
