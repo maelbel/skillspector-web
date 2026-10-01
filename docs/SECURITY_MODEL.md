@@ -37,6 +37,13 @@ isn't protected:
   hosts, private and internal addresses refused, no redirects followed, and size limits on clones,
   archives and downloads. An MCP server scan reads only the server's entry from the MCP Registry's
   API (`registry.modelcontextprotocol.io`): nothing it points to is downloaded, installed or run.
+- **Uploaded skills are kept only while they're scanned.** A `.zip` or `.md` file up to 25 MB, checked
+  before it's queued (a valid archive, within skillspector's size and entry limits, no paths leaving
+  it), and unpacked by skillspector with its own zip safeguards. It's deleted when the scan ends,
+  whether it succeeded or failed; the history keeps only its file name. Hosted, the browser uploads
+  to a private Vercel Blob store with a token that only allows a `.zip` or `.md` under the user's own
+  folder, and the API reads it back by that path with its own token, so a scan can't name another
+  user's upload or any other URL. Uploads a scan never got to are swept with retention.
 - **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
   `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
   microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound

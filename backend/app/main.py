@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse
 from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
-from app import retention
+from app import retention, uploads
 from app.api.routes import account, admin, auth, backoffice, internal, scan, users
 from app.api.routes import settings as settings_routes
 from app.auth import auth_mode
@@ -107,4 +107,8 @@ def health() -> dict:
         "claude_cli_available": settings.mode is Mode.SELF_HOSTED and is_claude_cli_available(),
         # The deepest a scan may follow a skill's external references; 0 when it can't.
         "transitive_max_depth": settings.transitive_max_depth,
+        # How the scan form sends an uploaded file (app/uploads.py): with the request (local), or
+        # straight to the Blob store first (blob); and the largest it takes.
+        "upload_store": uploads.store_kind(settings),
+        "max_upload_bytes": uploads.MAX_UPLOAD_BYTES,
     }

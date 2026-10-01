@@ -15,7 +15,7 @@ from collections.abc import AsyncIterable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from app import scan_logs
+from app import scan_logs, uploads
 from app.analysis_settings import skillspector_env
 from app.core.config import Settings, yara_rule_files
 from app.core.mode import Mode
@@ -34,6 +34,7 @@ RUNNER_SOURCE = (Path(__file__).parent / "sandbox_runner.py").read_text()
 RUNNER_PATH = "/vercel/sandbox/sandbox_runner.py"
 BASELINE_PATH = "/vercel/sandbox/baseline.yaml"
 YARA_RULES_PATH = "/vercel/sandbox/yara_rules"
+UPLOAD_DIR = "/vercel/sandbox/upload"
 
 # Where skillspector fetches targets from (see describeScanTarget in shared/utils/scan.ts),
 # including the hosts GitHub and Hugging Face redirect downloads to. TLS only: the allow-list
@@ -156,7 +157,9 @@ class SandboxExecutor:
         llm: LLMConfig | None,
         baseline: str | None = None,
         transitive_depth: int | None = None,
+        upload: str | None = None,
     ) -> dict[str, Any]:
+        """Scan target in a fresh sandbox; for an upload (target upload:<name>), the file held at upload."""
         if llm is not None and (llm.provider != "anthropic" or not llm.api_key):
             raise RuntimeError("AI review in the scan sandbox needs a Claude (Anthropic) key")
 
@@ -183,11 +186,17 @@ class SandboxExecutor:
                 await box.fs.write_text(RUNNER_PATH, RUNNER_SOURCE)
                 if baseline is not None:
                     await box.fs.write_text(BASELINE_PATH, baseline)
+                scan_target = target
+                if upload is not None:
+                    # Read by the API rather than from the VM, which can't reach the store.
+                    scan_target = f"{UPLOAD_DIR}/{target.removeprefix(uploads.TARGET_PREFIX)}"
+                    await box.fs.mkdir(UPLOAD_DIR)
+                    await box.fs.write_bytes(scan_target, await uploads.read(upload))
                 if self._yara_rules:
                     await box.fs.mkdir(YARA_RULES_PATH)
                     for name, rules in self._yara_rules.items():
                         await box.fs.write_bytes(f"{YARA_RULES_PATH}/{name}", rules)
-                args = [RUNNER_PATH, target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
+                args = [RUNNER_PATH, scan_target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
                 if self._yara_rules:
                     args += ["--yara-rules-dir", YARA_RULES_PATH]
                 transitive = transitive_options(settings, transitive_depth)

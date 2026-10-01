@@ -67,7 +67,13 @@ Run everything from the repository root.
    Any Postgres works. Set `SKILLSPECTOR_WEB_DATABASE_URL` yourself for another provider. The API
    creates and migrates its tables on startup.
 
-3. **Set up the sandbox snapshot.** Scans boot from a snapshot with skillspector preinstalled. Its
+3. **Create a private Blob store for uploads.** Skills uploaded from the browser go straight to it,
+   since function request bodies are limited to 4.5 MB, and each one is deleted once it's scanned.
+   In the dashboard: **Storage → Create → Blob**, with **Private** access, connected to the project
+   for all three environments. The API reads and deletes uploads with `BLOB_READ_WRITE_TOKEN`: check
+   that connecting the store set it. Until it's set, the scan form doesn't offer uploads.
+
+4. **Set up the sandbox snapshot.** Scans boot from a snapshot with skillspector preinstalled. Its
    ID is recorded next to the pin it was built from, in `backend/app/sandbox_snapshot_record.py`,
    and every deployment uses the one in its own code. The record in this repository points to a
    snapshot in the maintainer's Vercel team, so on your own project, build one and commit the
@@ -93,7 +99,7 @@ Run everything from the repository root.
    The record's commit is pushed with the workflow's own token, which doesn't start other
    workflows, so CI doesn't rerun on it. Vercel still deploys a preview of it.
 
-4. **Set the environment variables** listed [below](#environment-variables). For each variable
+5. **Set the environment variables** listed [below](#environment-variables). For each variable
    and environment, run `vercel env add NAME production` (or `preview`, or `development`), which
    prompts for the value. For example:
 
@@ -107,7 +113,7 @@ Run everything from the repository root.
    Store secrets as sensitive, except in Development, where Vercel doesn't allow sensitive
    variables.
 
-5. **Deploy**:
+6. **Deploy**:
 
    ```bash
    vercel deploy           # a preview
@@ -117,14 +123,14 @@ Run everything from the repository root.
    With Git connected, [releases deploy production and `main` deploys preprod](#deployments).
    Set that up once with [the steps below](#setting-up-release-deployments).
 
-6. **Check it**:
+7. **Check it**:
    - Open `/api/health`. It should report `"mode": "hosted"` and `"auth": "accounts"`.
    - The first account created becomes the admin.
    - If a setting is missing, the API refuses to start and names it in the function logs.
 
-7. **Add the edge rules** from [VERCEL_FIREWALL.md](./VERCEL_FIREWALL.md).
+8. **Add the edge rules** from [VERCEL_FIREWALL.md](./VERCEL_FIREWALL.md).
 
-8. **Check the scan limits** in the backoffice under **Settings → Scans**. Each user gets 10 scans
+9. **Check the scan limits** in the backoffice under **Settings → Scans**. Each user gets 10 scans
    per 24 hours and 2 at once until you change them. Pause new scans there if costs run away. It
    takes effect immediately, with no redeploy.
 
@@ -140,6 +146,7 @@ Every service in the project sees the same variables. Scope each one as shown:
 | `SKILLSPECTOR_WEB_DATABASE_URL` | Each | Set by the Neon integration (step 2): the production database for Production, the preview database for the others. |
 | `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID` | All | Optional: a snapshot to use when `backend/app/sandbox_snapshot_record.py` is missing. The recorded snapshot always takes priority. |
 | `SKILLSPECTOR_WEB_SECRET_KEY` | Each | Encrypts saved Claude keys. Generate with `uv run python -m app.secrets_box` in `backend/`. A separate preview key means a preview can't decrypt production keys even if it were pointed at production data. Keep it: if it changes, users have to connect Claude again. |
+| `BLOB_READ_WRITE_TOKEN` | All | Set by connecting the Blob store (step 3). Without it, uploads are off. |
 | `CRON_SECRET` | Each | A random string (`openssl rand -hex 32`). Vercel Cron sends it to the retention sweep, and the API refuses to start in hosted mode without it. |
 | `NUXT_TRUST_PROXY` | All | `true`. Vercel sets `X-Forwarded-For` to the client's address, and rate limits count by it. |
 | `NUXT_PUBLIC_BOTID` | All | `true` turns on [BotID](https://vercel.com/docs/botid) for scan submissions. It's read at build time, so redeploy after changing it. |

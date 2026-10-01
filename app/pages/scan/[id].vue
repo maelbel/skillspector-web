@@ -224,7 +224,9 @@ const errorMessage = computed(() => {
         v-if="status && !isWorking"
         class="flex flex-wrap gap-2"
       >
+        <!-- An upload isn't kept once scanned, so there's nothing to scan again from. -->
         <UButton
+          v-if="!isUploadTarget(status.target)"
           :to="scanAgainLink"
           icon="i-lucide-rotate-cw"
           color="neutral"

@@ -16,7 +16,7 @@ from app.analysis_settings import apply_to_process
 # The operator's skillspector settings, before skillspector reads them on import (app.scanner).
 apply_to_process()
 
-from app import claude_key, db, scan_logs, scanner
+from app import claude_key, db, scan_logs, scanner, uploads
 from app.jobs.vercel_queues import SCAN_TOPIC
 from app.scanner import Job, JobStatus, LLMConfig
 
@@ -33,6 +33,7 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
     scan = db.get_scan(message.payload["scan_id"])
     if scan is None or scan["status"] in (JobStatus.DONE, JobStatus.ERROR):
         db.delete_scan_secret(message.payload["scan_id"])
+        # A deleted scan's upload is swept with retention; a finished one's is already gone.
         return  # Deleted, or already handled by an earlier delivery.
 
     if message.metadata.delivery_count > MAX_DELIVERIES:
@@ -44,15 +45,26 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
             error=f"The scan didn't finish after {MAX_DELIVERIES} attempts",
         )
         db.delete_scan_secret(scan["id"])
+        await uploads.delete(scan.get("upload"))
         return
 
     try:
         llm = _llm_for(scan)
     except _NoKeyError as exc:
         db.update_scan(id=scan["id"], status=JobStatus.ERROR, finished_at=time.time(), result=None, error=str(exc))
+        await uploads.delete(scan.get("upload"))
         return
     try:
-        await scanner.run_job(Job(id=scan["id"], target=scan["target"], llm=llm, baseline=scan.get("baseline"), transitive_depth=scan.get("transitive_depth")))
+        job = Job(
+            id=scan["id"],
+            target=scan["target"],
+            llm=llm,
+            baseline=scan.get("baseline"),
+            transitive_depth=scan.get("transitive_depth"),
+            upload=scan.get("upload"),
+        )
+        # run_job deletes the upload once it's scanned.
+        await scanner.run_job(job)
     finally:
         # A one-off key lives only as long as its scan.
         db.delete_scan_secret(scan["id"])

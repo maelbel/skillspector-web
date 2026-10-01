@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeScanTarget, mcpEntryUrl, parseMcpServer, parseScanTarget, splitScanTitle } from '../shared/utils/scan'
+import { describeScanTarget, isUploadTarget, mcpEntryUrl, parseMcpServer, parseScanTarget, splitScanTitle } from '../shared/utils/scan'
 
 const ENTRY = 'https://registry.modelcontextprotocol.io/v0/servers/io.github.acme%2Fweather/versions/latest'
 
@@ -89,5 +89,14 @@ describe('MCP servers', () => {
   it('titles a scan by the server, shown whole in the history', () => {
     expect(parseScanTarget(ENTRY)).toEqual({ title: 'io.github.acme/weather', isGithub: false })
     expect(splitScanTitle(ENTRY)).toEqual({ name: 'io.github.acme/weather' })
+  })
+})
+
+describe('uploads', () => {
+  it('titles an uploaded skill by its file name', () => {
+    expect(isUploadTarget('upload:my skill.zip')).toBe(true)
+    expect(isUploadTarget('https://github.com/acme/skills')).toBe(false)
+    expect(parseScanTarget('upload:my skill.zip')).toEqual({ title: 'my skill.zip', isGithub: false })
+    expect(splitScanTitle('upload:SKILL.md')).toEqual({ name: 'SKILL.md' })
   })
 })

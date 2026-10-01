@@ -1,12 +1,25 @@
+import json
 import os
 import tempfile
 import time
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from skillspector.suppression import dump_baseline
 
-from app import claude_key, db, quotas, rate_limit
+from app import claude_key, db, quotas, rate_limit, uploads
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer
@@ -64,8 +77,7 @@ def check_baseline(text: str) -> None:
         os.unlink(file.name)
 
 
-class ScanRequest(BaseModel):
-    target: str
+class ScanOptions(BaseModel):
     llm: LLMConfig | None = None
     # A skillspector baseline file's text (YAML or JSON): the findings it accepts are suppressed.
     # Its size is checked by check_baseline, for a readable error.
@@ -73,9 +85,30 @@ class ScanRequest(BaseModel):
     # Follow the skill's external references this many levels deep (skillspector's --transitive).
     transitive_depth: int | None = Field(default=None, ge=1)
 
+
+class BlobUpload(BaseModel):
+    """A file the browser uploaded to the Blob store (app/uploads.py), by its pathname there."""
+
+    pathname: str
+    name: str
+
+
+class ScanRequest(ScanOptions):
+    # A link, an MCP server's name, or nothing with an upload instead.
+    target: str | None = None
+    upload: BlobUpload | None = None
+
+    @model_validator(mode="after")
+    def _target_or_upload(self) -> "ScanRequest":
+        if (self.target is None) == (self.upload is None):
+            raise ValueError("give a target or an upload")
+        return self
+
     @field_validator("target")
     @classmethod
-    def validate_target(cls, value: str) -> str:
+    def validate_target(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("target is required")
@@ -213,9 +246,72 @@ def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
+    if req.upload is None:
+        assert req.target is not None
+        return await _queue_scan(req.target, req, viewer)
+    store = uploads.store_kind()
+    if store != "blob":
+        raise HTTPException(status_code=422, detail=uploads.NOT_SET_UP if store is None else "Upload the file with the scan instead (POST /scan/upload)")
+    try:
+        name = uploads.safe_name(req.upload.name)
+        pathname = uploads.blob_pathname_for(viewer.user_id or "anonymous", req.upload.pathname)
+    except uploads.UploadRejectedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    ref = uploads.BLOB_PREFIX + pathname
+
+    async def keep(_scan_id: str) -> str:
+        # Checked here, where its reason can be shown, rather than as a failed scan.
+        uploads.check_content(name, await uploads.read(ref))
+        return ref
+
+    try:
+        return await _queue_scan(uploads.target_for(name), req, viewer, keep_upload=keep)
+    except BaseException:
+        await uploads.delete(ref)
+        raise
+
+
+@router.post("/upload", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
+async def start_upload_scan(
+    viewer: CurrentViewer,
+    file: Annotated[UploadFile, File()],
+    # The scan's options (ScanOptions), as JSON: a form can't nest them.
+    options: Annotated[str, Form()] = "{}",
+) -> ScanQueuedResponse:
+    """Scan a .zip of a skill, or a SKILL.md, sent with the request (the local upload store)."""
+    store = uploads.store_kind()
+    if store != "local":
+        raise HTTPException(status_code=422, detail=uploads.NOT_SET_UP if store is None else "Uploads go to the Blob store on this server")
+    try:
+        parsed = ScanOptions.model_validate(json.loads(options))
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail="The scan options aren't valid") from exc
+    try:
+        name = uploads.safe_name(file.filename or "")
+        data = await file.read(uploads.MAX_UPLOAD_BYTES + 1)
+        uploads.check_content(name, data)
+    except uploads.UploadRejectedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    async def keep(scan_id: str) -> str:
+        return uploads.save_local(scan_id, name, data)
+
+    return await _queue_scan(uploads.target_for(name), parsed, viewer, keep_upload=keep)
+
+
+async def _queue_scan(
+    target: str,
+    req: ScanOptions,
+    viewer: Viewer,
+    *,
+    keep_upload: Callable[[str], Awaitable[str]] | None = None,
+) -> ScanQueuedResponse:
+    """Check a scan may start, and queue it. keep_upload stores an upload for the scan, once
+    everything else allows it, and returns where it's held; it raises UploadRejectedError for a
+    file that can't be scanned."""
     limits = quotas.current()
     quotas.ensure_not_paused(limits)
-    if is_mcp_entry(req.target) and (req.llm or req.baseline is not None or req.transitive_depth):
+    if is_mcp_entry(target) and (req.llm or req.baseline is not None or req.transitive_depth):
         # Its checks read the registry entry alone: there's no code to review, suppress or follow.
         raise HTTPException(
             status_code=422,
@@ -239,14 +335,34 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if runner.is_full():
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
-    # Last, so a scan refused for any other reason doesn't count towards today's quota.
-    quotas.enforce(viewer, limits)
-    job = create_job(req.target, llm, owner_id=viewer.user_id, baseline=req.baseline, transitive_depth=req.transitive_depth)
+    job_id = uuid.uuid4().hex
+    upload = None
+    if keep_upload is not None:
+        try:
+            upload = await keep_upload(job_id)
+        except uploads.UploadRejectedError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        # Last, so a scan refused for any other reason doesn't count towards today's quota.
+        quotas.enforce(viewer, limits)
+        job = create_job(
+            target,
+            llm,
+            owner_id=viewer.user_id,
+            baseline=req.baseline,
+            transitive_depth=req.transitive_depth,
+            upload=upload,
+            job_id=job_id,
+        )
+    except BaseException:
+        await uploads.delete(upload)
+        raise
     try:
         await runner.submit(job)
     except Exception as exc:
         # Don't leave a scan pending forever if it never reached the queue.
         db.update_scan(id=job.id, status=JobStatus.ERROR, finished_at=time.time(), result=None, error="Couldn't queue the scan")
+        await uploads.delete(upload)
         raise HTTPException(status_code=503, detail="Couldn't queue the scan — try again in a moment") from exc
     return ScanQueuedResponse(id=job.id, status=job.status)
 

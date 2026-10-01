@@ -46,6 +46,7 @@ def insert_scan(
     llm_model: str | None = None,
     baseline: str | None = None,
     transitive_depth: int | None = None,
+    upload: str | None = None,
 ) -> None:
     _store_or_raise().insert_scan(
         id=id,
@@ -57,6 +58,7 @@ def insert_scan(
         llm_model=llm_model,
         baseline=baseline,
         transitive_depth=transitive_depth,
+        upload=upload,
     )
 
 

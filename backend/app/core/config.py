@@ -88,6 +88,10 @@ class Settings(AnalysisSettings):
     # Where a scan's fetch and analysis happen: local (this process) or sandbox (a Vercel Sandbox
     # microVM); unset picks the mode's default (local, or sandbox when hosted).
     scan_executor: Literal["local", "sandbox"] | None = None
+    # Where files uploaded from the browser are held while they're scanned (app/uploads.py): local
+    # (data/uploads) or blob (a private Vercel Blob store, BLOB_READ_WRITE_TOKEN); unset picks the
+    # mode's default (local, or blob when hosted).
+    upload_store: Literal["local", "blob"] | None = None
     # The snapshot sandboxed scans boot from; build it with `python -m app.sandbox_snapshot`.
     sandbox_snapshot_id: str | None = None
     sandbox_vcpus: int = 2
