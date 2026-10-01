@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.mode import Mode
@@ -84,6 +84,23 @@ class Settings(BaseSettings):
     # Sign-in, first-run setup and sign-up attempts allowed per client IP within the window.
     login_rate_limit: int = 10
     login_rate_limit_window_seconds: float = 300.0
+    # Following a skill's external references (skillspector's --transitive): the deepest a scan may
+    # ask for, 0 to turn the option off; and URL prefixes to only follow, or never follow.
+    transitive_max_depth: int = Field(default=2, ge=0, le=5)
+    transitive_allow_prefixes: list[str] = []
+    transitive_deny_prefixes: list[str] = []
+
+    @model_validator(mode="after")
+    def _canonical_transitive_prefixes(self) -> "Settings":
+        """Stored as skillspector compares them; an invalid prefix refuses to start, not each scan."""
+        from skillspector import transitive
+
+        try:
+            allow, deny = transitive.normalize_prefixes(self.transitive_allow_prefixes, self.transitive_deny_prefixes)
+        except ValueError as exc:
+            raise ValueError(f"invalid transitive prefix: {exc}") from exc
+        self.transitive_allow_prefixes, self.transitive_deny_prefixes = list(allow), list(deny)
+        return self
 
 
 @lru_cache

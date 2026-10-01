@@ -3,7 +3,7 @@ import tempfile
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from skillspector.suppression import dump_baseline
 
 from app import claude_key, db, quotas, rate_limit
@@ -70,6 +70,8 @@ class ScanRequest(BaseModel):
     # A skillspector baseline file's text (YAML or JSON): the findings it accepts are suppressed.
     # Its size is checked by check_baseline, for a readable error.
     baseline: str | None = None
+    # Follow the skill's external references this many levels deep (skillspector's --transitive).
+    transitive_depth: int | None = Field(default=None, ge=1)
 
     @field_validator("target")
     @classmethod
@@ -213,6 +215,14 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
     quotas.ensure_not_paused(limits)
     if req.baseline is not None:
         check_baseline(req.baseline)
+    max_depth = get_settings().transitive_max_depth
+    if req.transitive_depth is not None and req.transitive_depth > max_depth:
+        detail = (
+            "Following external references is turned off on this server"
+            if max_depth == 0
+            else f"External references can be followed at most {max_depth} level{'s' if max_depth != 1 else ''} deep on this server"
+        )
+        raise HTTPException(status_code=422, detail=detail)
     llm = _resolve_llm(req.llm, viewer)
     runner = get_runner()
     try:
@@ -223,7 +233,7 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
     # Last, so a scan refused for any other reason doesn't count towards today's quota.
     quotas.enforce(viewer, limits)
-    job = create_job(req.target, llm, owner_id=viewer.user_id, baseline=req.baseline)
+    job = create_job(req.target, llm, owner_id=viewer.user_id, baseline=req.baseline, transitive_depth=req.transitive_depth)
     try:
         await runner.submit(job)
     except Exception as exc:

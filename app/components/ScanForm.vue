@@ -237,6 +237,16 @@ async function pickBaseline(event: Event) {
   if (baselineInput.value) baselineInput.value.value = ''
 }
 
+// Following the skill's external references (Git repositories and raw files it links to), as deep
+// as the server allows.
+const followReferences = ref(false)
+const referenceDepth = ref(1)
+const maxReferenceDepth = computed(() => health.value?.transitive_max_depth ?? 0)
+const referenceDepthOptions = computed(() => Array.from({ length: maxReferenceDepth.value }, (_, i) => ({
+  label: i === 0 ? '1 level: what the skill links to' : `${i + 1} levels: and what those link to`,
+  value: i + 1
+})))
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -257,7 +267,12 @@ async function submit() {
   try {
     const { id } = await $fetch<{ id: string }>('/api/scan', {
       method: 'POST',
-      body: { target: target.value.trim(), llm, baseline: baseline.value?.text }
+      body: {
+        target: target.value.trim(),
+        llm,
+        baseline: baseline.value?.text,
+        transitiveDepth: followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
+      }
     })
     savePrefs()
     await navigateTo(`/scan/${id}`)
@@ -584,6 +599,26 @@ async function submit() {
       >
         {{ baselineError }}
       </p>
+    </div>
+
+    <div
+      v-if="maxReferenceDepth"
+      class="flex flex-col gap-2"
+    >
+      <USwitch
+        v-model="followReferences"
+        label="Follow external references"
+        description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
+        :disabled="submitting"
+      />
+      <USelect
+        v-if="followReferences && maxReferenceDepth > 1"
+        v-model="referenceDepth"
+        :items="referenceDepthOptions"
+        aria-label="How deep to follow references"
+        class="w-full sm:max-w-xs"
+        :disabled="submitting"
+      />
     </div>
 
     <UAlert

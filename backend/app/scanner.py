@@ -19,6 +19,7 @@ from app import db, scan_logs
 from app.core.config import get_settings
 from app.sandbox_executor import SandboxExecutor, executor_kind
 from app.sandbox_runner import run_scan
+from app.transitive import transitive_options
 
 TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
@@ -68,6 +69,8 @@ class Job:
     llm: LLMConfig | None
     # A baseline file's text (YAML or JSON): findings it accepts are suppressed.
     baseline: str | None = None
+    # Levels of external references to follow and scan too; None follows none.
+    transitive_depth: int | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -84,8 +87,15 @@ def _sandbox_executor() -> SandboxExecutor:
 _llm_lock = asyncio.Lock()
 
 
-def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = None, baseline: str | None = None) -> Job:
-    job = Job(id=uuid.uuid4().hex, target=target, llm=llm, baseline=baseline)
+def create_job(
+    target: str,
+    llm: LLMConfig | None,
+    *,
+    owner_id: str | None = None,
+    baseline: str | None = None,
+    transitive_depth: int | None = None,
+) -> Job:
+    job = Job(id=uuid.uuid4().hex, target=target, llm=llm, baseline=baseline, transitive_depth=transitive_depth)
     db.insert_scan(
         id=job.id,
         target=job.target,
@@ -95,6 +105,7 @@ def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = Non
         owner_id=owner_id,
         llm_model=llm.model if llm else None,
         baseline=baseline,
+        transitive_depth=transitive_depth,
     )
     return job
 
@@ -136,13 +147,19 @@ async def run_job(job: Job) -> None:
     loop = asyncio.get_running_loop()
     try:
         if executor_kind(get_settings()) == "sandbox":
-            job.result = await _sandbox_executor().run(job.id, job.target, llm=job.llm, baseline=job.baseline)
+            job.result = await _sandbox_executor().run(
+                job.id, job.target, llm=job.llm, baseline=job.baseline, transitive_depth=job.transitive_depth
+            )
         elif job.llm is not None:
             async with _llm_lock:
                 with _llm_env(job.llm):
-                    job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True, job.baseline)
+                    job.result = await loop.run_in_executor(
+                        None, _invoke_graph, job.id, job.target, True, job.baseline, job.transitive_depth
+                    )
         else:
-            job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False, job.baseline)
+            job.result = await loop.run_in_executor(
+                None, _invoke_graph, job.id, job.target, False, job.baseline, job.transitive_depth
+            )
         job.status = JobStatus.DONE
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)
@@ -186,7 +203,9 @@ def _llm_env(config: LLMConfig) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _invoke_graph(job_id: str, target: str, use_llm: bool, baseline: str | None = None) -> dict[str, Any]:
+def _invoke_graph(
+    job_id: str, target: str, use_llm: bool, baseline: str | None = None, transitive_depth: int | None = None
+) -> dict[str, Any]:
     scan_logs.start_capture(job_id)
     scan_logs.append(job_id, f"Starting scan of {target}")
     baseline_file = None
@@ -214,6 +233,7 @@ def _invoke_graph(job_id: str, target: str, use_llm: bool, baseline: str | None 
                 on_step=step,
                 on_log=lambda line: scan_logs.append(job_id, line),
                 config=config,
+                transitive=transitive_options(get_settings(), transitive_depth),
             )
         except Exception as exc:
             scan_logs.append(job_id, f"Scan failed: {exc}")

@@ -24,7 +24,7 @@ def fake_graph(monkeypatch):
     """Stands in for skillspector's graph: records each scanned target and returns REPORT."""
     calls: list[str] = []
 
-    def invoke(job_id: str, target: str, use_llm: bool, baseline: str | None = None) -> dict:
+    def invoke(job_id: str, target: str, use_llm: bool, baseline: str | None = None, transitive_depth: int | None = None) -> dict:
         calls.append(target)
         return REPORT
 
@@ -195,7 +195,7 @@ def test_worker_gives_up_after_too_many_deliveries(temp_db, fake_graph):
 
 
 def test_a_failing_scan_is_recorded_as_an_error_not_retried(temp_db, monkeypatch):
-    def explode(job_id, target, use_llm, baseline=None):
+    def explode(job_id, target, use_llm, baseline=None, transitive_depth=None):
         raise RuntimeError("clone failed")
 
     monkeypatch.setattr(scanner, "_invoke_graph", explode)

@@ -334,6 +334,12 @@ const errorMessage = computed(() => {
         >
           AI review used {{ formatTokenUsage(status.ai_tokens) }} tokens
         </p>
+        <p
+          v-if="report.metadata?.transitive_targets_scanned !== undefined"
+          class="text-sm text-muted"
+        >
+          Followed {{ report.metadata.transitive_targets_scanned }} external reference{{ report.metadata.transitive_targets_scanned === 1 ? '' : 's' }}
+        </p>
       </VerdictPanel>
 
       <ScanLogPanel

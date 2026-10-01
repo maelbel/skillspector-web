@@ -186,6 +186,17 @@ def test_a_baseline_from_a_scan_suppresses_its_findings_on_a_rescan(memory_logs,
     assert local["issues"] == [] and local["suppressed_count"] == len(first["issues"])
 
 
+def test_references_are_followed_in_the_sandbox_when_asked(memory_logs, skill_dir, sandboxes):
+    created, create_sandbox = sandboxes
+    settings = _settings(transitive_max_depth=3, transitive_deny_prefixes=["https://github.com/evil"])
+    executor = SandboxExecutor(settings, create_sandbox=create_sandbox)
+
+    report = anyio.run(lambda: executor.run("s", str(skill_dir), llm=None, transitive_depth=2))
+
+    assert created[0].commands[0][1][-4:] == ["--transitive-depth", "2", "--transitive-deny", "https://github.com/evil"]
+    assert report["metadata"]["transitive_targets_scanned"] == 0
+
+
 def test_the_sandbox_is_locked_down(memory_logs, skill_dir, sandboxes):
     created, create_sandbox = sandboxes
 
@@ -362,7 +373,7 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, llm, baseline=None):
+        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None):
             calls.append((job_id, target, llm, baseline))
             return {"risk_assessment": {"score": 1}, "issues": []}
 

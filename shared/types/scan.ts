@@ -33,6 +33,9 @@ export interface Finding {
   code_snippet: string | null
   intent: string | null
   tags: string[]
+  // Set on findings in a referenced file the scan followed (skillspector's --transitive).
+  source_url?: string | null
+  transitive_depth?: number | null
 }
 
 // Whether a scan's AI review ran fully, partly or not at all (backend/app/ai_review.py); null for
@@ -48,6 +51,8 @@ export interface ReportMetadata {
   llm_calls_succeeded?: number
   llm_degraded?: boolean
   llm_error?: string
+  // When the scan followed external references.
+  transitive_targets_scanned?: number
   llm_provenance?: {
     provider: { configured_adapter: string }
     analyzers: { analyzer_id: string, model: string | null }[]
