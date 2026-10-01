@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app import auth, db
-from app.api.routes.account import AIUsage, ai_usage
+from app.api.routes.account import AIUsage, ApiToken, ai_usage
 from app.api.routes.auth import UserResponse
+from app.auth import api_tokens
 from app.auth.deps import AdminViewer
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
@@ -135,5 +136,20 @@ def send_reset_email(user_id: str, viewer: AdminViewer) -> None:
 def delete_user(user_id: str, viewer: AdminViewer) -> None:
     try:
         auth.delete_user(viewer.user, user_id)
+    except auth.AuthError as exc:
+        raise _raise(exc) from exc
+
+
+@router.get("/{user_id}/tokens", response_model=list[ApiToken], dependencies=[Depends(_require_accounts)])
+def list_user_tokens(user_id: str, viewer: AdminViewer) -> list[ApiToken]:
+    """A user's API tokens, as they see them: never the tokens themselves."""
+    _user_or_404(user_id)
+    return [ApiToken(**api_tokens.public_token(row)) for row in db.list_api_tokens(user_id)]
+
+
+@router.delete("/{user_id}/tokens/{token_id}", status_code=204, dependencies=[Depends(_require_accounts)])
+def revoke_user_token(user_id: str, token_id: str, viewer: AdminViewer) -> None:
+    try:
+        api_tokens.revoke(viewer.user, _user_or_404(user_id), token_id)
     except auth.AuthError as exc:
         raise _raise(exc) from exc

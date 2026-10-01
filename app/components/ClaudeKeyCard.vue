@@ -45,26 +45,26 @@ async function disconnect() {
 <template>
   <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
     <div class="flex flex-col gap-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
+      <div class="flex flex-col gap-1">
+        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-            Claude
+            Claude key
           </h2>
-          <p class="mt-1 text-sm text-muted">
-            Connect your own Anthropic API key and AI review uses it for your scans, without pasting
-            it each time. It's checked with Anthropic, stored encrypted, and never shown again.
-          </p>
+          <span
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-xs px-2 py-1 text-xs font-semibold"
+            :class="status ? 'bg-safe-tint text-safe-ink ring-1 ring-safe-line' : 'bg-elevated text-muted ring-1 ring-default'"
+          >
+            <UIcon
+              :name="status ? 'i-lucide-plug' : 'i-lucide-unplug'"
+              class="size-3.5"
+            />
+            {{ status ? 'Connected' : 'Not connected' }}
+          </span>
         </div>
-        <span
-          class="inline-flex shrink-0 items-center gap-1.5 px-2 py-1 text-xs font-semibold"
-          :class="status ? 'bg-safe-tint text-safe-ink' : 'bg-elevated text-muted'"
-        >
-          <UIcon
-            :name="status ? 'i-lucide-plug' : 'i-lucide-unplug'"
-            class="size-3.5"
-          />
-          {{ status ? 'Connected' : 'Not connected' }}
-        </span>
+        <p class="text-sm text-muted">
+          Your own Anthropic API key, used for your scans' AI review without pasting it each time.
+          It's checked with Anthropic, stored encrypted, and never shown again.
+        </p>
       </div>
 
       <p
@@ -78,8 +78,18 @@ async function disconnect() {
         />.
       </p>
 
+      <UButton
+        v-if="!status && !editing"
+        color="primary"
+        icon="i-lucide-plug"
+        class="self-start"
+        @click="editing = true; notice = ''"
+      >
+        Connect a key
+      </UButton>
+
       <form
-        v-if="!status || editing"
+        v-else-if="editing"
         class="flex flex-col gap-3"
         @submit.prevent="save"
       >
@@ -99,6 +109,7 @@ async function disconnect() {
           <PasswordInput
             id="claude-api-key"
             v-model="apiKey"
+            autofocus
             subject="API key"
             autocomplete="off"
             placeholder="sk-ant-…"
@@ -117,7 +128,6 @@ async function disconnect() {
             {{ status ? 'Replace key' : 'Connect' }}
           </UButton>
           <UButton
-            v-if="editing"
             color="neutral"
             variant="ghost"
             @click="editing = false; apiKey = ''"

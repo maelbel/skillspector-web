@@ -16,62 +16,66 @@ const aiUsage = computed(() => usage.value?.ai_usage.scans ? usage.value.ai_usag
 </script>
 
 <template>
-  <UCard
+  <section
     v-if="usage && (usage.scans_paused || limits.length || aiUsage)"
-    :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
+    aria-labelledby="usage-heading"
+    class="flex flex-col gap-3"
   >
-    <div class="flex flex-col gap-4">
-      <div>
-        <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-          Usage
-        </h2>
+    <h2
+      id="usage-heading"
+      class="eyebrow text-muted"
+    >
+      Usage
+    </h2>
+    <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
+      <div class="flex flex-col gap-4">
         <p
           v-if="limits.length"
-          class="mt-1 text-sm text-muted"
+          class="text-sm text-muted"
         >
           How many scans you can start on this server. Deleting a scan doesn't give it back.
         </p>
-      </div>
 
-      <UAlert
-        v-if="usage.scans_paused"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-circle-pause"
-        title="New scans are paused on this server"
-        description="An admin has paused scanning for everyone. Your history is still here."
-      />
-
-      <div
-        v-for="row in limits"
-        :key="row.label"
-        class="flex flex-col gap-1.5"
-      >
-        <div class="flex items-baseline justify-between gap-3 text-sm">
-          <span class="text-default">{{ row.label }}</span>
-          <span class="font-mono text-xs text-muted tabular-nums">{{ Math.min(row.used, row.limit) }} of {{ row.limit }}</span>
-        </div>
-        <UProgress
-          :model-value="Math.min(row.used, row.limit)"
-          :max="row.limit"
-          :color="row.used >= row.limit ? 'warning' : 'neutral'"
-          size="sm"
+        <UAlert
+          v-if="usage.scans_paused"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-circle-pause"
+          title="New scans are paused on this server"
+          description="An admin has paused scanning for everyone. Your history is still here."
         />
-      </div>
 
-      <div
-        v-if="aiUsage"
-        class="flex flex-col gap-0.5 text-sm"
-      >
-        <div class="flex items-baseline justify-between gap-3">
-          <span class="text-default">AI review tokens, last {{ aiUsage.days }} days</span>
-          <span class="font-mono text-xs text-muted tabular-nums">{{ aiUsage.scans }} scan{{ aiUsage.scans === 1 ? '' : 's' }}</span>
+        <div
+          v-for="row in limits"
+          :key="row.label"
+          class="flex flex-col gap-1.5"
+        >
+          <div class="flex items-baseline justify-between gap-3 text-sm">
+            <span class="text-default">{{ row.label }}</span>
+            <span class="font-mono text-xs text-muted tabular-nums">{{ Math.min(row.used, row.limit) }} of {{ row.limit }}</span>
+          </div>
+          <UProgress
+            :model-value="Math.min(row.used, row.limit)"
+            :max="row.limit"
+            :color="row.used >= row.limit ? 'warning' : 'neutral'"
+            size="sm"
+          />
         </div>
-        <p class="text-muted">
-          {{ formatTokenUsage({ input: aiUsage.input_tokens, output: aiUsage.output_tokens, cached: aiUsage.cached_tokens }) }},
-          as your AI provider reported them. Deleted scans aren't counted.
-        </p>
+
+        <div
+          v-if="aiUsage"
+          class="flex flex-col gap-0.5 text-sm"
+        >
+          <div class="flex items-baseline justify-between gap-3">
+            <span class="text-default">AI review tokens, last {{ aiUsage.days }} days</span>
+            <span class="font-mono text-xs text-muted tabular-nums">{{ aiUsage.scans }} scan{{ aiUsage.scans === 1 ? '' : 's' }}</span>
+          </div>
+          <p class="text-muted">
+            {{ formatTokenUsage({ input: aiUsage.input_tokens, output: aiUsage.output_tokens, cached: aiUsage.cached_tokens }) }},
+            as your AI provider reported them. Deleted scans aren't counted.
+          </p>
+        </div>
       </div>
-    </div>
-  </UCard>
+    </UCard>
+  </section>
 </template>

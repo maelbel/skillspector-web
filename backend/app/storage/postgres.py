@@ -245,6 +245,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS scans_owner_risk_score ON scans (owner_id, risk_score)",
         ],
     ),
+    (
+        17,
+        [
+            # Personal API tokens (app/auth/api_tokens.py): like sessions, only a token's hash is
+            # stored. prefix is its first characters, to tell a user's tokens apart.
+            """
+            CREATE TABLE api_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                prefix TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                expires_at DOUBLE PRECISION,
+                last_used_at DOUBLE PRECISION
+            )
+            """,
+            "CREATE INDEX idx_api_tokens_user ON api_tokens (user_id)",
+        ],
+    ),
 ]
 
 
@@ -510,7 +531,46 @@ class PostgresStore:
             deleted = conn.execute("DELETE FROM users WHERE id = %s", (id,)).rowcount
             conn.execute("DELETE FROM sessions WHERE user_id = %s", (id,))
             conn.execute("DELETE FROM llm_credentials WHERE user_id = %s", (id,))
+            conn.execute("DELETE FROM api_tokens WHERE user_id = %s", (id,))
         return deleted > 0
+
+    def create_api_token(self, *, id: str, user_id: str, name: str, token_hash: str, prefix: str, scopes: str, created_at: float, expires_at: float | None) -> None:
+        self._execute(
+            "INSERT INTO api_tokens (id, user_id, name, token_hash, prefix, scopes, created_at, expires_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (id, user_id, name, token_hash, prefix, scopes, created_at, expires_at),
+        )
+
+    def list_api_tokens(self, user_id: str) -> list[dict[str, Any]]:
+        with self._pool.connection() as conn:
+            return conn.execute(
+                "SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used_at FROM api_tokens WHERE user_id = %s ORDER BY created_at DESC", (user_id,)
+            ).fetchall()
+
+    def get_api_token_user(self, token_hash: str, *, now: float) -> dict[str, Any] | None:
+        with self._pool.connection() as conn:
+            return conn.execute(
+                """
+                SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                       api_tokens.id AS token_id, api_tokens.name AS token_name, api_tokens.scopes AS token_scopes,
+                       api_tokens.last_used_at AS token_last_used_at
+                FROM api_tokens JOIN users ON users.id = api_tokens.user_id
+                WHERE api_tokens.token_hash = %s AND (api_tokens.expires_at IS NULL OR api_tokens.expires_at > %s)
+                  AND users.status = 'active'
+                """,
+                (token_hash, now),
+            ).fetchone()
+
+    def mark_api_token_used(self, token_id: str, at: float) -> None:
+        self._execute("UPDATE api_tokens SET last_used_at = %s WHERE id = %s", (at, token_id))
+
+    def delete_api_token(self, token_id: str, *, user_id: str) -> dict[str, Any] | None:
+        with self._pool.connection() as conn, conn.transaction():
+            row = conn.execute(
+                "SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used_at FROM api_tokens WHERE id = %s AND user_id = %s", (token_id, user_id)
+            ).fetchone()
+            if row is not None:
+                conn.execute("DELETE FROM api_tokens WHERE id = %s", (token_id,))
+        return row
 
     def create_session(self, *, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
         self._execute(
