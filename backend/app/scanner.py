@@ -219,6 +219,7 @@ def _invoke_graph(
 ) -> dict[str, Any]:
     scan_logs.start_capture(job_id)
     scan_logs.append(job_id, f"Starting scan of {target}")
+    settings = get_settings()
     baseline_file = None
     try:
         if baseline is not None:
@@ -244,7 +245,10 @@ def _invoke_graph(
                 on_step=step,
                 on_log=lambda line: scan_logs.append(job_id, line),
                 config=config,
-                transitive=transitive_options(get_settings(), transitive_depth),
+                # skillspector's own deadline is per scan; a repository of several skills shares it.
+                deadline_seconds=settings.max_workflow_seconds,
+                transitive=transitive_options(settings, transitive_depth),
+                yara_rules_dir=str(settings.yara_rules_dir) if settings.yara_rules_dir else None,
             )
         except Exception as exc:
             scan_logs.append(job_id, f"Scan failed: {exc}")

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
-from app.core.config import Settings, get_settings
+from app.core.config import AnalysisSettings, Settings, get_settings
 
 # Tests never read the developer's .env / .env.local: those can hold real SMTP or API credentials,
 # and a test must never send a real email or call a real provider with them.
 Settings.model_config["env_file"] = ()
+AnalysisSettings.model_config["env_file"] = ()
 get_settings.cache_clear()
 
 # Imported only now, so nothing has cached settings read from the real files.
@@ -92,3 +94,25 @@ def _fresh_rate_limits():
     rate_limit.reset()
     yield
     rate_limit.reset()
+
+
+CANARY_RULE = """rule acme_canary
+{
+    meta:
+        description = "Mentions the ACME canary"
+    strings:
+        $a = "acme-canary-7c1f"
+    condition:
+        $a
+}
+"""
+
+
+@pytest.fixture
+def yara_rules_dir(tmp_path) -> Path:
+    """An operator's extra YARA rules: one matching skills that mention the ACME canary."""
+    path = tmp_path / "operator-rules"
+    (path / "acme").mkdir(parents=True)
+    (path / "acme" / "canary.yar").write_text(CANARY_RULE)
+    (path / "README.md").write_text("Not a rule")
+    return path

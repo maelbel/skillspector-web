@@ -41,6 +41,25 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `DB_PATH` | `data/scans.db` | SQLite file, relative to `backend/`, used when `DATABASE_URL` is unset. |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Origins allowed to call the API directly. The UI goes through its own proxy, so this rarely matters. |
 
+## Analysis (skillspector)
+
+These tune skillspector itself, for every scan, whether it runs inside the API (`local`) or in a
+scan sandbox. Each sets the skillspector variable named; only these are passed on, never the rest
+of the API's environment. Unset keeps skillspector's own default, given here for the pinned
+version (2.12.0). They're also prefixed `SKILLSPECTOR_WEB_`, and a value skillspector would refuse
+or silently ignore stops the API from starting instead.
+
+| Variable | skillspector variable | skillspector's default | Description |
+|---|---|---|---|
+| `YARA_RULES_DIR` | `--yara-rules-dir` | *none* | A directory of extra YARA rules (`.yar`, `.yara`, or base64-encoded `.yar.b64` and `.yara.b64`, in subfolders too), loaded alongside skillspector's own. A rule's `category` meta (`malware`, `webshell`, `cryptominer`, `hack_tool`, `exploit`) sets its finding's rule and severity; without one, a match is a medium `YR4`, and a `severity` meta overrides the severity. Relative to `backend/`. The rules are read when the API starts and uploaded with every sandboxed scan, so the snapshot never needs rebuilding for them. With Docker Compose, mount the directory into the `api` container; on Vercel, commit it under `backend/`. |
+| `OUTPUT_LANGUAGE` | `SKILLSPECTOR_OUTPUT_LANGUAGE` | *none*: the model answers its English prompts in English | The language AI review writes its explanations and remediations in, e.g. `French`: up to 64 letters, digits, spaces, `-` or `_`. Rule names, severities and the report's structure stay as they are. |
+| `REASONING_EFFORT` | `SKILLSPECTOR_REASONING_EFFORT` | the model's | Reasoning effort for AI review, e.g. `low` or `high`, passed to the provider as is: which values work depends on the provider and model. |
+| `TEMPERATURE` | `SKILLSPECTOR_TEMPERATURE` | the model's | Sampling temperature for AI review, from `0` to `1`. |
+| `MAX_LLM_CONCURRENCY` | `SKILLSPECTOR_MAX_LLM_CONCURRENCY` | `10` | AI review requests in flight at once, per scan. Lower it for a provider plan with tight rate limits. |
+| `OSV_TIMEOUT_SECONDS` | `SKILLSPECTOR_OSV_TIMEOUT` | `30` | How long to wait for [OSV.dev](https://osv.dev) when checking a skill's dependencies for known vulnerabilities, before falling back to skillspector's built-in list. Scan sandboxes can't reach OSV.dev, so sandboxed scans always use that list. |
+| `MAX_WORKFLOW_SECONDS` | `SKILLSPECTOR_MAX_WORKFLOW_SECONDS` | `600` | How long a scan's analysis may take before skillspector stops and reports what it inspected so far. A repository holding several skills shares it between them. In the sandbox it never exceeds `SANDBOX_TIMEOUT_SECONDS` minus 30 seconds, which is also its value there when unset. |
+| `MAX_STATIC_ANALYSIS_SECONDS_PER_ARTIFACT` | `SKILLSPECTOR_MAX_STATIC_ANALYSIS_SECONDS_PER_ARTIFACT` | `300` | How long the static analyzers may spend on any one file before moving on and marking it partly inspected. |
+
 ## Web app (`web`)
 
 | Variable | Default | Description |

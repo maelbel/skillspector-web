@@ -1,10 +1,11 @@
 """Run one skillspector scan and report on stdout, one tagged JSON event per line.
 
 This file is uploaded into a Vercel Sandbox and run there with
-``python3 sandbox_runner.py <target> [--llm] [--baseline FILE] [--transitive-depth N
-[--transitive-allow PREFIX]... [--transitive-deny PREFIX]...]`` (``--llm`` adds skillspector's AI
-review; ``--baseline`` suppresses the findings a baseline accepts; ``--transitive-depth`` follows
-the skill's external references and scans them too), so it must stay standalone: the
+``python3 sandbox_runner.py <target> [--llm] [--baseline FILE] [--yara-rules-dir DIR]
+[--transitive-depth N [--transitive-allow PREFIX]... [--transitive-deny PREFIX]...]`` (``--llm``
+adds skillspector's AI review; ``--baseline`` suppresses the findings a baseline accepts;
+``--yara-rules-dir`` loads extra YARA rules; ``--transitive-depth`` follows the skill's external
+references and scans them too), so it must stay standalone: the
 standard library and skillspector only, nothing from ``app``. The API's own scans reuse its
 baseline helpers.
 
@@ -212,6 +213,7 @@ def _scan_with_cli(
     step: Callable[[str], None],
     on_log: Callable[[str], None],
     max_seconds: float | None = None,
+    yara_rules_dir: str | None = None,
 ) -> dict[str, Any]:
     """Scan through skillspector's CLI, following references; its log stands in for graph steps."""
     from skillspector.graph import graph
@@ -229,6 +231,8 @@ def _scan_with_cli(
             args.append("--no-llm")
         if baseline_path:
             args += ["--baseline", baseline_path]
+        if yara_rules_dir:
+            args += ["--yara-rules-dir", yara_rules_dir]
         env = dict(os.environ)
         if max_seconds is not None:
             env["SKILLSPECTOR_MAX_WORKFLOW_SECONDS"] = f"{max_seconds:g}"
@@ -263,6 +267,7 @@ def run_scan(
     config: dict[str, Any] | None = None,
     deadline_seconds: float | None = None,
     transitive: dict[str, Any] | None = None,
+    yara_rules_dir: str | None = None,
 ) -> dict[str, Any]:
     """Scan target, splitting a repository that holds several skills into one scan per skill.
 
@@ -271,10 +276,13 @@ def run_scan(
     deadline_seconds, skills are only started while there's time left for them. With transitive
     ({"depth", "allow", "deny"}), each scan also follows the skill's external references; it runs
     through skillspector's CLI, so it makes no baseline (that needs the scanned files' contents).
+    yara_rules_dir adds a directory of YARA rules to skillspector's own.
     """
     from skillspector.graph import graph
 
     base_state = {"output_format": "json", "use_llm": use_llm, **baseline_state(baseline_path)}
+    if yara_rules_dir:
+        base_state["yara_rules_dir"] = yara_rules_dir
 
     def scan_one(input_path: str, step: Callable[[str], None], extra: dict[str, Any] | None = None) -> dict[str, Any]:
         if transitive:
@@ -287,6 +295,7 @@ def run_scan(
                 step=step,
                 on_log=on_log,
                 max_seconds=budget.max_seconds if budget is not None else None,
+                yara_rules_dir=yara_rules_dir,
             )
         final_state: dict[str, Any] | None = None
         for mode, chunk in graph.stream({**base_state, "input_path": input_path, **(extra or {})}, config=config, stream_mode=["updates", "values"]):
@@ -370,6 +379,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("target")
     parser.add_argument("--llm", action="store_true")
     parser.add_argument("--baseline")
+    parser.add_argument("--yara-rules-dir")
     parser.add_argument("--transitive-depth", type=int)
     parser.add_argument("--transitive-allow", action="append", default=[])
     parser.add_argument("--transitive-deny", action="append", default=[])
@@ -400,6 +410,7 @@ def main(argv: list[str]) -> int:
             on_step=lambda node: emit("step", node=node),
             on_log=lambda line: emit("log", line=line),
             deadline_seconds=float(deadline) if deadline else None,
+            yara_rules_dir=args.yara_rules_dir,
             transitive={"depth": args.transitive_depth, "allow": args.transitive_allow, "deny": args.transitive_deny}
             if args.transitive_depth
             else None,

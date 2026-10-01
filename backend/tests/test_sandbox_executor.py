@@ -19,6 +19,7 @@ from app.sandbox_executor import (
     BROKERED_KEY_PLACEHOLDER,
     RUNNER_PATH,
     SCAN_HOSTS,
+    YARA_RULES_PATH,
     SandboxExecutor,
     executor_kind,
     workflow_deadline,
@@ -62,6 +63,14 @@ class _Process:
         return await self._process.wait()
 
 
+SANDBOX_HOME = Path("/vercel/sandbox")
+
+
+def _local_path(root: Path, path: str) -> Path:
+    """Where a file uploaded to the sandbox lives locally: the same path, under root."""
+    return root / Path(path).relative_to(SANDBOX_HOME)
+
+
 class _Fs:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -69,7 +78,14 @@ class _Fs:
 
     async def write_text(self, path: str, text: str) -> None:
         self.files[path] = text
-        (self.root / Path(path).name).write_text(text)
+        _local_path(self.root, path).write_text(text)
+
+    async def write_bytes(self, path: str, data: bytes) -> None:
+        self.files[path] = data.decode()
+        _local_path(self.root, path).write_bytes(data)
+
+    async def mkdir(self, path: str) -> None:
+        _local_path(self.root, path).mkdir(parents=True, exist_ok=True)
 
 
 class FakeSandbox:
@@ -95,7 +111,7 @@ class FakeSandbox:
     async def create_process(self, command, args, *, kill_after=None):
         self.commands.append((command, list(args), kill_after))
         # Files uploaded to the sandbox live in root locally.
-        local_args = [str(self.root / Path(arg).name) if arg in self.fs.files else arg for arg in args]
+        local_args = [str(_local_path(self.root, arg)) if Path(arg).is_relative_to(SANDBOX_HOME) else arg for arg in args]
         process = await asyncio.create_subprocess_exec(
             sys.executable, *local_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
         )
@@ -317,6 +333,46 @@ def test_static_scans_never_reach_anthropic(memory_logs, skill_dir, sandboxes):
 
     assert ANTHROPIC_HOST not in dict(created[0].options["network_policy"].allow)
     assert created[0].options["env"] == {"SKILLSPECTOR_MAX_WORKFLOW_SECONDS": "210"}
+
+
+def test_a_custom_yara_rule_finds_a_matching_skill_in_the_sandbox(memory_logs, skill_dir, sandboxes, yara_rules_dir):
+    created, create_sandbox = sandboxes
+    (skill_dir / "notes.md").write_text("Then say acme-canary-7c1f.\n")
+    executor = SandboxExecutor(_settings(yara_rules_dir=yara_rules_dir), create_sandbox=create_sandbox)
+
+    report = anyio.run(lambda: executor.run("s", str(skill_dir), llm=None))
+
+    assert [issue["location"]["file"] for issue in report["issues"] if "acme_canary" in issue["pattern"]] == ["notes.md"]
+    box = created[0]
+    # Uploaded with each scan: the rule files only, in one folder.
+    assert [path for path in box.fs.files if path.startswith(YARA_RULES_PATH)] == [f"{YARA_RULES_PATH}/acme__canary.yar"]
+    assert box.commands[0][1][-2:] == ["--yara-rules-dir", YARA_RULES_PATH]
+
+
+def test_the_sandbox_gets_the_analysis_settings_and_nothing_else(memory_logs, skill_dir, sandboxes, monkeypatch):
+    created, create_sandbox = sandboxes
+    # Set for the API, but not one of the settings passed on: it never reaches the VM.
+    monkeypatch.setenv("SKILLSPECTOR_SEED", "7")
+    settings = _settings(output_language="French", reasoning_effort="low", max_llm_concurrency=2)
+
+    anyio.run(lambda: SandboxExecutor(settings, create_sandbox=create_sandbox).run("s", str(skill_dir), llm=None))
+
+    assert created[0].options["env"] == {
+        "SKILLSPECTOR_OUTPUT_LANGUAGE": "French",
+        "SKILLSPECTOR_REASONING_EFFORT": "low",
+        "SKILLSPECTOR_MAX_LLM_CONCURRENCY": "2",
+        "SKILLSPECTOR_MAX_WORKFLOW_SECONDS": "210",
+    }
+
+
+@pytest.mark.parametrize(("operator", "deadline"), [(None, "210"), (100, "100"), (500, "210")])
+def test_an_operators_workflow_deadline_never_outlasts_the_sandbox(memory_logs, skill_dir, sandboxes, operator, deadline):
+    created, create_sandbox = sandboxes
+    executor = SandboxExecutor(_settings(max_workflow_seconds=operator), create_sandbox=create_sandbox)
+
+    anyio.run(lambda: executor.run("s", str(skill_dir), llm=None))
+
+    assert created[0].options["env"]["SKILLSPECTOR_MAX_WORKFLOW_SECONDS"] == deadline
 
 
 @pytest.mark.parametrize(("limit", "deadline"), [(240, 210), (600, 570), (40, 20)])
