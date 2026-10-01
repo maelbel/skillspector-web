@@ -35,6 +35,13 @@ export default {
     },
     { source: '/(.*)', destination: { service: 'web' } }
   ],
+  git: {
+    // Only main (preprod) and production deploy by themselves; production is the release tag the
+    // Deploy production workflow points it at. Previews of other branches share preprod's database,
+    // where their migrations would run before review, so they're deployed by hand
+    // (docs/VERCEL.md). A branch matching any `true` rule deploys; '**' also matches slashes.
+    deploymentEnabled: { '**': false, 'main': true, 'production': true }
+  },
   crons: [
     // Retention sweep (server/api/internal/retention.get.ts). Daily, the most often every Vercel
     // plan allows; changing the retention from the admin page also sweeps straight away.

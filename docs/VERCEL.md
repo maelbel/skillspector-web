@@ -114,8 +114,8 @@ Run everything from the repository root.
    vercel deploy --prod    # production
    ```
 
-   With Git connected, pushing to the production branch deploys production and every pull
-   request gets a preview.
+   With Git connected, [releases deploy production and `main` deploys preprod](#deployments).
+   Set that up once with [the steps below](#setting-up-release-deployments).
 
 6. **Check it**:
    - Open `/api/health`. It should report `"mode": "hosted"` and `"auth": "accounts"`.
@@ -154,6 +154,52 @@ set these:
 
 A deployment keeps the variables it was built with. Redeploy after changing one.
 
+## Deployments
+
+| What happens | Where it goes | Data |
+|---|---|---|
+| A release is published | **Production**, at exactly the release's tagged commit | Production database |
+| A pull request is merged to `main` | **Preprod**: a preview, at the preprod domain | Preview database |
+| A pull request is opened or updated | Nothing, unless you deploy it by hand | Preview database |
+
+- **Production** is whatever the `production` branch points to. Vercel's production branch is
+  `production`, not `main`. When release-please publishes a release, the
+  [Release](../.github/workflows/release.yml) workflow runs
+  [Deploy production](../.github/workflows/production.yml), which force-pushes the release's commit
+  to `production`. Vercel then builds and deploys it.
+- **Preprod** is the latest `main`, deployed as a preview with the Preview environment variables.
+  The preprod domain always points at it, behind Vercel's sign-in like other previews.
+- **Other branches** don't deploy by themselves (`git.deploymentEnabled` in `vercel.ts`). They would
+  share preprod's database, and the API migrates the database it starts on, so an unreviewed
+  migration would reach preprod. To check a pull request on Vercel anyway (the sandbox, Queues,
+  BotID), deploy it by hand from its branch: `vercel deploy`.
+
+**Roll back** by deploying an older release: Actions → **Deploy production** → **Run workflow**,
+with the tag, for example `v1.1.1`. It moves `production` back and Vercel deploys that commit.
+For an immediate switch with no build, `vercel rollback` points production at the previous
+production deployment. Run Deploy production afterwards as well, so the branch and production
+match again.
+
+The API migrates the production database when a release starts. Migrations only add tables and
+columns, so an older release still runs on the newer schema, and a rollback needs no database step.
+Keep new migrations additive for that reason.
+
+### Setting up release deployments
+
+Once per project, after the workflows are on `main`:
+
+1. **Create the `production` branch** at the commit production runs now, so the switch changes
+   nothing:
+
+   ```bash
+   git push origin <commit>:refs/heads/production
+   ```
+
+2. **Make it Vercel's production branch:** project **Settings → Environments → Production →
+   Branch Tracking**, set the branch to `production`. From then on, `main` deploys as a preview.
+3. **Add the preprod domain:** **Settings → Domains → Add**, for example
+   `<project>-preprod.vercel.app`, connected to **Preview** with the Git branch `main`.
+
 ## Previews and production data
 
 Preview deployments never reach production data:
@@ -168,9 +214,10 @@ Preview deployments never reach production data:
 - **Access:** Vercel's Deployment Protection keeps previews behind a Vercel sign-in by default.
   Leave it on.
 
-Every preview shares the one preview database. Previews built from different branches can
-migrate it to different schema versions. If that becomes a problem, recreate the preview database
-rather than pointing previews at production.
+Preprod and every hand-deployed preview share the one preview database. A preview built from a
+pull request migrates it, so deploy one only for a branch whose migrations you're ready to see on
+preprod. If the schema gets ahead of `main`, recreate the preview database rather than pointing
+previews at production.
 
 ## Local development
 

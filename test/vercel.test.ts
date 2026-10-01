@@ -19,4 +19,8 @@ describe('vercel.ts', () => {
   it('handles those paths at the edge, before the web service catches everything', () => {
     expect(config.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: { service: 'web' } })
   })
+
+  it('deploys only main and production by themselves', () => {
+    expect(config.git.deploymentEnabled).toEqual({ '**': false, 'main': true, 'production': true })
+  })
 })
