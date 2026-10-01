@@ -247,6 +247,18 @@ const referenceDepthOptions = computed(() => Array.from({ length: maxReferenceDe
   value: i + 1
 })))
 
+// Baseline and references are rarely needed, so they sit behind "More options"; its label says
+// what's set, so nothing hidden is applied unnoticed.
+const moreOpen = ref(false)
+const moreSummary = computed(() => {
+  const set = []
+  if (baseline.value) set.push(`baseline: ${baseline.value.name}`)
+  if (followReferences.value && maxReferenceDepth.value) {
+    set.push(`references: ${referenceDepth.value} level${referenceDepth.value === 1 ? '' : 's'}`)
+  }
+  return set.join(' · ')
+})
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -539,87 +551,112 @@ async function submit() {
       </div>
     </Transition>
 
-    <div class="flex flex-col gap-1.5">
-      <p class="flex items-center gap-1.5 font-semibold text-highlighted">
-        Baseline <span class="font-normal text-muted">(optional)</span>
-        <UTooltip text="What a baseline file looks like">
-          <ULink
-            :to="BASELINE_FORMAT_DOCS"
-            target="_blank"
-            aria-label="What a baseline file looks like, in skillspector's documentation"
-            class="inline-flex text-muted hover:text-highlighted"
-          >
-            <UIcon
-              name="i-lucide-info"
-              class="size-4"
-            />
-          </ULink>
-        </UTooltip>
-      </p>
-      <p class="text-sm text-muted">
-        A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
-        suppressed and don’t count towards the score. Download one from a scan’s result page.
-      </p>
-      <div class="mt-1 flex flex-wrap items-center gap-2">
-        <input
-          ref="baselineInput"
-          type="file"
-          accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
-          class="sr-only"
-          aria-label="Baseline file"
-          :disabled="submitting"
-          @change="pickBaseline"
-        >
-        <UButton
-          :label="baseline ? 'Replace file' : 'Choose a file'"
-          icon="i-lucide-file-check"
-          size="sm"
-          color="neutral"
-          variant="outline"
-          class="rounded-xs"
-          :disabled="submitting"
-          @click="baselineInput?.click()"
-        />
-        <template v-if="baseline">
-          <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
-          <UButton
-            icon="i-lucide-x"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            aria-label="Remove the baseline"
-            :disabled="submitting"
-            @click="baseline = null"
-          />
-        </template>
-      </div>
-      <p
-        v-if="baselineError"
-        class="text-sm text-critical-ink"
-      >
-        {{ baselineError }}
-      </p>
-    </div>
-
-    <div
-      v-if="maxReferenceDepth"
-      class="flex flex-col gap-2"
+    <UCollapsible
+      v-model:open="moreOpen"
+      class="flex flex-col gap-4"
     >
-      <USwitch
-        v-model="followReferences"
-        label="Follow external references"
-        description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
-        :disabled="submitting"
-      />
-      <USelect
-        v-if="followReferences && maxReferenceDepth > 1"
-        v-model="referenceDepth"
-        :items="referenceDepthOptions"
-        aria-label="How deep to follow references"
-        class="w-full sm:max-w-xs"
-        :disabled="submitting"
-      />
-    </div>
+      <UButton
+        color="neutral"
+        variant="link"
+        size="sm"
+        trailing-icon="i-lucide-chevron-down"
+        class="self-start px-0 text-left"
+        :ui="{ trailingIcon: 'transition-transform group-data-[state=open]:rotate-180' }"
+      >
+        <span>
+          More options<span
+            v-if="moreSummary"
+            class="font-normal text-muted"
+          > · {{ moreSummary }}</span>
+        </span>
+      </UButton>
+
+      <template #content>
+        <div class="flex flex-col gap-5 border-l-2 border-muted pl-4">
+          <div class="flex flex-col gap-1.5">
+            <p class="flex items-center gap-1.5 font-semibold text-highlighted">
+              Baseline
+              <UTooltip text="What a baseline file looks like">
+                <ULink
+                  :to="BASELINE_FORMAT_DOCS"
+                  target="_blank"
+                  aria-label="What a baseline file looks like, in skillspector's documentation"
+                  class="inline-flex text-muted hover:text-highlighted"
+                >
+                  <UIcon
+                    name="i-lucide-info"
+                    class="size-4"
+                  />
+                </ULink>
+              </UTooltip>
+            </p>
+            <p class="text-sm text-muted">
+              A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
+              suppressed and don’t count towards the score. Download one from a scan’s result page.
+            </p>
+            <div class="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                ref="baselineInput"
+                type="file"
+                accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
+                class="sr-only"
+                aria-label="Baseline file"
+                :disabled="submitting"
+                @change="pickBaseline"
+              >
+              <UButton
+                :label="baseline ? 'Replace file' : 'Choose a file'"
+                icon="i-lucide-file-check"
+                size="sm"
+                color="neutral"
+                variant="outline"
+                class="rounded-xs"
+                :disabled="submitting"
+                @click="baselineInput?.click()"
+              />
+              <template v-if="baseline">
+                <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  aria-label="Remove the baseline"
+                  :disabled="submitting"
+                  @click="baseline = null"
+                />
+              </template>
+            </div>
+            <p
+              v-if="baselineError"
+              class="text-sm text-critical-ink"
+            >
+              {{ baselineError }}
+            </p>
+          </div>
+
+          <div
+            v-if="maxReferenceDepth"
+            class="flex flex-col gap-2"
+          >
+            <USwitch
+              v-model="followReferences"
+              label="Follow external references"
+              description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
+              :disabled="submitting"
+            />
+            <USelect
+              v-if="followReferences && maxReferenceDepth > 1"
+              v-model="referenceDepth"
+              :items="referenceDepthOptions"
+              aria-label="How deep to follow references"
+              class="w-full sm:max-w-xs"
+              :disabled="submitting"
+            />
+          </div>
+        </div>
+      </template>
+    </UCollapsible>
 
     <UAlert
       v-if="errorMessage"
