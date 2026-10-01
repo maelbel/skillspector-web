@@ -24,7 +24,7 @@ built separately and deployed together:
     invoke
 - **Scans** are published to the `scans` Vercel Queues topic. Topics are partitioned by deployment,
   so each deployment runs its own scans. Each scan runs in a Vercel Sandbox microVM booted from
-  your snapshot.
+  the snapshot recorded for the deployment's skillspector pin.
 - **Vercel Cron** calls the retention sweep daily (`/api/internal/retention`). Cron jobs run on
   production only.
 
@@ -67,15 +67,31 @@ Run everything from the repository root.
    Any Postgres works. Set `SKILLSPECTOR_WEB_DATABASE_URL` yourself for another provider. The API
    creates and migrates its tables on startup.
 
-3. **Build the sandbox snapshot** and note the ID it prints:
+3. **Set up the sandbox snapshot.** Scans boot from a snapshot with skillspector preinstalled. Its
+   ID is recorded next to the pin it was built from, in `backend/app/sandbox_snapshot_record.py`,
+   and every deployment uses the one in its own code. The record in this repository points to a
+   snapshot in the maintainer's Vercel team, so on your own project, build one and commit the
+   record:
 
    ```bash
    vercel env run -- sh -c 'cd backend && uv run python -m app.sandbox_snapshot'
    ```
 
-   Rebuild it whenever the skillspector pin in `backend/pyproject.toml` changes. Scans log a
-   warning when the versions differ. The build VM installs a C compiler first: some skillspector
-   dependencies have no prebuilt wheel for the sandbox image's Python.
+   The build VM installs a C compiler first: some skillspector dependencies have no prebuilt wheel
+   for the sandbox image's Python.
+
+   From then on, the **Sandbox snapshot** workflow (`.github/workflows/sandbox-snapshot.yml`)
+   rebuilds it whenever a pull request changes the skillspector pin in `backend/pyproject.toml`,
+   and commits the new record to the pull request's branch. The previous snapshots are kept, so a
+   rollback still boots from its own. The workflow needs, in the GitHub repository's settings
+   (**Secrets and variables → Actions**):
+   - the secret `VERCEL_TOKEN`, a [Vercel access token](https://vercel.com/account/settings/tokens)
+     scoped to the team
+   - the variables `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID`: `orgId` and `projectId` in
+     `.vercel/project.json` once the project is linked
+
+   The record's commit is pushed with the workflow's own token, which doesn't start other
+   workflows, so CI doesn't rerun on it. Vercel still deploys a preview of it.
 
 4. **Set the environment variables** listed [below](#environment-variables). For each variable
    and environment, run `vercel env add NAME production` (or `preview`, or `development`), which
@@ -122,7 +138,7 @@ Every service in the project sees the same variables. Scope each one as shown:
 |---|---|---|
 | `SKILLSPECTOR_WEB_MODE` | All | `hosted`. It turns on the hosted defaults: accounts, Queues, sandboxed scans, and logs and rate limits in the database. |
 | `SKILLSPECTOR_WEB_DATABASE_URL` | Each | Set by the Neon integration (step 2): the production database for Production, the preview database for the others. |
-| `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID` | All | The ID from step 3. |
+| `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID` | All | Optional: a snapshot to use when `backend/app/sandbox_snapshot_record.py` is missing. The recorded snapshot always takes priority. |
 | `SKILLSPECTOR_WEB_SECRET_KEY` | Each | Encrypts saved Claude keys. Generate with `uv run python -m app.secrets_box` in `backend/`. A separate preview key means a preview can't decrypt production keys even if it were pointed at production data. Keep it: if it changes, users have to connect Claude again. |
 | `CRON_SECRET` | Each | A random string (`openssl rand -hex 32`). Vercel Cron sends it to the retention sweep, and the API refuses to start in hosted mode without it. |
 | `NUXT_TRUST_PROXY` | All | `true`. Vercel sets `X-Forwarded-For` to the client's address, and rate limits count by it. |

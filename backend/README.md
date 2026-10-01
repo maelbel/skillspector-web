@@ -113,9 +113,11 @@ The finished report is skillspector's JSON report (`risk_assessment`, `issues`, 
 - **Sandboxed scans.** With `SKILLSPECTOR_WEB_SCAN_EXECUTOR=sandbox` (the hosted default),
   `app/sandbox_executor.py` runs each scan in a fresh, non-persistent Vercel Sandbox instead of this
   process:
-  - The VM boots from `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID`, which has skillspector preinstalled.
-    `uv run python -m app.sandbox_snapshot` builds it from the version pinned in `pyproject.toml`
-    and prints the ID. A scan logs a warning if the snapshot's skillspector differs from the API's.
+  - The VM boots from a snapshot with skillspector preinstalled: the one recorded in
+    `app/sandbox_snapshot_record.py`, or `SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID` when there's no
+    record. `uv run python -m app.sandbox_snapshot` builds one from the version pinned in
+    `pyproject.toml` and records it; the Sandbox snapshot workflow does it when a pull request
+    changes the pin. A scan logs a warning if the snapshot's skillspector differs from the API's.
   - The API uploads `app/sandbox_runner.py`, a standalone script, and runs it on the target. The
     script reports each finished step, log record and the final report as tagged JSON lines, which
     the API relays into the scan's log and progress as they arrive.

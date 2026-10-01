@@ -78,6 +78,10 @@ jobs:
           jq -e '[.routes[] | select(.destination.service?)] | map(.destination.service) == ["web"]' $out/config.json
           test -d $out/services/web/functions
           test -d $out/services/api/functions/fastapi.func
+          # Scans boot from the snapshot recorded here, read at runtime (app/sandbox_snapshot.py). The
+          # function lists its source files in filePathMap rather than copying them.
+          jq -e '.filePathMap | keys | map(select(test("^(\\./)?app/sandbox_"))) | any(endswith("app/sandbox_snapshot_record.py"))' \
+            $out/services/api/functions/fastapi.func/.vc-config.json
           # The scan subscriber: a function triggered by the `scans` topic.
           jq -e -s 'map(.experimentalTriggers // [] | .[] | select(.topic == "scans")) | length > 0' \
             $(find $out/services/api/functions/_py_subscribers -name .vc-config.json)

@@ -28,6 +28,8 @@ def check_mode(settings: Settings) -> None:
     if settings.mode is not Mode.HOSTED:
         return
 
+    from app.sandbox_snapshot import snapshot_id_for
+
     problems = []
     if not settings.database_url:
         # Vercel has no persistent, shared filesystem for the SQLite file.
@@ -35,8 +37,8 @@ def check_mode(settings: Settings) -> None:
     if settings.scan_executor == "local":
         # Untrusted targets must be fetched and analysed in a sandbox, not in the app.
         problems.append("SKILLSPECTOR_WEB_SCAN_EXECUTOR=local isn't allowed; leave it unset")
-    elif not settings.sandbox_snapshot_id:
-        problems.append("set SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID (build one with `python -m app.sandbox_snapshot`)")
+    elif not snapshot_id_for(settings):
+        problems.append("build a sandbox snapshot with `python -m app.sandbox_snapshot`, or set SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID")
     if settings.auth == "none":
         problems.append("SKILLSPECTOR_WEB_AUTH=none isn't allowed on a public service; leave it unset")
     from app import secrets_box
