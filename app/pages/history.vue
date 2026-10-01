@@ -275,6 +275,17 @@ async function confirmDelete() {
                 >
                   {{ RECOMMENDATION_SHORT_LABEL[scan.recommendation] }}
                 </span>
+                <span
+                  v-if="scan.status === 'done' && (scan.ai_review === 'failed' || scan.ai_review === 'degraded')"
+                  class="ml-2 inline-flex items-center gap-1 align-middle text-xs font-medium text-medium-ink"
+                  :title="scan.ai_review === 'failed' ? 'AI review was requested but didn\'t run' : 'AI review was requested but only partly ran'"
+                >
+                  <UIcon
+                    name="i-lucide-bot-off"
+                    class="size-3.5"
+                  />
+                  {{ scan.ai_review === 'failed' ? 'No AI review' : 'Partial AI review' }}
+                </span>
               </td>
               <td class="px-5 py-3.5 max-md:hidden">
                 <div

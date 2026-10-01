@@ -20,6 +20,17 @@ def test_result_round_trips_as_a_dict(temp_db):
     assert scan["result"] == report
     assert scan["provider"] == "anthropic"
     assert (scan["risk_score"], scan["severity"], scan["recommendation"]) == (42, "HIGH", "CAUTION")
+    assert scan["ai_review"] is None
+
+
+def test_history_records_whether_the_ai_review_ran(temp_db):
+    report = {"risk_assessment": {}, "metadata": {"llm_requested": True, "llm_calls_succeeded": 0, "llm_error": "bad key"}}
+    db.insert_scan(id="a", target="t", status="pending", created_at=1.0, provider="anthropic")
+
+    db.update_scan(id="a", status="done", finished_at=2.0, result=report, error=None)
+
+    rows, _ = db.list_scans(limit=10, offset=0)
+    assert rows[0]["ai_review"] == "failed"
 
 
 def test_list_scans_is_newest_first_with_a_total_and_no_report(temp_db):

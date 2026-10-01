@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from app.storage.base import SUMMARY_COLUMNS, ScanRow, risk_columns
+from app.storage.base import SUMMARY_COLUMNS, ScanRow, summary_columns
 
 # Serialises migrations when several instances start at once (any constant works, it just has to
 # be the same everywhere).
@@ -166,6 +166,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE app_settings ADD COLUMN concurrent_scan_quota INTEGER",
         ],
     ),
+    (
+        9,
+        [
+            # Whether the scan's AI review ran: complete, degraded or failed (app/ai_review.py).
+            # NULL for static scans, and for scans finished before this column existed.
+            "ALTER TABLE scans ADD COLUMN ai_review TEXT",
+        ],
+    ),
 ]
 
 
@@ -240,7 +248,7 @@ class PostgresStore:
             """
             UPDATE scans
             SET status = %s, finished_at = %s, result = %s, error = %s,
-                risk_score = %s, severity = %s, recommendation = %s
+                risk_score = %s, severity = %s, recommendation = %s, ai_review = %s
             WHERE id = %s
             """,
             (
@@ -248,7 +256,7 @@ class PostgresStore:
                 finished_at,
                 Jsonb(result) if result is not None else None,
                 error,
-                *risk_columns(result),
+                *summary_columns(result),
                 id,
             ),
         )

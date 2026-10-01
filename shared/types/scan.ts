@@ -35,6 +35,25 @@ export interface Finding {
   tags: string[]
 }
 
+// Whether a scan's AI review ran fully, partly or not at all (backend/app/ai_review.py); null for
+// static scans.
+export type AIReview = 'complete' | 'degraded' | 'failed'
+
+// The parts of skillspector's report metadata the app reads. llm_provenance is skillspector 2.12+.
+export interface ReportMetadata {
+  llm_requested: boolean
+  llm_available: boolean
+  meta_analysis_applied: boolean
+  llm_calls_attempted?: number
+  llm_calls_succeeded?: number
+  llm_degraded?: boolean
+  llm_error?: string
+  llm_provenance?: {
+    provider: { configured_adapter: string }
+    analyzers: { analyzer_id: string, model: string | null }[]
+  }
+}
+
 export interface ScanReport {
   skill: {
     name: string
@@ -50,6 +69,8 @@ export interface ScanReport {
   issues: Finding[]
   suppressed_count: number
   execution_successful: boolean
+  // Missing from reports stored before skillspector added it.
+  metadata?: ReportMetadata
 }
 
 export interface ScanStatus {
@@ -60,6 +81,7 @@ export interface ScanStatus {
   finished_at: number | null
   result: ScanReport | null
   error: string | null
+  ai_review: AIReview | null
   completed_steps: number
   total_steps: number
 }
@@ -74,6 +96,7 @@ export interface ScanSummary {
   risk_score: number | null
   severity: Severity | null
   recommendation: Recommendation | null
+  ai_review: AIReview | null
   completed_steps: number
   total_steps: number
 }

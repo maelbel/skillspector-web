@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Finding } from '../shared/types/scan'
-import { findingKey, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
+import type { Finding, ScanReport } from '../shared/types/scan'
+import { aiReviewCallSummary, aiReviewModels, findingKey, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -84,5 +84,43 @@ describe('scan duration', () => {
     expect(formatDuration(14)).toBe('14 s')
     expect(formatDuration(120)).toBe('2 min')
     expect(formatDuration(75)).toBe('1 min 15 s')
+  })
+})
+
+function report(metadata: ScanReport['metadata']): ScanReport {
+  return {
+    skill: { name: 'pdf', source: 'https://github.com/acme/skill', scanned_at: '' },
+    risk_assessment: { score: 8, severity: 'LOW', recommendation: 'CAUTION', max_issue_severity: 'MEDIUM' },
+    issues: [],
+    suppressed_count: 0,
+    execution_successful: true,
+    metadata
+  }
+}
+
+describe('aiReviewModels', () => {
+  it('lists each model the analyzers used once', () => {
+    const analyzers = [
+      { analyzer_id: 'semantic_developer_intent', model: 'claude-opus-4-6' },
+      { analyzer_id: 'semantic_quality_policy', model: 'claude-opus-4-6' },
+      { analyzer_id: 'meta_analyzer', model: 'claude-sonnet-4-6' }
+    ]
+    const metadata = { llm_requested: true, llm_available: true, meta_analysis_applied: true, llm_provenance: { provider: { configured_adapter: 'anthropic' }, analyzers } }
+    expect(aiReviewModels(report(metadata))).toEqual(['claude-opus-4-6', 'claude-sonnet-4-6'])
+  })
+
+  it('is empty for reports without provenance', () => {
+    expect(aiReviewModels(report(undefined))).toEqual([])
+  })
+})
+
+describe('aiReviewCallSummary', () => {
+  it('counts the calls that succeeded', () => {
+    const metadata = { llm_requested: true, llm_available: false, meta_analysis_applied: false, llm_calls_attempted: 5, llm_calls_succeeded: 0 }
+    expect(aiReviewCallSummary(report(metadata))).toBe('0 of 5 AI calls succeeded')
+  })
+
+  it('is null when skillspector made no call', () => {
+    expect(aiReviewCallSummary(report({ llm_requested: true, llm_available: false, meta_analysis_applied: false }))).toBeNull()
   })
 })

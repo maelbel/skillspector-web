@@ -78,6 +78,15 @@ def test_read_scan_returns_the_stored_job(client):
     assert response.json()["status"] == "running"
 
 
+def test_a_failed_ai_review_is_reported_on_the_scan_and_in_history(client):
+    _insert("ai", created_at=1.0)
+    report = {"risk_assessment": {}, "metadata": {"llm_requested": True, "llm_calls_succeeded": 0, "llm_error": "bad key"}}
+    db.update_scan(id="ai", status="done", finished_at=2.0, result=report, error=None)
+
+    assert client.get("/scan/ai").json()["ai_review"] == "failed"
+    assert client.get("/scan").json()["items"][0]["ai_review"] == "failed"
+
+
 def test_unknown_scan_is_404_for_read_and_delete(client):
     assert client.get("/scan/missing").status_code == 404
     assert client.delete("/scan/missing").status_code == 404

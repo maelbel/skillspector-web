@@ -1,4 +1,4 @@
-import type { Finding, ScanStatus } from '../types/scan'
+import type { Finding, ScanReport, ScanStatus } from '../types/scan'
 
 // Families of skillspector graph nodes, in the order a scan roughly runs them. Matched on the
 // node name each "<node> completed" log line carries.
@@ -65,4 +65,18 @@ export function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
   return rest ? `${minutes} min ${rest} s` : `${minutes} min`
+}
+
+/** The models the AI review used, as skillspector recorded them, without repeats. */
+export function aiReviewModels(report: ScanReport): string[] {
+  const analyzers = report.metadata?.llm_provenance?.analyzers ?? []
+  return [...new Set(analyzers.map(analyzer => analyzer.model).filter((model): model is string => !!model))]
+}
+
+/** "3 of 5 AI calls succeeded", when skillspector counted them. */
+export function aiReviewCallSummary(report: ScanReport): string | null {
+  const attempted = report.metadata?.llm_calls_attempted
+  if (!attempted) return null
+  const succeeded = report.metadata?.llm_calls_succeeded ?? 0
+  return `${succeeded} of ${attempted} AI call${attempted === 1 ? '' : 's'} succeeded`
 }

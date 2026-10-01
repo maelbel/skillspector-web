@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
 from app import claude_key, db, quotas, rate_limit
+from app.ai_review import AIReview, ai_review_status
 from app.auth import Viewer
 from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
@@ -67,6 +68,7 @@ class ScanStatusResponse(BaseModel):
     finished_at: float | None
     result: dict | None
     error: str | None
+    ai_review: AIReview | None
     completed_steps: int
     total_steps: int
 
@@ -81,6 +83,7 @@ class ScanSummaryResponse(BaseModel):
     risk_score: float | None
     severity: str | None
     recommendation: str | None
+    ai_review: AIReview | None
     completed_steps: int
     total_steps: int
 
@@ -104,6 +107,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
         finished_at=job.finished_at,
         result=job.result,
         error=job.error,
+        ai_review=ai_review_status(job.result),
         completed_steps=completed_steps,
         total_steps=TOTAL_GRAPH_STEPS,
     )
@@ -171,6 +175,7 @@ async def read_scan_history(
             risk_score=row["risk_score"],
             severity=row["severity"],
             recommendation=row["recommendation"],
+            ai_review=row["ai_review"],
             completed_steps=TOTAL_GRAPH_STEPS if row["status"] == JobStatus.DONE else get_progress(row["id"]),
             total_steps=TOTAL_GRAPH_STEPS,
         )

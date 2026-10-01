@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.storage.base import SUMMARY_COLUMNS, ScanRow, risk_columns
+from app.storage.base import SUMMARY_COLUMNS, ScanRow, summary_columns
 
 # Append-only: never edit an entry once released, add a new version instead. Version 1 uses
 # IF NOT EXISTS so databases created before migrations existed adopt it unchanged.
@@ -164,6 +164,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE app_settings ADD COLUMN concurrent_scan_quota INTEGER",
         ],
     ),
+    (
+        9,
+        [
+            # Whether the scan's AI review ran: complete, degraded or failed (app/ai_review.py).
+            # NULL for static scans, and for scans finished before this column existed.
+            "ALTER TABLE scans ADD COLUMN ai_review TEXT",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -248,7 +256,7 @@ class SQLiteStore:
             """
             UPDATE scans
             SET status = ?, finished_at = ?, result = ?, error = ?,
-                risk_score = ?, severity = ?, recommendation = ?
+                risk_score = ?, severity = ?, recommendation = ?, ai_review = ?
             WHERE id = ?
             """,
             (
@@ -256,7 +264,7 @@ class SQLiteStore:
                 finished_at,
                 json.dumps(result) if result is not None else None,
                 error,
-                *risk_columns(result),
+                *summary_columns(result),
                 id,
             ),
         )
