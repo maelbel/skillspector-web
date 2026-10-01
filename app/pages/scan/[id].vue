@@ -67,6 +67,21 @@ const gaps = computed(() => report.value ? inspectionGaps(report.value) : null)
 
 const scanAgainLink = computed(() => status.value ? `/?target=${encodeURIComponent(status.value.target)}` : '/')
 
+// The target again, as this scan ran: the new result is compared with this one.
+const rescanning = ref(false)
+const rescanError = ref('')
+async function rescanTarget() {
+  rescanning.value = true
+  rescanError.value = ''
+  try {
+    const { id: next } = await $fetch<{ id: string }>(`/api/scan/${id}/rescan`, { method: 'POST' })
+    await navigateTo(`/scan/${next}`)
+  } catch (err) {
+    rescanError.value = apiErrorMessage(err, 'Couldn’t rescan')
+    rescanning.value = false
+  }
+}
+
 useSeoMeta({
   title: () => status.value ? `${displayTitle.value} — Skillspector Web` : 'Scan result — Skillspector Web'
 })
@@ -123,6 +138,11 @@ const hiddenSeverities = ref(new Set<string>())
 const hiddenCategories = ref(new Set<string>())
 const hiddenFiles = ref(new Set<string>())
 const hiddenRules = ref(new Set<string>())
+const hiddenChanges = ref(new Set<string>())
+const CHANGE_LABELS = { new: 'New', unchanged: 'Unchanged' } as const
+const changeLabel = (issue: Finding) => issue.change ? CHANGE_LABELS[issue.change] : null
+const changeCounts = computed(() =>
+  [...countBy(changeLabel)].sort(([a], [b]) => a.localeCompare(b)).map(([value, count]) => ({ value, count })))
 const executableCount = computed(() => report.value?.components?.filter(component => component.executable).length ?? 0)
 
 // From the Files section: only that file's findings, then back up to them.
@@ -147,23 +167,26 @@ function clearFilters() {
   hiddenCategories.value = new Set()
   hiddenFiles.value = new Set()
   hiddenRules.value = new Set()
+  hiddenChanges.value = new Set()
 }
 
 const activeFilterCount = computed(() =>
-  hiddenSeverities.value.size + hiddenCategories.value.size + hiddenFiles.value.size + hiddenRules.value.size)
+  hiddenSeverities.value.size + hiddenCategories.value.size + hiddenFiles.value.size + hiddenRules.value.size + hiddenChanges.value.size)
 
 const filteredIssues = computed(() => sortedIssues.value.filter(issue =>
   !hiddenSeverities.value.has(issue.severity)
   && !(issue.category && hiddenCategories.value.has(issue.category))
   && !hiddenFiles.value.has(issue.location.file)
   && !hiddenRules.value.has(issue.id)
+  && !hiddenChanges.value.has(changeLabel(issue) ?? '')
 ))
 
 const filterGroups = computed(() => [
   { legend: 'Severity', hidden: hiddenSeverities, items: severityCounts.value, mono: false },
   { legend: 'Category', hidden: hiddenCategories, items: categoryCounts.value, mono: true },
   { legend: 'File', hidden: hiddenFiles, items: fileCounts.value, mono: true },
-  { legend: 'Rule', hidden: hiddenRules, items: ruleCounts.value, mono: true }
+  { legend: 'Rule', hidden: hiddenRules, items: ruleCounts.value, mono: true },
+  { legend: 'Since the previous scan', hidden: hiddenChanges, items: changeCounts.value, mono: false }
 ].filter(group => group.items.length > 1 || group.hidden.value.size > 0))
 
 // Sorted by severity, findings sit under one heading per level; other sorts are one flat list.
@@ -224,9 +247,21 @@ const errorMessage = computed(() => {
         v-if="status && !isWorking"
         class="flex flex-wrap gap-2"
       >
-        <!-- An upload isn't kept once scanned, so there's nothing to scan again from. -->
         <UButton
-          v-if="!isUploadTarget(status.target)"
+          v-if="status.rescan"
+          icon="i-lucide-rotate-cw"
+          color="neutral"
+          variant="outline"
+          size="lg"
+          :loading="rescanning"
+          @click="rescanTarget"
+        >
+          Rescan
+        </UButton>
+        <!-- An upload isn't kept once scanned, so there's nothing to scan again from; an AI review
+             that needs its key again goes through the form. -->
+        <UButton
+          v-else-if="!isUploadTarget(status.target)"
           :to="scanAgainLink"
           icon="i-lucide-rotate-cw"
           color="neutral"
@@ -244,6 +279,15 @@ const errorMessage = computed(() => {
         </UButton>
       </div>
     </div>
+
+    <UAlert
+      v-if="rescanError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      title="Couldn’t rescan"
+      :description="rescanError"
+    />
 
     <UAlert
       v-if="errorMessage"
@@ -368,6 +412,14 @@ const errorMessage = computed(() => {
           Followed {{ report.metadata.transitive_targets_scanned }} external reference{{ report.metadata.transitive_targets_scanned === 1 ? '' : 's' }}
         </p>
       </VerdictPanel>
+
+      <ScanComparison
+        v-if="status.comparison && !selectedSkill"
+        :comparison="status.comparison"
+        :target="status.target"
+        :score="report.risk_assessment.score"
+        :recommendation="report.risk_assessment.recommendation"
+      />
 
       <ScanLogPanel
         v-if="showLogs"

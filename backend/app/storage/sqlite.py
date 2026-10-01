@@ -9,7 +9,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.storage.base import SUMMARY_COLUMNS, ScanRow, summary_columns
+from app.storage.base import (
+    SUMMARY_COLUMNS,
+    ScanRow,
+    previous_scan_query,
+    scan_filter,
+    summary_columns,
+)
 
 # Append-only: never edit an entry once released, add a new version instead. Version 1 uses
 # IF NOT EXISTS so databases created before migrations existed adopt it unchanged.
@@ -207,6 +213,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN upload TEXT",
         ],
     ),
+    (
+        14,
+        [
+            # A target's scans, newest first: the history of one target, and the scan a rescan is
+            # compared with (app/rescan.py).
+            "CREATE INDEX IF NOT EXISTS scans_target_created_at ON scans (target, created_at)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -344,6 +358,12 @@ class SQLiteStore:
         return _to_row(row) if row is not None else None
 
     @_locked
+    def previous_scan(self, *, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None:
+        query, params = previous_scan_query("?", target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
+        row = self._conn.execute(query, params).fetchone()
+        return _to_row(row) if row is not None else None
+
+    @_locked
     def delete_scan(self, id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM scans WHERE id = ?", (id,))
         self._conn.execute("DELETE FROM scan_log_lines WHERE scan_id = ?", (id,))
@@ -374,8 +394,10 @@ class SQLiteStore:
         self._conn.commit()
 
     @_locked
-    def list_scans(self, limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[ScanRow], int]:
-        where, params = ("WHERE owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
+    def list_scans(
+        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+    ) -> tuple[list[ScanRow], int]:
+        where, params = scan_filter("?", owner_id=owner_id, target=target)
         rows = self._conn.execute(
             f"SELECT {SUMMARY_COLUMNS} FROM scans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),

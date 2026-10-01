@@ -142,8 +142,10 @@ def get_job(job_id: str) -> Job | None:
     )
 
 
-def list_jobs(limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[db.ScanRow], int]:
-    return db.list_scans(limit, offset, owner_id=owner_id)
+def list_jobs(
+    limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+) -> tuple[list[db.ScanRow], int]:
+    return db.list_scans(limit, offset, owner_id=owner_id, target=target)
 
 
 def delete_job(job_id: str) -> bool:

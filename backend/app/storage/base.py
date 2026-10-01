@@ -9,7 +9,32 @@ from app.ai_usage import token_totals
 ScanRow = dict[str, Any]
 
 # Columns `list_scans` returns: everything except the (large) result.
-SUMMARY_COLUMNS = "id, target, status, created_at, finished_at, error, risk_score, severity, recommendation, ai_review, owner_id"
+SUMMARY_COLUMNS = "id, target, status, created_at, finished_at, error, risk_score, severity, recommendation, ai_review, owner_id, provider"
+
+
+def scan_filter(placeholder: str, *, owner_id: str | None, target: str | None) -> tuple[str, tuple[Any, ...]]:
+    """The WHERE clause for listing scans, optionally only one user's or one target's."""
+    clauses, params = [], []
+    if owner_id is not None:
+        clauses.append(f"owner_id = {placeholder}")
+        params.append(owner_id)
+    if target is not None:
+        clauses.append(f"target = {placeholder}")
+        params.append(target)
+    return ("WHERE " + " AND ".join(clauses) if clauses else ""), tuple(params)
+
+
+def previous_scan_query(
+    placeholder: str, *, target: str, owner_id: str | None, before: float, with_ai_review: bool
+) -> tuple[str, tuple[Any, ...]]:
+    """The latest finished scan of target before then, by the same owner and of the same kind."""
+    owner = f"owner_id = {placeholder}" if owner_id is not None else "owner_id IS NULL"
+    kind = "provider IS NOT NULL" if with_ai_review else "provider IS NULL"
+    query = (
+        f"SELECT * FROM scans WHERE target = {placeholder} AND status = 'done' AND created_at < {placeholder}"
+        f" AND {owner} AND {kind} ORDER BY created_at DESC LIMIT 1"
+    )
+    return query, (target, before, *((owner_id,) if owner_id is not None else ()))
 
 
 class ScanStore(Protocol):
@@ -63,7 +88,11 @@ class ScanStore(Protocol):
 
     def set_retention_days(self, value: float | None) -> None: ...
 
-    def list_scans(self, limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[ScanRow], int]:
+    def previous_scan(self, *, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None: ...
+
+    def list_scans(
+        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+    ) -> tuple[list[ScanRow], int]:
         """Newest first. With owner_id, only that user's scans."""
         ...
 
