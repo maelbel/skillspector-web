@@ -90,6 +90,10 @@ class ScanStore(Protocol):
 
     def previous_scan(self, *, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None: ...
 
+    def set_share_token(self, scan_id: str, token: str | None) -> None: ...
+
+    def get_shared_scan(self, token: str) -> ScanRow | None: ...
+
     def list_scans(
         self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
     ) -> tuple[list[ScanRow], int]:

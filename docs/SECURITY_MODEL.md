@@ -44,6 +44,11 @@ isn't protected:
   to a private Vercel Blob store with a token that only allows a `.zip` or `.md` under the user's own
   folder, and the API reads it back by that path with its own token, so a scan can't name another
   user's upload or any other URL. Uploads a scan never got to are swept with retention.
+- **Shared results are public to whoever has the link.** A scan's owner (or an admin) can share its
+  result at an unguessable link (192 random bits) that anyone can open without signing in, until
+  it's revoked; creating and revoking links is in the activity log. A shared page shows the report
+  and its target, and leaves out the account's AI token use and its comparison with earlier scans.
+  Each address may open 120 shared pages or downloads a minute.
 - **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
   `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
   microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound

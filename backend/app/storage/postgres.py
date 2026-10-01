@@ -223,6 +223,15 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS scans_target_created_at ON scans (target, created_at)",
         ],
     ),
+    (
+        15,
+        [
+            # The read-only link a scan's owner shared its result with (app/api/routes/shared.py),
+            # until they revoke it. NULL when it isn't shared.
+            "ALTER TABLE scans ADD COLUMN share_token TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS scans_share_token ON scans (share_token)",
+        ],
+    ),
 ]
 
 
@@ -348,6 +357,14 @@ class PostgresStore:
         query, params = previous_scan_query("%s", target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
         with self._pool.connection() as conn:
             return conn.execute(query, params).fetchone()
+
+    def set_share_token(self, scan_id: str, token: str | None) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("UPDATE scans SET share_token = %s WHERE id = %s", (token, scan_id))
+
+    def get_shared_scan(self, token: str) -> ScanRow | None:
+        with self._pool.connection() as conn:
+            return conn.execute("SELECT * FROM scans WHERE share_token = %s", (token,)).fetchone()
 
     def delete_scan(self, id: str) -> bool:
         with self._pool.connection() as conn, conn.transaction():

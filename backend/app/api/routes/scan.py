@@ -1,10 +1,11 @@
 import json
 import os
+import secrets
 import tempfile
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
@@ -14,15 +15,16 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
 )
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from skillspector.suppression import dump_baseline
 
-from app import claude_key, db, quotas, rate_limit, rescan, uploads
+from app import claude_key, db, exports, quotas, rate_limit, rescan, uploads
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
-from app.auth import Viewer
+from app.auth import Viewer, audit
 from app.auth.deps import CurrentViewer
 from app.claude_login import is_claude_cli_available
 from app.core.config import get_settings
@@ -156,6 +158,8 @@ class ScanStatusResponse(BaseModel):
     # What changed since the target's previous scan (app/rescan.py): None for its first, or one
     # not finished. Each finding in result is then marked `change`: new or unchanged.
     comparison: dict | None = None
+    # The token of the read-only link the result is shared at (/shared/{token}), if it is.
+    share_token: str | None = None
 
 
 class ScanSummaryResponse(BaseModel):
@@ -457,6 +461,7 @@ async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
         raise HTTPException(status_code=404, detail="scan not found")
     response = _to_response(job)
     response.rescan = _Rescans(viewer).allowed(scan)
+    response.share_token = scan.get("share_token")
     compared = rescan.comparison_for(scan)
     if compared is not None:
         response.comparison, before = compared
@@ -479,6 +484,62 @@ def read_scan_skill(job_id: str, index: int, viewer: CurrentViewer) -> dict:
     if compared is not None:
         report = {**report, "issues": rescan.mark_changes(report.get("issues") or [], compared[1], skills[index].get("path"))}
     return report
+
+
+ExportFormat = Literal["json", "sarif"]
+
+
+def export_response(scan: dict, format: ExportFormat) -> Response:
+    """The scan's finished report as a download: skillspector's JSON, or SARIF (app/exports.py)."""
+    if scan["status"] != JobStatus.DONE or not scan.get("result"):
+        raise HTTPException(status_code=409, detail="Only a finished scan's report can be downloaded")
+    document = exports.sarif(scan["result"]) if format == "sarif" else scan["result"]
+    name = exports.filename(scan["target"], "sarif" if format == "sarif" else "json")
+    return Response(
+        exports.as_bytes(document),
+        media_type=exports.SARIF_MEDIA_TYPE if format == "sarif" else "application/json",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.get("/{job_id}/export")
+def export_scan(job_id: str, viewer: CurrentViewer, format: Annotated[ExportFormat, Query()] = "json") -> Response:
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    return export_response(scan, format)
+
+
+class ShareResponse(BaseModel):
+    token: str
+
+
+@router.post("/{job_id}/share", response_model=ShareResponse)
+def share_scan(job_id: str, viewer: CurrentViewer) -> ShareResponse:
+    """A read-only link to the result, for anyone who has it, until it's revoked. Sharing again
+    gives the same link."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    if scan["status"] != JobStatus.DONE:
+        raise HTTPException(status_code=409, detail="Only a finished scan's result can be shared")
+    if scan.get("share_token"):
+        return ShareResponse(token=scan["share_token"])
+    token = secrets.token_urlsafe(24)
+    db.set_share_token(job_id, token)
+    audit(viewer.user, "scan.shared", detail=scan["target"])
+    return ShareResponse(token=token)
+
+
+@router.delete("/{job_id}/share", status_code=204)
+def unshare_scan(job_id: str, viewer: CurrentViewer) -> None:
+    """Revoke the result's link: it stops working at once. Sharing again makes a new one."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    if scan.get("share_token"):
+        db.set_share_token(job_id, None)
+        audit(viewer.user, "scan.unshared", detail=scan["target"])
 
 
 @router.post("/{job_id}/rescan", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])

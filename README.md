@@ -38,6 +38,9 @@ or deploy to Vercel.
 - **See what changed.** Rescan a skill from its result or the history: findings are marked new,
   fixed or unchanged since its previous scan, with the change in score and verdict, and each
   target's scans line up as a timeline.
+- **Export and share.** Download a report as skillspector's JSON or as SARIF for GitHub code
+  scanning and other SARIF tools, or share a read-only link to a result that works without signing
+  in, until you revoke it.
 - **Or upload it.** Drop a `.zip` of a skill, or its `SKILL.md`, on the scan form to scan one you
   haven't published. The file is kept only until it's scanned.
 - **20+ static analyzers.** Prompt injection, data exfiltration, dangerous code, supply chain and
