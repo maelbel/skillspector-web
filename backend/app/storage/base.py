@@ -24,6 +24,25 @@ def scan_filter(placeholder: str, *, owner_id: str | None, target: str | None) -
     return ("WHERE " + " AND ".join(clauses) if clauses else ""), tuple(params)
 
 
+# How the history can be sorted (GET /scan?sort=…&order=…): each key's SQL, from this list only.
+# A verdict sorts by how risky it is; scans without a score or a verdict yet (failed, or still
+# running) come last whichever way, and ties go newest first, so pages never overlap.
+SCAN_SORTS = {
+    "created_at": "created_at",
+    "target": "target",
+    "risk_score": "risk_score",
+    "verdict": "CASE recommendation WHEN 'DO_NOT_INSTALL' THEN 3 WHEN 'CAUTION' THEN 2 WHEN 'SAFE' THEN 1 END",
+    "status": "status",
+}
+
+
+def scan_order(sort: str = "created_at", order: str = "desc") -> str:
+    """The ORDER BY clause for listing scans; unknown keys fall back to newest first."""
+    column = SCAN_SORTS.get(sort, "created_at")
+    direction = "ASC" if order == "asc" else "DESC"
+    return f"ORDER BY {column} {direction} NULLS LAST, created_at DESC, id DESC"
+
+
 def previous_scan_query(
     placeholder: str, *, target: str, owner_id: str | None, before: float, with_ai_review: bool
 ) -> tuple[str, tuple[Any, ...]]:
@@ -95,7 +114,14 @@ class ScanStore(Protocol):
     def get_shared_scan(self, token: str) -> ScanRow | None: ...
 
     def list_scans(
-        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+        self,
+        limit: int,
+        offset: int,
+        *,
+        owner_id: str | None = None,
+        target: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> tuple[list[ScanRow], int]:
         """Newest first. With owner_id, only that user's scans."""
         ...

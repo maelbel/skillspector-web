@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Recommendation, ScanSummary } from '~~/shared/types/scan'
+import type { HistorySort, SortOrder } from '~/composables/useScanHistory'
 import type { SettingsResponse } from '~~/shared/types/settings'
 
 useSeoMeta({ title: 'Scan history — Skillspector Web' })
@@ -7,7 +8,50 @@ useSeoMeta({ title: 'Scan history — Skillspector Web' })
 // ?target=… shows one target's scans, e.g. from a result's "All scans of this target".
 const route = useRoute()
 const targetFilter = computed(() => typeof route.query.target === 'string' && route.query.target ? route.query.target : undefined)
-const { data, status, error, refresh, hasMore, loadMore } = useScanHistory(targetFilter)
+// The table's sortable columns, in order, and their width.
+const SORTED_COLUMNS: { key: HistorySort, class: string }[] = [
+  { key: 'target', class: 'px-4 py-3.5 sm:px-5' },
+  { key: 'verdict', class: 'w-36 px-4 py-3.5 sm:w-44 sm:px-5' },
+  { key: 'risk_score', class: 'w-52 px-5 py-3.5 max-md:hidden' },
+  { key: 'created_at', class: 'w-36 px-5 py-3.5 max-sm:hidden' }
+]
+
+// ?sort=…&order=… sorts the whole history (the API does), so a sorted view survives a reload and
+// can be linked to. Each column starts in the order most often wanted: riskiest, newest, A to Z.
+const SORTS: Record<HistorySort, { label: string, first: SortOrder }> = {
+  target: { label: 'Skill', first: 'asc' },
+  verdict: { label: 'Verdict', first: 'desc' },
+  risk_score: { label: 'Risk score', first: 'desc' },
+  created_at: { label: 'Scanned', first: 'desc' },
+  status: { label: 'Status', first: 'asc' }
+}
+const router = useRouter()
+const sort = computed<HistorySort>(() => {
+  const value = route.query.sort
+  return typeof value === 'string' && value in SORTS ? value as HistorySort : 'created_at'
+})
+const order = computed<SortOrder>(() => {
+  const value = route.query.order
+  return value === 'asc' || value === 'desc' ? value : SORTS[sort.value].first
+})
+
+function sortBy(column: HistorySort) {
+  const next = column === sort.value ? (order.value === 'asc' ? 'desc' : 'asc') : SORTS[column].first
+  const isDefault = column === 'created_at' && next === 'desc'
+  router.replace({ query: { ...route.query, sort: isDefault ? undefined : column, order: isDefault ? undefined : next } })
+}
+
+function ariaSort(column: HistorySort): 'ascending' | 'descending' | 'none' {
+  if (column !== sort.value) return 'none'
+  return order.value === 'asc' ? 'ascending' : 'descending'
+}
+
+function sortIcon(column: HistorySort) {
+  if (column !== sort.value) return 'i-lucide-chevrons-up-down'
+  return order.value === 'asc' ? 'i-lucide-arrow-up' : 'i-lucide-arrow-down'
+}
+
+const { data, status, error, refresh, hasMore, loadMore } = useScanHistory(targetFilter, sort, order)
 const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
 
 const retentionLabel = computed(() => {
@@ -228,28 +272,26 @@ async function confirmDelete() {
           <thead>
             <tr class="eyebrow border-b border-default text-left text-muted">
               <th
+                v-for="column in SORTED_COLUMNS"
+                :key="column.key"
                 scope="col"
-                class="px-4 py-3.5 font-medium sm:px-5"
+                :class="column.class"
+                :aria-sort="ariaSort(column.key)"
               >
-                Skill
-              </th>
-              <th
-                scope="col"
-                class="w-36 px-4 py-3.5 font-medium sm:w-44 sm:px-5"
-              >
-                Verdict
-              </th>
-              <th
-                scope="col"
-                class="w-52 px-5 py-3.5 font-medium max-md:hidden"
-              >
-                Risk score
-              </th>
-              <th
-                scope="col"
-                class="w-36 px-5 py-3.5 font-medium max-sm:hidden"
-              >
-                Scanned
+                <button
+                  type="button"
+                  class="group -mx-1 inline-flex cursor-pointer items-center gap-1.5 rounded-xs px-1 py-0.5 font-medium uppercase hover:text-highlighted focus-visible:outline-2 focus-visible:outline-brand"
+                  :class="{ 'text-highlighted': column.key === sort }"
+                  @click="sortBy(column.key)"
+                >
+                  {{ SORTS[column.key].label }}
+                  <UIcon
+                    :name="sortIcon(column.key)"
+                    class="size-3.5 shrink-0"
+                    :class="column.key === sort ? '' : 'opacity-40 group-hover:opacity-100'"
+                    aria-hidden="true"
+                  />
+                </button>
               </th>
               <th
                 scope="col"
