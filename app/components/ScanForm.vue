@@ -217,6 +217,8 @@ const baseUrlPlaceholder = computed(() => {
 // An optional skillspector baseline: findings it accepts don't count. Read in the browser and sent
 // as text; the API checks it before queueing the scan.
 const MAX_BASELINE_BYTES = 256 * 1024
+// skillspector's example of the format, at the version the API pins (backend/pyproject.toml).
+const BASELINE_FORMAT_DOCS = 'https://github.com/NVIDIA/SkillSpector/blob/v2.12.0/docs/SUPPRESSION.md#baseline-file-format'
 const baselineInput = ref<HTMLInputElement>()
 const baseline = ref<{ name: string, text: string } | null>(null)
 const baselineError = ref('')
@@ -523,8 +525,21 @@ async function submit() {
     </Transition>
 
     <div class="flex flex-col gap-1.5">
-      <p class="font-semibold text-highlighted">
+      <p class="flex items-center gap-1.5 font-semibold text-highlighted">
         Baseline <span class="font-normal text-muted">(optional)</span>
+        <UTooltip text="What a baseline file looks like">
+          <ULink
+            :to="BASELINE_FORMAT_DOCS"
+            target="_blank"
+            aria-label="What a baseline file looks like, in skillspector's documentation"
+            class="inline-flex text-muted hover:text-highlighted"
+          >
+            <UIcon
+              name="i-lucide-info"
+              class="size-4"
+            />
+          </ULink>
+        </UTooltip>
       </p>
       <p class="text-sm text-muted">
         A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
