@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import type { BaselineDownload, ScanReport } from '~~/shared/types/scan'
 
-const props = defineProps<{ scanId: string, report: ScanReport }>()
+const props = withDefaults(defineProps<{
+  scanId: string
+  report: ScanReport
+  // One skill of several shows its suppressed findings; the baseline downloads for the whole scan.
+  downloadable?: boolean
+  activeCount?: number
+}>(), { downloadable: true, activeCount: undefined })
+
+const active = computed(() => props.activeCount ?? props.report.issues.length)
 
 const suppressed = computed(() => props.report.suppressed ?? [])
 const showSuppressed = ref(false)
@@ -80,12 +88,12 @@ async function download() {
     </div>
 
     <form
-      v-if="report.generated_baseline"
+      v-if="report.generated_baseline && downloadable"
       class="flex flex-col gap-2"
       @submit.prevent="download"
     >
       <p class="text-sm text-muted">
-        Accept this scan’s {{ report.issues.length }} active finding{{ report.issues.length === 1 ? '' : 's' }}:
+        Accept this scan’s {{ active }} active finding{{ active === 1 ? '' : 's' }}:
         scan again with the file as its baseline, and only new findings count.
         Changes to the files or a new skillspector version bring them back.
       </p>
