@@ -148,6 +148,29 @@ class BaselineResponse(BaseModel):
     content: str
 
 
+def _skill_summary(entry: dict) -> dict:
+    """A skill of a multi-skill scan without its report, which GET /scan/{id}/skills/{index} serves."""
+    report = entry.get("report")
+    if report is None:
+        return {"path": entry["path"], "name": entry["name"], "error": entry.get("error")}
+    return {
+        "path": entry["path"],
+        "name": entry["name"],
+        "risk_assessment": report.get("risk_assessment"),
+        "issue_count": len(report.get("issues") or []),
+        "suppressed_count": report.get("suppressed_count", 0),
+        "execution_successful": report.get("execution_successful", True),
+        "ai_review": ai_review_status(report),
+    }
+
+
+def _without_skill_reports(result: dict | None) -> dict | None:
+    # Each skill's report can be large; together they could pass a function's response size limit.
+    if not result or "skills" not in result:
+        return result
+    return {**result, "skills": [_skill_summary(entry) for entry in result["skills"]]}
+
+
 def _to_response(job: Job) -> ScanStatusResponse:
     completed_steps = TOTAL_GRAPH_STEPS if job.status == JobStatus.DONE else get_progress(job.id)
     return ScanStatusResponse(
@@ -156,7 +179,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
         status=job.status,
         created_at=job.created_at,
         finished_at=job.finished_at,
-        result=job.result,
+        result=_without_skill_reports(job.result),
         error=job.error,
         ai_review=ai_review_status(job.result),
         ai_tokens=_ai_tokens(token_totals(job.result)),
@@ -252,6 +275,16 @@ async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
     return _to_response(job)
+
+
+@router.get("/{job_id}/skills/{index}", response_model=dict)
+def read_scan_skill(job_id: str, index: int, viewer: CurrentViewer) -> dict:
+    """The report of one skill in a scan of a repository holding several."""
+    _visible_scan(job_id, viewer)
+    skills = ((db.get_scan(job_id) or {}).get("result") or {}).get("skills") or []
+    if not 0 <= index < len(skills) or "report" not in skills[index]:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return skills[index]["report"]
 
 
 @router.get("/{job_id}/baseline", response_model=BaselineResponse)

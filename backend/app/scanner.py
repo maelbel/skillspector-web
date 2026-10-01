@@ -18,7 +18,7 @@ from skillspector.graph import graph
 from app import db, scan_logs
 from app.core.config import get_settings
 from app.sandbox_executor import SandboxExecutor, executor_kind
-from app.sandbox_runner import baseline_state, scan_report
+from app.sandbox_runner import run_scan
 
 TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
@@ -196,31 +196,30 @@ def _invoke_graph(job_id: str, target: str, use_llm: bool, baseline: str | None 
             baseline_file = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)  # noqa: SIM115
             with baseline_file:
                 baseline_file.write(baseline)
-        state: dict[str, Any] = {
-            "input_path": target,
-            "output_format": "json",
-            "use_llm": use_llm,
-            **baseline_state(baseline_file.name if baseline_file else None),
-        }
         config = {
             "run_name": "skillspector-web-scan",
             "tags": ["skillspector-web"],
             "metadata": {"input_path": target, "use_llm": use_llm},
         }
-        final_state: dict[str, Any] | None = None
+
+        def step(node_name: str) -> None:
+            scan_logs.append(job_id, f"{node_name} completed")
+            scan_logs.increment_progress(job_id)
+
         try:
-            for mode, chunk in graph.stream(state, config=config, stream_mode=["updates", "values"]):
-                if mode == "updates":
-                    for node_name in chunk:
-                        scan_logs.append(job_id, f"{node_name} completed")
-                        scan_logs.increment_progress(job_id)
-                elif mode == "values":
-                    final_state = chunk
+            report = run_scan(
+                target,
+                use_llm=use_llm,
+                baseline_path=baseline_file.name if baseline_file else None,
+                on_step=step,
+                on_log=lambda line: scan_logs.append(job_id, line),
+                config=config,
+            )
         except Exception as exc:
             scan_logs.append(job_id, f"Scan failed: {exc}")
             raise
         scan_logs.append(job_id, "Scan complete")
-        return scan_report(final_state)
+        return report
     finally:
         scan_logs.stop_capture()
         if baseline_file is not None:

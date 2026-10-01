@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Finding, Severity } from '~~/shared/types/scan'
+import type { Finding, ScanReport, Severity } from '~~/shared/types/scan'
 
 const route = useRoute()
 const id = route.params.id as string
@@ -11,19 +11,45 @@ const isWorking = computed(() => status.value?.status === 'pending' || status.va
 const { lines: logLines } = useScanLogs(id, isWorking)
 const showLogs = ref(false)
 
+// A repository holding several skills has one report per skill: ?skill=<index> shows one, loaded
+// on demand; without it, the page shows them all.
+const skills = computed(() => status.value?.result?.skills ?? null)
+const skillIndex = computed(() => {
+  const value = route.query.skill
+  return typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : null
+})
+const selectedSkill = computed(() => skillIndex.value === null ? null : skills.value?.[skillIndex.value] ?? null)
+const { data: skillReport, error: skillError } = useAsyncData(
+  `scan-${id}-skill`,
+  () => selectedSkill.value?.risk_assessment ? $fetch<ScanReport>(`/api/scan/${id}/skills/${skillIndex.value}`) : Promise.resolve(null),
+  { watch: [selectedSkill] }
+)
+// The report on show: one skill's, or the scan's.
+const report = computed(() => selectedSkill.value ? skillReport.value : status.value?.result ?? null)
+const skillFindings = computed(() => (skills.value ?? []).reduce((sum, skill) => sum + (skill.issue_count ?? 0), 0))
+// The overview's verdict is its riskiest skill's.
+const overviewSummary = computed(() => {
+  if (!skills.value || selectedSkill.value) return undefined
+  const scanned = skills.value.filter(skill => skill.risk_assessment)
+  const riskiest = [...scanned].sort((a, b) => b.risk_assessment!.score - a.risk_assessment!.score)[0]
+  return riskiest ? `The riskiest of ${skills.value.length} skills is ${riskiest.name}. Open a skill for its findings.` : undefined
+})
+const aiReview = computed(() => selectedSkill.value ? selectedSkill.value.ai_review ?? null : status.value?.ai_review ?? null)
+
 const parsedTarget = computed(() => parseScanTarget(status.value?.target ?? ''))
 const displayTitle = computed(() => {
+  if (selectedSkill.value) return selectedSkill.value.name
   const skillName = status.value?.result?.skill.name
   if (skillName && skillName !== 'unknown') return skillName
   return parsedTarget.value.title
 })
 const duration = computed(() => status.value ? scanDurationSeconds(status.value) : null)
-const aiModels = computed(() => status.value?.result ? aiReviewModels(status.value.result) : [])
+const aiModels = computed(() => report.value ? aiReviewModels(report.value) : [])
 
 // Shown when an AI review was asked for but its results are missing in part or in full.
 const aiReviewAlert = computed(() => {
-  const result = status.value?.result
-  const state = status.value?.ai_review
+  const result = report.value
+  const state = aiReview.value
   if (!result || (state !== 'failed' && state !== 'degraded')) return null
   const details = [result.metadata?.llm_error, aiReviewCallSummary(result)].filter(Boolean).join(' ')
   return state === 'failed'
@@ -37,7 +63,7 @@ const aiReviewAlert = computed(() => {
       }
 })
 
-const gaps = computed(() => status.value?.result ? inspectionGaps(status.value.result) : null)
+const gaps = computed(() => report.value ? inspectionGaps(report.value) : null)
 
 const scanAgainLink = computed(() => status.value ? `/?target=${encodeURIComponent(status.value.target)}` : '/')
 
@@ -55,7 +81,7 @@ const SORT_OPTIONS: { label: string, value: SortKey }[] = [
 
 const sortKey = ref<SortKey>('severity')
 
-const issues = computed(() => status.value?.result?.issues ?? [])
+const issues = computed(() => report.value?.issues ?? [])
 
 const sortedIssues = computed(() => {
   const list = [...issues.value]
@@ -240,8 +266,31 @@ const errorMessage = computed(() => {
       />
     </template>
 
-    <template v-else-if="status.result">
-      <VerdictPanel :report="status.result">
+    <UAlert
+      v-else-if="selectedSkill && skillError"
+      color="error"
+      variant="subtle"
+      :title="apiErrorMessage(skillError, 'Couldn’t load this skill’s report')"
+    />
+
+    <template v-else-if="report">
+      <NuxtLink
+        v-if="selectedSkill"
+        :to="{ query: {} }"
+        class="inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted hover:text-highlighted"
+      >
+        <UIcon
+          name="i-lucide-arrow-left"
+          class="size-4"
+        />
+        All {{ skills?.length }} skills in {{ parsedTarget.title }}
+      </NuxtLink>
+
+      <VerdictPanel
+        :report="report"
+        :summary="overviewSummary"
+        :finding-count="skills && !selectedSkill ? skillFindings : undefined"
+      >
         <p class="flex items-center gap-2 font-semibold text-highlighted">
           <UIcon
             v-if="parsedTarget.isGithub"
@@ -274,7 +323,13 @@ const errorMessage = computed(() => {
           </template>
         </p>
         <p
-          v-if="status.ai_tokens"
+          v-if="selectedSkill"
+          class="font-mono text-sm text-muted"
+        >
+          {{ selectedSkill.path }}
+        </p>
+        <p
+          v-if="status.ai_tokens && !selectedSkill"
           class="text-sm text-muted"
         >
           AI review used {{ formatTokenUsage(status.ai_tokens) }} tokens
@@ -297,7 +352,7 @@ const errorMessage = computed(() => {
       />
 
       <UAlert
-        v-if="!status.result.execution_successful"
+        v-if="!report.execution_successful && (!skills || selectedSkill)"
         color="warning"
         variant="subtle"
         icon="i-lucide-alert-triangle"
@@ -450,10 +505,18 @@ const errorMessage = computed(() => {
         </section>
       </div>
 
+      <SkillsOverview
+        v-if="skills && !selectedSkill"
+        :skills="skills"
+        :unscanned="status.result?.unscanned_skills ?? []"
+      />
+
       <BaselinePanel
-        v-if="status.result.suppressed?.length || status.result.generated_baseline"
+        v-if="report.suppressed?.length || report.generated_baseline && !selectedSkill"
         :scan-id="id"
-        :report="status.result"
+        :report="report"
+        :downloadable="!selectedSkill"
+        :active-count="skills && !selectedSkill ? skillFindings : report.issues.length"
       />
     </template>
   </UContainer>

@@ -86,6 +86,25 @@ export interface BaselineDownload {
   content: string
 }
 
+// One skill of a repository holding several, as GET /api/scan/{id} lists it; its report comes from
+// /api/scan/{id}/skills/{index}. Skills that failed only have `error`.
+export interface SkillSummary {
+  path: string
+  name: string
+  error?: string
+  risk_assessment?: ScanReport['risk_assessment']
+  issue_count?: number
+  suppressed_count?: number
+  execution_successful?: boolean
+  ai_review?: AIReview | null
+}
+
+export interface UnscannedSkill {
+  path: string
+  name: string
+  reason: string
+}
+
 export interface ScanReport {
   skill: {
     name: string
@@ -108,6 +127,9 @@ export interface ScanReport {
   // A baseline accepting every active finding, made during the scan (app/sandbox_runner.py). Absent
   // without findings, and for scans from before it existed.
   generated_baseline?: Record<string, unknown>
+  // A repository holding several skills: each one's summary, and those left out.
+  skills?: SkillSummary[]
+  unscanned_skills?: UnscannedSkill[]
 }
 
 export interface ScanStatus {

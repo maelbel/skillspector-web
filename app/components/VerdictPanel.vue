@@ -3,7 +3,12 @@ import type { ScanReport, Severity } from '~~/shared/types/scan'
 
 const props = defineProps<{
   report: ScanReport
+  // For a repository of several skills, whose own report lists no findings.
+  summary?: string
+  findingCount?: number
 }>()
+
+const findingTotal = computed(() => props.findingCount ?? props.report.issues.length)
 
 const recommendation = computed(() => props.report.risk_assessment.recommendation)
 const tone = computed(() => RECOMMENDATION_CLASSES[recommendation.value])
@@ -26,7 +31,8 @@ const topFinding = computed(() =>
     SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.confidence - a.confidence)[0]
 )
 
-const summary = computed(() => {
+const summaryLine = computed(() => {
+  if (props.summary) return props.summary
   const top = topFinding.value
   if (!top) return 'None of the analyzers flagged anything in this skill.'
   const title = findingTitle(top)
@@ -70,7 +76,7 @@ const summary = computed(() => {
         {{ RECOMMENDATION_LABEL[recommendation] }}
       </h1>
       <p class="max-w-2xl text-base text-highlighted text-pretty sm:text-lg">
-        {{ summary }}
+        {{ summaryLine }}
       </p>
       <div class="mt-1 flex min-w-0 flex-col gap-1.5 rounded-xs bg-default/70 p-4">
         <slot />
@@ -128,7 +134,7 @@ const summary = computed(() => {
 
       <div class="flex w-full flex-col gap-2.5">
         <span class="text-sm font-semibold text-highlighted">
-          {{ report.issues.length }} finding{{ report.issues.length === 1 ? '' : 's' }}
+          {{ findingTotal }} finding{{ findingTotal === 1 ? '' : 's' }}
         </span>
         <template v-if="counts.length">
           <div
