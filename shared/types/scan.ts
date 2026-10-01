@@ -57,6 +57,7 @@ export interface ReportMetadata {
   llm_error?: string
   // When the scan followed external references.
   transitive_targets_scanned?: number
+  has_executable_scripts?: boolean
   llm_provenance?: {
     provider: { configured_adapter: string }
     analyzers: { analyzer_id: string, model: string | null }[]
@@ -114,6 +115,24 @@ export interface UnscannedSkill {
   reason: string
 }
 
+// One file skillspector inspected.
+export interface ScanComponent {
+  path: string
+  type: string
+  lines: number | null
+  executable: boolean
+  size_bytes: number | null
+  source_url?: string | null
+}
+
+// skillspector's summary of a structured skill bundle (protocol, declared tools, workflow…).
+export interface StructuredSummary {
+  id?: string
+  message?: string
+  file?: string
+  [field: string]: unknown
+}
+
 export interface ScanReport {
   skill: {
     name: string
@@ -132,6 +151,8 @@ export interface ScanReport {
   // Missing from reports stored before skillspector added them.
   metadata?: ReportMetadata
   analysis_completeness?: AnalysisCompleteness
+  components?: ScanComponent[]
+  structured_summaries?: StructuredSummary[]
   suppressed?: SuppressedFinding[]
   // A baseline accepting every active finding, made during the scan (app/sandbox_runner.py). Absent
   // without findings, and for scans from before it existed.

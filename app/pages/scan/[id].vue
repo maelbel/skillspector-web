@@ -123,6 +123,13 @@ const hiddenSeverities = ref(new Set<string>())
 const hiddenCategories = ref(new Set<string>())
 const hiddenFiles = ref(new Set<string>())
 const hiddenRules = ref(new Set<string>())
+const executableCount = computed(() => report.value?.components?.filter(component => component.executable).length ?? 0)
+
+// From the Files section: only that file's findings, then back up to them.
+function showOnlyFile(file: string) {
+  hiddenFiles.value = new Set(fileCounts.value.map(({ value }) => value).filter(value => value !== file))
+  document.getElementById('findings-heading')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 const filtersOpen = ref(false)
 
 function toggle(set: Ref<Set<string>>, value: string) {
@@ -341,6 +348,18 @@ const errorMessage = computed(() => {
           AI review used {{ formatTokenUsage(status.ai_tokens) }} tokens
         </p>
         <p
+          v-if="report.metadata?.has_executable_scripts"
+          class="flex items-center gap-1.5 text-sm text-highlighted"
+        >
+          <UIcon
+            name="i-lucide-file-terminal"
+            class="size-4 shrink-0"
+          />
+          Contains executable scripts<template v-if="executableCount">
+            ({{ executableCount }})
+          </template>
+        </p>
+        <p
           v-if="report.metadata?.transitive_targets_scanned !== undefined"
           class="text-sm text-muted"
         >
@@ -518,6 +537,14 @@ const errorMessage = computed(() => {
           />
         </section>
       </div>
+
+      <FileInventory
+        v-if="report.components?.length || report.structured_summaries?.length"
+        :report="report"
+        :target="status.target"
+        :skill-path="selectedSkill?.path"
+        @show-file="showOnlyFile"
+      />
 
       <SkillsOverview
         v-if="skills && !selectedSkill"

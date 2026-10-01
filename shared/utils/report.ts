@@ -95,3 +95,10 @@ export function aiReviewCallSummary(report: ScanReport): string | null {
   const succeeded = report.metadata?.llm_calls_succeeded ?? 0
   return `${succeeded} of ${attempted} AI call${attempted === 1 ? '' : 's'} succeeded`
 }
+
+/** 950 → "950 B", 48_200 → "47.1 KB", 3_500_000 → "3.3 MB". */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Number((bytes / 1024).toFixed(1))} KB`
+  return `${Number((bytes / (1024 * 1024)).toFixed(1))} MB`
+}

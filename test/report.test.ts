@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Finding, ScanReport } from '../shared/types/scan'
-import { aiReviewCallSummary, aiReviewModels, findingKey, formatTokenUsage, formatTokens, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
+import { aiReviewCallSummary, aiReviewModels, findingKey, formatBytes, formatTokenUsage, formatTokens, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -138,5 +138,11 @@ describe('formatTokenUsage', () => {
 
   it('leaves out counters the provider didn\'t report', () => {
     expect(formatTokenUsage({ input: 500, output: null, cached: null })).toBe('500 input')
+  })
+})
+
+describe('formatBytes', () => {
+  it('uses the largest unit under 1024', () => {
+    expect([950, 1467, 48_200, 3_500_000].map(formatBytes)).toEqual(['950 B', '1.4 KB', '47.1 KB', '3.3 MB'])
   })
 })
