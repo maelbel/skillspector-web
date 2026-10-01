@@ -79,6 +79,7 @@ jobs:
           test -d $out/services/web/functions
           test -d $out/services/api/functions/fastapi.func
           # Scans boot from the snapshot recorded here, read at runtime (app/sandbox_snapshot.py).
+          echo "::group::layout (temporary)"; find $out/services/api/functions/fastapi.func -maxdepth 3 | head -60; jq 'del(.filePathMap) + {filePathMapKeys: ((.filePathMap // {}) | keys | map(select(test("sandbox"))))}' $out/services/api/functions/fastapi.func/.vc-config.json; grep -rl sandbox_snapshot_record $out/services/api | head; echo "::endgroup::"
           find $out/services/api/functions/fastapi.func -name sandbox_snapshot_record.py | grep -q .
           # The scan subscriber: a function triggered by the `scans` topic.
           jq -e -s 'map(.experimentalTriggers // [] | .[] | select(.topic == "scans")) | length > 0' \
