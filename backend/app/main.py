@@ -93,4 +93,6 @@ def health() -> dict:
         "llm_available": llm_available,
         # Hosted servers have no shared Claude login to check.
         "claude_cli_available": settings.mode is Mode.SELF_HOSTED and is_claude_cli_available(),
+        # The deepest a scan may follow a skill's external references; 0 when it can't.
+        "transitive_max_depth": settings.transitive_max_depth,
     }

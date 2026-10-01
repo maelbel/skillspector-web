@@ -172,18 +172,12 @@ const durationHint = computed(() => useLlm.value
   : 'A scan usually takes about a minute.'
 )
 
-const depthOptions = computed(() => [
-  {
-    value: 'static',
-    label: 'Static analysis',
-    description: '20+ analyzers. Nothing leaves this server.'
-  },
-  {
-    value: 'ai',
-    label: 'Static + AI review',
-    description: `Adds a semantic read of intent. Slower, and the skill’s content is sent to ${PROVIDER_RECIPIENTS[provider.value]}.`
-  }
-])
+const depthOptions = [
+  { value: 'static', label: 'Static analysis' },
+  { value: 'ai', label: 'Static + AI review' }
+]
+const DEPTH_HELP = 'Static analysis: 20+ analyzers, and nothing leaves this server. '
+  + 'Static + AI review: adds a semantic read of the skill’s intent. Slower, and its content is sent to the AI provider.'
 
 // The Claude key saved to the user's account (app/claude_key.py on the API), used unless they
 // choose to paste a different one for this scan.
@@ -237,6 +231,28 @@ async function pickBaseline(event: Event) {
   if (baselineInput.value) baselineInput.value.value = ''
 }
 
+// Following the skill's external references (Git repositories and raw files it links to), as deep
+// as the server allows.
+const followReferences = ref(false)
+const referenceDepth = ref(1)
+const maxReferenceDepth = computed(() => health.value?.transitive_max_depth ?? 0)
+const referenceDepthOptions = computed(() => Array.from({ length: maxReferenceDepth.value }, (_, i) => ({
+  label: i === 0 ? '1 level: what the skill links to' : `${i + 1} levels: and what those link to`,
+  value: i + 1
+})))
+
+// Baseline and references are rarely needed, so they sit behind "More options"; its label says
+// what's set, so nothing hidden is applied unnoticed.
+const moreOpen = ref(false)
+const moreSummary = computed(() => {
+  const set = []
+  if (baseline.value) set.push(`baseline: ${baseline.value.name}`)
+  if (followReferences.value && maxReferenceDepth.value) {
+    set.push(`references: ${referenceDepth.value} level${referenceDepth.value === 1 ? '' : 's'}`)
+  }
+  return set.join(' · ')
+})
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -257,7 +273,12 @@ async function submit() {
   try {
     const { id } = await $fetch<{ id: string }>('/api/scan', {
       method: 'POST',
-      body: { target: target.value.trim(), llm, baseline: baseline.value?.text }
+      body: {
+        target: target.value.trim(),
+        llm,
+        baseline: baseline.value?.text,
+        transitiveDepth: followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
+      }
     })
     savePrefs()
     await navigateTo(`/scan/${id}`)
@@ -359,18 +380,33 @@ async function submit() {
 
     <URadioGroup
       v-model="depth"
-      legend="Scan depth"
       variant="card"
+      orientation="horizontal"
       :items="depthOptions"
       :disabled="submitting"
       :ui="{
-        legend: 'mb-2.5 font-semibold text-highlighted',
-        fieldset: 'grid gap-3 sm:grid-cols-2',
-        item: 'rounded-xs border-default p-4 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
-        label: 'font-semibold text-highlighted',
-        description: 'mt-1 leading-snug'
+        legend: 'mb-2 flex items-center gap-1.5 font-semibold text-highlighted',
+        fieldset: 'flex flex-wrap gap-2',
+        item: 'rounded-xs border-default px-3 py-2 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
+        label: 'font-medium text-highlighted'
       }"
-    />
+    >
+      <template #legend>
+        Scan depth
+        <UTooltip
+          :text="DEPTH_HELP"
+          :content="{ side: 'top' }"
+          :ui="{ content: 'max-w-xs h-auto whitespace-normal py-1.5' }"
+        >
+          <UIcon
+            name="i-lucide-info"
+            class="size-4 text-muted"
+            tabindex="0"
+            :aria-label="DEPTH_HELP"
+          />
+        </UTooltip>
+      </template>
+    </URadioGroup>
 
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -384,6 +420,9 @@ async function submit() {
         v-if="useLlm"
         class="flex flex-col gap-3 rounded-xs bg-muted p-4 ring ring-default"
       >
+        <p class="text-sm text-muted">
+          Adds a semantic read of the skill’s intent. Slower, and the skill’s content is sent to {{ PROVIDER_RECIPIENTS[provider] }}.
+        </p>
         <UFormField label="Provider">
           <USelect
             id="scan-provider"
@@ -524,67 +563,112 @@ async function submit() {
       </div>
     </Transition>
 
-    <div class="flex flex-col gap-1.5">
-      <p class="flex items-center gap-1.5 font-semibold text-highlighted">
-        Baseline <span class="font-normal text-muted">(optional)</span>
-        <UTooltip text="What a baseline file looks like">
-          <ULink
-            :to="BASELINE_FORMAT_DOCS"
-            target="_blank"
-            aria-label="What a baseline file looks like, in skillspector's documentation"
-            class="inline-flex text-muted hover:text-highlighted"
-          >
-            <UIcon
-              name="i-lucide-info"
-              class="size-4"
-            />
-          </ULink>
-        </UTooltip>
-      </p>
-      <p class="text-sm text-muted">
-        A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
-        suppressed and don’t count towards the score. Download one from a scan’s result page.
-      </p>
-      <div class="mt-1 flex flex-wrap items-center gap-2">
-        <input
-          ref="baselineInput"
-          type="file"
-          accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
-          class="sr-only"
-          aria-label="Baseline file"
-          :disabled="submitting"
-          @change="pickBaseline"
-        >
-        <UButton
-          :label="baseline ? 'Replace file' : 'Choose a file'"
-          icon="i-lucide-file-check"
-          size="sm"
-          color="neutral"
-          variant="outline"
-          class="rounded-xs"
-          :disabled="submitting"
-          @click="baselineInput?.click()"
-        />
-        <template v-if="baseline">
-          <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
-          <UButton
-            icon="i-lucide-x"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            aria-label="Remove the baseline"
-            :disabled="submitting"
-            @click="baseline = null"
-          />
-        </template>
-      </div>
-      <p
-        v-if="baselineError"
-        class="text-sm text-critical-ink"
+    <UCollapsible
+      v-model:open="moreOpen"
+      class="flex flex-col gap-4"
+    >
+      <UButton
+        color="neutral"
+        variant="link"
+        size="sm"
+        trailing-icon="i-lucide-chevron-down"
+        class="self-start px-0 text-left"
+        :ui="{ trailingIcon: 'transition-transform group-data-[state=open]:rotate-180' }"
       >
-        {{ baselineError }}
-      </p>
-    </div>
+        <span>
+          More options<span
+            v-if="moreSummary"
+            class="font-normal text-muted"
+          > · {{ moreSummary }}</span>
+        </span>
+      </UButton>
+
+      <template #content>
+        <div class="flex flex-col gap-5 border-l-2 border-muted pl-4">
+          <div class="flex flex-col gap-1.5">
+            <p class="flex items-center gap-1.5 font-semibold text-highlighted">
+              Baseline
+              <UTooltip text="What a baseline file looks like">
+                <ULink
+                  :to="BASELINE_FORMAT_DOCS"
+                  target="_blank"
+                  aria-label="What a baseline file looks like, in skillspector's documentation"
+                  class="inline-flex text-muted hover:text-highlighted"
+                >
+                  <UIcon
+                    name="i-lucide-info"
+                    class="size-4"
+                  />
+                </ULink>
+              </UTooltip>
+            </p>
+            <p class="text-sm text-muted">
+              A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
+              suppressed and don’t count towards the score. Download one from a scan’s result page.
+            </p>
+            <div class="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                ref="baselineInput"
+                type="file"
+                accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
+                class="sr-only"
+                aria-label="Baseline file"
+                :disabled="submitting"
+                @change="pickBaseline"
+              >
+              <UButton
+                :label="baseline ? 'Replace file' : 'Choose a file'"
+                icon="i-lucide-file-check"
+                size="sm"
+                color="neutral"
+                variant="outline"
+                class="rounded-xs"
+                :disabled="submitting"
+                @click="baselineInput?.click()"
+              />
+              <template v-if="baseline">
+                <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  aria-label="Remove the baseline"
+                  :disabled="submitting"
+                  @click="baseline = null"
+                />
+              </template>
+            </div>
+            <p
+              v-if="baselineError"
+              class="text-sm text-critical-ink"
+            >
+              {{ baselineError }}
+            </p>
+          </div>
+
+          <div
+            v-if="maxReferenceDepth"
+            class="flex flex-col gap-2"
+          >
+            <USwitch
+              v-model="followReferences"
+              label="Follow external references"
+              description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
+              :disabled="submitting"
+            />
+            <USelect
+              v-if="followReferences && maxReferenceDepth > 1"
+              v-model="referenceDepth"
+              :items="referenceDepthOptions"
+              aria-label="How deep to follow references"
+              class="w-full sm:max-w-xs"
+              :disabled="submitting"
+            />
+          </div>
+        </div>
+      </template>
+    </UCollapsible>
 
     <UAlert
       v-if="errorMessage"

@@ -1,8 +1,10 @@
 """Run one skillspector scan and report on stdout, one tagged JSON event per line.
 
 This file is uploaded into a Vercel Sandbox and run there with
-``python3 sandbox_runner.py <target> [--llm] [--baseline FILE]`` (``--llm`` adds skillspector's AI
-review; ``--baseline`` suppresses the findings a baseline accepts), so it must stay standalone: the
+``python3 sandbox_runner.py <target> [--llm] [--baseline FILE] [--transitive-depth N
+[--transitive-allow PREFIX]... [--transitive-deny PREFIX]...]`` (``--llm`` adds skillspector's AI
+review; ``--baseline`` suppresses the findings a baseline accepts; ``--transitive-depth`` follows
+the skill's external references and scans them too), so it must stay standalone: the
 standard library and skillspector only, nothing from ``app``. The API's own scans reuse its
 baseline helpers.
 
@@ -23,7 +25,10 @@ import argparse
 import json
 import logging
 import os
+import re
+import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -192,6 +197,62 @@ def combine_reports(skills: list[dict[str, Any]], unscanned: list[dict[str, str]
     return combined
 
 
+# skillspector's CLI, which alone implements following references (--transitive).
+_CLI = "import sys; from skillspector.cli import app; sys.argv[0] = 'skillspector'; app()"
+# A log line from an analyzer node, e.g. "INFO [skillspector.nodes.analyzers.static_yara] ...".
+_NODE_LOG = re.compile(r"^(?:INFO|WARNING) \[skillspector\.nodes\.(?:analyzers\.)?(\w+)\]")
+
+
+def _scan_with_cli(
+    input_path: str,
+    *,
+    use_llm: bool,
+    baseline_path: str | None,
+    transitive: dict[str, Any],
+    step: Callable[[str], None],
+    on_log: Callable[[str], None],
+    max_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Scan through skillspector's CLI, following references; its log stands in for graph steps."""
+    from skillspector.graph import graph
+
+    total_steps = len([node for node in graph.get_graph().nodes if node not in ("__start__", "__end__")])
+    with tempfile.TemporaryDirectory() as directory:
+        output = os.path.join(directory, "report.json")
+        args = [sys.executable, "-c", _CLI, "scan", input_path, "--format", "json", "--output", output, "--verbose"]
+        args += ["--transitive", "--transitive-depth", str(transitive["depth"])]
+        for prefix in transitive.get("allow", []):
+            args += ["--transitive-allow-prefix", prefix]
+        for prefix in transitive.get("deny", []):
+            args += ["--transitive-deny-prefix", prefix]
+        if not use_llm:
+            args.append("--no-llm")
+        if baseline_path:
+            args += ["--baseline", baseline_path]
+        env = dict(os.environ)
+        if max_seconds is not None:
+            env["SKILLSPECTOR_MAX_WORKFLOW_SECONDS"] = f"{max_seconds:g}"
+        seen: set[str] = set()
+        last_line = ""
+        with subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, env=env) as process:
+            assert process.stderr is not None
+            for raw in process.stderr:
+                line = raw.rstrip()
+                if not line or line.startswith("DEBUG"):
+                    continue
+                last_line = line
+                on_log(line)
+                node = _NODE_LOG.match(line)
+                if node and node.group(1) not in seen and len(seen) < total_steps:
+                    seen.add(node.group(1))
+                    step(node.group(1))
+        # 0 and 1 (a risky skill) both mean a report was written; 2 is an error.
+        if process.returncode not in (0, 1) or not os.path.exists(output):
+            raise RuntimeError(re.sub(r"\[/?[a-z ]+\]", "", last_line) or f"skillspector exited with {process.returncode}")
+        with open(output, encoding="utf-8") as file:
+            return json.load(file)
+
+
 def run_scan(
     target: str,
     *,
@@ -201,18 +262,32 @@ def run_scan(
     on_log: Callable[[str], None],
     config: dict[str, Any] | None = None,
     deadline_seconds: float | None = None,
+    transitive: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Scan target, splitting a repository that holds several skills into one scan per skill.
 
     on_step is called once per graph step of a single scan; for several skills, as many times
     spread over all of them, so progress still ends at the graph's step count. With
-    deadline_seconds, skills are only started while there's time left for them.
+    deadline_seconds, skills are only started while there's time left for them. With transitive
+    ({"depth", "allow", "deny"}), each scan also follows the skill's external references; it runs
+    through skillspector's CLI, so it makes no baseline (that needs the scanned files' contents).
     """
     from skillspector.graph import graph
 
     base_state = {"output_format": "json", "use_llm": use_llm, **baseline_state(baseline_path)}
 
     def scan_one(input_path: str, step: Callable[[str], None], extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        if transitive:
+            budget = (extra or {}).get("workflow_resource_budget")
+            return _scan_with_cli(
+                input_path,
+                use_llm=use_llm,
+                baseline_path=baseline_path,
+                transitive=transitive,
+                step=step,
+                on_log=on_log,
+                max_seconds=budget.max_seconds if budget is not None else None,
+            )
         final_state: dict[str, Any] | None = None
         for mode, chunk in graph.stream({**base_state, "input_path": input_path, **(extra or {})}, config=config, stream_mode=["updates", "values"]):
             if mode == "updates":
@@ -224,6 +299,7 @@ def run_scan(
 
     started = _clock()
     skills: list[Path] = []
+    root: Path | None = None
     handler = None
     if _may_hold_several_skills(target):
         from skillspector.input_handler import InputHandler
@@ -234,10 +310,13 @@ def run_scan(
             skills = find_skills(root) if root.is_dir() else []
         except Exception:  # noqa: BLE001
             # The scan itself reports a target it can't fetch, as before.
-            skills = []
+            root, skills = None, []
     try:
         if len(skills) < 2:
-            return scan_one(target, on_step)
+            # Following references, skillspector's CLI charges the target's own download to the
+            # traversal's 10 MB budget, which one repository clone can use up: scan the copy
+            # fetched above instead, so the budget goes to what the skill references.
+            return scan_one(str(root) if transitive and root is not None else target, on_step)
         if len(skills) > MAX_SKILLS:
             raise RuntimeError(f"This repository holds more than {MAX_SKILLS} skills: scan them one folder at a time")
         return _scan_each(root, skills, scan_one, on_step, on_log, started, deadline_seconds)
@@ -291,6 +370,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("target")
     parser.add_argument("--llm", action="store_true")
     parser.add_argument("--baseline")
+    parser.add_argument("--transitive-depth", type=int)
+    parser.add_argument("--transitive-allow", action="append", default=[])
+    parser.add_argument("--transitive-deny", action="append", default=[])
     try:
         args = parser.parse_args(argv[1:])
     except SystemExit:
@@ -318,6 +400,9 @@ def main(argv: list[str]) -> int:
             on_step=lambda node: emit("step", node=node),
             on_log=lambda line: emit("log", line=line),
             deadline_seconds=float(deadline) if deadline else None,
+            transitive={"depth": args.transitive_depth, "allow": args.transitive_allow, "deny": args.transitive_deny}
+            if args.transitive_depth
+            else None,
         )
         emit("report", report=report)
         return 0

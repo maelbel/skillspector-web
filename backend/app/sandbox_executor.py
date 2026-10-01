@@ -20,6 +20,7 @@ from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_runner import PREFIX
 from app.sandbox_snapshot import snapshot_id_for
+from app.transitive import transitive_options
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,15 @@ class SandboxExecutor:
             from vercel.sandbox import create_sandbox
         self._create_sandbox = create_sandbox
 
-    async def run(self, job_id: str, target: str, *, llm: LLMConfig | None, baseline: str | None = None) -> dict[str, Any]:
+    async def run(
+        self,
+        job_id: str,
+        target: str,
+        *,
+        llm: LLMConfig | None,
+        baseline: str | None = None,
+        transitive_depth: int | None = None,
+    ) -> dict[str, Any]:
         if llm is not None and (llm.provider != "anthropic" or not llm.api_key):
             raise RuntimeError("AI review in the scan sandbox needs a Claude (Anthropic) key")
 
@@ -161,6 +170,11 @@ class SandboxExecutor:
                 if baseline is not None:
                     await box.fs.write_text(BASELINE_PATH, baseline)
                 args = [RUNNER_PATH, target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
+                transitive = transitive_options(settings, transitive_depth)
+                if transitive:
+                    args += ["--transitive-depth", str(transitive["depth"])]
+                    args += [arg for prefix in transitive["allow"] for arg in ("--transitive-allow", prefix)]
+                    args += [arg for prefix in transitive["deny"] for arg in ("--transitive-deny", prefix)]
                 process = await box.create_process("python3", args, kill_after=limit)
                 report, error = await self._consume(job_id, process.stdout)
                 returncode = await process.wait()

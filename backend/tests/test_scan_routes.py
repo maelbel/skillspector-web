@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
+from app.core.config import get_settings
 from app.main import app
 
 
@@ -102,6 +103,24 @@ rules:
   - id: "TR3"
     reason: "Accepted: the skill documents this"
 """
+
+
+def test_a_scan_keeps_how_deep_it_follows_references(client):
+    scan_id = client.post("/scan", json={"target": "https://example.com/skill.zip", "transitive_depth": 2}).json()["id"]
+
+    assert db.get_scan(scan_id)["transitive_depth"] == 2
+
+
+def test_references_cant_be_followed_deeper_than_the_server_allows(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "transitive_max_depth", 1)
+    response = client.post("/scan", json={"target": "https://example.com/skill.zip", "transitive_depth": 2})
+    assert response.status_code == 422
+    assert "at most 1 level deep" in response.json()["detail"]
+
+    monkeypatch.setattr(settings, "transitive_max_depth", 0)
+    response = client.post("/scan", json={"target": "https://example.com/skill.zip", "transitive_depth": 1})
+    assert "turned off" in response.json()["detail"]
 
 
 def test_a_scan_keeps_its_baseline(client):

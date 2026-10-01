@@ -191,6 +191,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN baseline TEXT",
         ],
     ),
+    (
+        12,
+        [
+            # How many levels of a skill's external references the scan follows (skillspector's
+            # --transitive-depth). NULL when it follows none.
+            "ALTER TABLE scans ADD COLUMN transitive_depth INTEGER",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -255,11 +263,12 @@ class SQLiteStore:
         owner_id: str | None = None,
         llm_model: str | None = None,
         baseline: str | None = None,
+        transitive_depth: int | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth),
         )
         self._conn.commit()
 

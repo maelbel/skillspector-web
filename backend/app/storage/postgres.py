@@ -193,6 +193,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN baseline TEXT",
         ],
     ),
+    (
+        12,
+        [
+            # How many levels of a skill's external references the scan follows (skillspector's
+            # --transitive-depth). NULL when it follows none.
+            "ALTER TABLE scans ADD COLUMN transitive_depth INTEGER",
+        ],
+    ),
 ]
 
 
@@ -249,11 +257,12 @@ class PostgresStore:
         owner_id: str | None = None,
         llm_model: str | None = None,
         baseline: str | None = None,
+        transitive_depth: int | None = None,
     ) -> None:
         self._execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth),
         )
 
     def update_scan(

@@ -40,6 +40,16 @@ const matched = computed(() => {
           <span v-if="finding.category && finding.category !== title">{{ finding.category }}</span>
           <span class="break-all">{{ location }}</span>
         </span>
+        <span
+          v-if="finding.transitive_depth && finding.source_url"
+          class="flex items-center gap-1.5 text-xs text-medium-ink"
+        >
+          <UIcon
+            name="i-lucide-link"
+            class="size-3.5 shrink-0"
+          />
+          <span class="break-all">In a file the skill references{{ finding.transitive_depth > 1 ? ` (${finding.transitive_depth} links away)` : '' }}: {{ finding.source_url }}</span>
+        </span>
       </span>
       <span class="flex items-center gap-2.5 max-sm:col-start-2">
         <span class="font-mono text-xs whitespace-nowrap text-muted">{{ Math.round(finding.confidence * 100) }}% sure</span>
