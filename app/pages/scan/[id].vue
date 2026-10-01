@@ -18,6 +18,25 @@ const displayTitle = computed(() => {
   return parsedTarget.value.title
 })
 const duration = computed(() => status.value ? scanDurationSeconds(status.value) : null)
+const aiModels = computed(() => status.value?.result ? aiReviewModels(status.value.result) : [])
+
+// Shown when an AI review was asked for but its results are missing in part or in full.
+const aiReviewAlert = computed(() => {
+  const result = status.value?.result
+  const state = status.value?.ai_review
+  if (!result || (state !== 'failed' && state !== 'degraded')) return null
+  const details = [result.metadata?.llm_error, aiReviewCallSummary(result)].filter(Boolean).join(' ')
+  return state === 'failed'
+    ? {
+        title: 'The AI review didn\'t run',
+        description: `The verdict and findings below come from static analysis only. ${details}`.trim()
+      }
+    : {
+        title: 'The AI review only partly ran',
+        description: `Some files were only checked by static analysis. ${details}`.trim()
+      }
+})
+
 const scanAgainLink = computed(() => status.value ? `/?target=${encodeURIComponent(status.value.target)}` : '/')
 
 useSeoMeta({
@@ -239,6 +258,8 @@ const errorMessage = computed(() => {
             :title="formatDate(status.created_at)"
           /><template v-if="duration !== null">
             · took {{ formatDuration(duration) }}
+          </template> · {{ status.ai_review ? 'Static + AI review' : 'Static analysis' }}<template v-if="aiModels.length">
+            ({{ aiModels.join(', ') }})
           </template><template v-if="logLines.length">
             · <button
               type="button"
@@ -256,6 +277,15 @@ const errorMessage = computed(() => {
         v-if="showLogs"
         :lines="logLines"
         tall
+      />
+
+      <UAlert
+        v-if="aiReviewAlert"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-bot-off"
+        :title="aiReviewAlert.title"
+        :description="aiReviewAlert.description"
       />
 
       <UAlert

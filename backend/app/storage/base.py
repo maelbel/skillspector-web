@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from app.ai_review import ai_review_status
+
 # A scan as a plain dict keyed by column name, with `result` already decoded from JSON.
 ScanRow = dict[str, Any]
 
 # Columns `list_scans` returns: everything except the (large) result.
-SUMMARY_COLUMNS = "id, target, status, created_at, finished_at, error, risk_score, severity, recommendation, owner_id"
+SUMMARY_COLUMNS = "id, target, status, created_at, finished_at, error, risk_score, severity, recommendation, ai_review, owner_id"
 
 
 class ScanStore(Protocol):
@@ -159,10 +161,10 @@ class ScanStore(Protocol):
 
 
 
-def risk_columns(result: dict[str, Any] | None) -> tuple[Any, Any, Any]:
+def summary_columns(result: dict[str, Any] | None) -> tuple[Any, Any, Any, Any]:
     """The summary columns denormalised from a report, so history can list scans without it."""
     risk = (result or {}).get("risk_assessment") or {}
-    return risk.get("score"), risk.get("severity"), risk.get("recommendation")
+    return risk.get("score"), risk.get("severity"), risk.get("recommendation"), ai_review_status(result)
 
     def count_rate_limit_hits(self, key: str, *, window_seconds: float, now: float) -> int:
         """Hits recorded for key within the window."""
