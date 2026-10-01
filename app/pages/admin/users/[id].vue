@@ -362,6 +362,8 @@ async function deleteUser() {
           <ActivityList :entries="data.activity" />
         </section>
       </div>
+
+      <ApiTokensCard :user-id="id" />
     </template>
 
     <UModal

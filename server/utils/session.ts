@@ -8,6 +8,14 @@ export function getSessionToken(event: H3Event): string | undefined {
   return getCookie(event, SESSION_COOKIE) || undefined
 }
 
+// A script's personal API token (backend/app/auth/api_tokens.py), sent as `Authorization: Bearer
+// sst_…`: passed on to the API as it came. Only API tokens: a browser is identified by its cookie.
+const API_TOKEN = /^Bearer (sst_[\w-]+)$/
+
+export function getApiToken(event: H3Event): string | undefined {
+  return getHeader(event, 'authorization')?.trim().match(API_TOKEN)?.[1]
+}
+
 export function setSessionToken(event: H3Event, token: string, maxAgeDays: number) {
   setCookie(event, SESSION_COOKIE, token, {
     httpOnly: true,

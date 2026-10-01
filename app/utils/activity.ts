@@ -19,7 +19,10 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'settings.scans_resumed': { verb: 'resumed scans', icon: 'i-lucide-circle-play' },
   'settings.quotas_changed': { verb: 'changed scan quotas', icon: 'i-lucide-gauge' },
   'scan.shared': { verb: 'shared the result of a scan of', icon: 'i-lucide-link' },
-  'scan.unshared': { verb: 'revoked the shared link to a scan of', icon: 'i-lucide-unlink' }
+  'scan.unshared': { verb: 'revoked the shared link to a scan of', icon: 'i-lucide-unlink' },
+  'token.created': { verb: 'created an API token for', icon: 'i-lucide-key-square' },
+  'token.used': { verb: 'used an API token of', icon: 'i-lucide-terminal' },
+  'token.revoked': { verb: 'revoked an API token of', icon: 'i-lucide-key-square' }
 }
 
 export interface ActivityLine {
@@ -49,6 +52,10 @@ export function describeActivity(entry: ActivityEntry): ActivityLine {
   }
   if (self && entry.action.startsWith('password.')) {
     return { icon: known.icon, actor, verb: known.verb.replace(/ (of|for|to)$/, '').replace('the password', 'their password'), target: null, detail: entry.detail }
+  }
+  if (self && entry.action.startsWith('token.')) {
+    const verb = { 'token.created': 'created an API token', 'token.used': 'used an API token', 'token.revoked': 'revoked an API token' }[entry.action]
+    return { icon: known.icon, actor, verb: verb ?? known.verb, target: null, detail: entry.detail }
   }
   if (entry.action === 'settings.signup_changed') {
     return { icon: known.icon, actor, verb: `${known.verb} ${entry.detail ?? ''}`.trim(), target: null, detail: null }

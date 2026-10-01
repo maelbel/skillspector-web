@@ -60,6 +60,8 @@ async function save() {
         description="To let users connect their own Claude key, set SKILLSPECTOR_WEB_SECRET_KEY on the API (generate one with python -m app.secrets_box) and restart it."
       />
 
+      <ApiTokensCard />
+
       <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
         <form
           class="flex flex-col gap-4"

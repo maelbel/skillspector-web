@@ -25,7 +25,7 @@ from app import claude_key, db, exports, quotas, rate_limit, rescan, uploads
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer, audit
-from app.auth.deps import CurrentViewer
+from app.auth.deps import CurrentViewer, ScanViewer
 from app.claude_login import is_claude_cli_available
 from app.core.config import get_settings
 from app.core.mode import Mode
@@ -47,7 +47,7 @@ from app.targets import mcp_entry_url, raw_file_url
 router = APIRouter(prefix="/scan", tags=["scan"])
 
 
-def _rate_limit_scan(request: Request, viewer: CurrentViewer) -> None:
+def _rate_limit_scan(request: Request, viewer: ScanViewer) -> None:
     """Per signed-in user (per address without accounts), plus a cap per address shared by every
     account signed in from it, so opening more accounts doesn't buy more scans."""
     settings = get_settings()
@@ -256,7 +256,7 @@ def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
 
 
 @router.post("", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
-async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
+async def start_scan(req: ScanRequest, viewer: ScanViewer) -> ScanQueuedResponse:
     if req.upload is None:
         assert req.target is not None
         return await _queue_scan(req.target, req, viewer)
@@ -284,7 +284,7 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
 
 @router.post("/upload", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
 async def start_upload_scan(
-    viewer: CurrentViewer,
+    viewer: ScanViewer,
     file: Annotated[UploadFile, File()],
     # The scan's options (ScanOptions), as JSON: a form can't nest them.
     options: Annotated[str, Form()] = "{}",
@@ -415,7 +415,7 @@ class _Rescans:
 
 @router.get("", response_model=ScanHistoryResponse)
 async def read_scan_history(
-    viewer: CurrentViewer,
+    viewer: ScanViewer,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     # Only this target's scans: its timeline.
@@ -457,7 +457,7 @@ def _visible_scan(job_id: str, viewer: Viewer) -> None:
 
 
 @router.get("/{job_id}", response_model=ScanStatusResponse)
-async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
+async def read_scan(job_id: str, viewer: ScanViewer) -> ScanStatusResponse:
     _visible_scan(job_id, viewer)
     scan = db.get_scan(job_id)
     job = get_job(job_id)
@@ -475,7 +475,7 @@ async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
 
 
 @router.get("/{job_id}/skills/{index}", response_model=dict)
-def read_scan_skill(job_id: str, index: int, viewer: CurrentViewer) -> dict:
+def read_scan_skill(job_id: str, index: int, viewer: ScanViewer) -> dict:
     """The report of one skill in a scan of a repository holding several, its findings marked new or
     unchanged when the scan has a previous one."""
     _visible_scan(job_id, viewer)
@@ -507,7 +507,7 @@ def export_response(scan: dict, format: ExportFormat) -> Response:
 
 
 @router.get("/{job_id}/export")
-def export_scan(job_id: str, viewer: CurrentViewer, format: Annotated[ExportFormat, Query()] = "json") -> Response:
+def export_scan(job_id: str, viewer: ScanViewer, format: Annotated[ExportFormat, Query()] = "json") -> Response:
     _visible_scan(job_id, viewer)
     scan = db.get_scan(job_id)
     assert scan is not None
@@ -547,7 +547,7 @@ def unshare_scan(job_id: str, viewer: CurrentViewer) -> None:
 
 
 @router.post("/{job_id}/rescan", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
-async def rescan_target(job_id: str, viewer: CurrentViewer) -> ScanQueuedResponse:
+async def rescan_target(job_id: str, viewer: ScanViewer) -> ScanQueuedResponse:
     """Scan a scan's target again, as it was scanned: the result is compared with this one. Like any
     scan, it counts towards the viewer's quotas."""
     _visible_scan(job_id, viewer)
@@ -566,7 +566,7 @@ async def rescan_target(job_id: str, viewer: CurrentViewer) -> ScanQueuedRespons
 @router.get("/{job_id}/baseline", response_model=BaselineResponse)
 def read_scan_baseline(
     job_id: str,
-    viewer: CurrentViewer,
+    viewer: ScanViewer,
     reason: str | None = Query(default=None, max_length=500),
 ) -> BaselineResponse:
     """A baseline accepting every active finding of the scan, made while it ran (app/sandbox_runner.py)."""
@@ -587,7 +587,7 @@ def read_scan_baseline(
 
 
 @router.get("/{job_id}/logs", response_model=ScanLogsResponse)
-async def read_scan_logs(job_id: str, viewer: CurrentViewer) -> ScanLogsResponse:
+async def read_scan_logs(job_id: str, viewer: ScanViewer) -> ScanLogsResponse:
     _visible_scan(job_id, viewer)
     return ScanLogsResponse(lines=get_logs(job_id))
 

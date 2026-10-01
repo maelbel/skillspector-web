@@ -23,6 +23,8 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/auth/reset` | accounts | Set a new password with `{ token, password }` from a reset link; ends the user's other sessions and signs in. |
 | `POST` | `/auth/password` | signed in | Change your password with `{ current_password, new_password }`; your other sessions end. |
 | `POST` | `/auth/logout` | — | End the bearer token's session. |
+| `GET` · `POST` | `/account/tokens` | signed in | Your API tokens (never the tokens themselves), or create one with `{ name, expires_in_days }` (`null`: never expires): the response holds the token, this once. See [API tokens](#api-tokens). |
+| `DELETE` | `/account/tokens/{id}` | signed in | Revoke one of your API tokens. |
 | `GET` · `PUT` · `DELETE` | `/account/claude` | signed in | Your saved Claude key: status `{ provider, hint, updated_at }` (never the key), connect or replace with `{ api_key }` (checked with Anthropic first), or disconnect. Needs accounts and `SECRET_KEY`. |
 | `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity. |
 | `GET` | `/admin/activity` | admin | The audit log, newest first: `?limit=` and `?offset=`. Returns `{ items, total }`. |
@@ -30,12 +32,19 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `GET` · `PATCH` | `/admin/users/{id}` | admin | A user with their recent scans and account history, or change `{ role, status }`. Suspending signs them out. |
 | `POST` | `/admin/users/{id}/reset-email` | admin | Email the user a reset link; `409` without SMTP. |
 | `POST` | `/admin/users/{id}/reset` | admin | Issue a one-time password reset link, valid 24 hours: `{ path, expires_at }`. Cancels earlier links. |
+| `GET` | `/admin/users/{id}/tokens` | admin | A user's API tokens, as they see them. |
+| `DELETE` | `/admin/users/{id}/tokens/{token_id}` | admin | Revoke a user's API token. |
 | `DELETE` | `/admin/users/{id}` | admin | Remove a user and end their sessions; their scans stay. Not yourself, not the last admin. |
-| `POST` | `/scan` | rate-limited | Queue a scan. Returns `{ id, status }`. |
-| `GET` | `/scan` | — | Scan history, newest first: `?limit=` (1–100, default 20) and `?offset=`. Returns `{ items, total }`. |
-| `GET` | `/scan/{id}` | — | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report. |
-| `GET` | `/scan/{id}/logs` | — | Captured log lines for a scan (in memory, or in the database with `LOG_STORE=database`). |
-| `DELETE` | `/scan/{id}` | — | Delete a scan. `204` on success. |
+| `POST` | `/scan` | token · rate-limited | Queue a scan of a `target`, or of an `upload` already in the Blob store (hosted). Returns `{ id, status }`. |
+| `POST` | `/scan/upload` | token · rate-limited | Queue a scan of a `.zip` or `.md` sent as the multipart `file`, with the options as JSON in `options` (self-hosted). |
+| `GET` | `/scan` | token | Scan history: `?limit=` (1–100, default 20), `?offset=`, `?target=` (one target's scans), `?sort=` (`created_at`, `target`, `risk_score`, `verdict`, `status`) and `?order=` (`asc`, `desc`; newest first by default). Returns `{ items, total }`. |
+| `GET` | `/scan/{id}` | token | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report, with what changed since the target's previous scan (`comparison`). |
+| `GET` | `/scan/{id}/export` | token | The finished report as a download: `?format=json` (skillspector's report) or `?format=sarif` (SARIF 2.1.0). |
+| `POST` | `/scan/{id}/rescan` | token · rate-limited | Scan the target again as this scan did. |
+| `GET` | `/scan/{id}/logs` | token | Captured log lines for a scan (in memory, or in the database with `LOG_STORE=database`). |
+| `POST` · `DELETE` | `/scan/{id}/share` | signed in | Share the result at a read-only link (`{ token }`, for `/shared/{token}`), or revoke it. |
+| `DELETE` | `/scan/{id}` | signed in | Delete a scan. `204` on success. |
+| `GET` | `/shared/{token}` | — | A shared result, read-only; also `/skills/{index}` and `/export`. |
 | `GET` | `/settings` | — | `{ scan_retention_days }` (`null` = keep forever). |
 | `PUT` | `/settings` | admin | Update retention; runs a sweep immediately. |
 | `POST` | `/admin/claude-login/start` | admin | Start `claude auth login`; returns the URL to open. |
@@ -46,7 +55,8 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 - **`none`:** every request has full access, admin endpoints included, and the `/auth/*` account
   endpoints return `404`.
 - **`accounts`:** every scan, settings and admin endpoint needs `Authorization: Bearer <token>`
-  from a sign-in (`401` without one).
+  from a sign-in (`401` without one). The endpoints marked *token* also take a personal API token
+  (see [API tokens](#api-tokens)); every other one refuses it (`403`).
   - Scan endpoints only show a user their own scans, and answer `404` for anyone else's.
   - `admin` endpoints need the admin role (`403`).
 
@@ -85,6 +95,40 @@ Content-Type: application/json
 | `503` | The queue is full (`SKILLSPECTOR_WEB_MAX_QUEUED_SCANS`). |
 
 The finished report is skillspector's JSON report (`risk_assessment`, `issues`, `metadata`, …).
+
+### API tokens
+
+Scripts and CI jobs authenticate with a personal API token instead of a browser session (with
+`AUTH=accounts`; without accounts, no token is needed). Create one on the **Account** page, or with
+`POST /account/tokens` from a session: it's shown once, and only its hash is stored. A token:
+
+- acts as the user who made it: the same scans, quotas and rate limits. It stops working when it's
+  revoked, when it expires, or when its owner is suspended or deleted: `401`.
+- has the `scan` scope: it starts scans, and reads, exports and rescans them (the endpoints marked
+  *token* above). Everything else, deleting or sharing a scan included, needs a session (`403`).
+- is recorded in the activity log when it's created, revoked, and first used each day. Admins see
+  and revoke any user's tokens from the user's page.
+
+Start a scan, then poll it until it's done:
+
+```bash
+export SKILLSPECTOR_TOKEN=sst_…            # from the Account page
+API=https://skillspector.example.com/api  # the web app proxies /api/* to this service
+
+id=$(curl -fsS -X POST "$API/scan" \
+  -H "Authorization: Bearer $SKILLSPECTOR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"target": "https://github.com/anthropics/skills/tree/main/skills/pdf"}' | jq -r .id)
+
+until status=$(curl -fsS "$API/scan/$id" -H "Authorization: Bearer $SKILLSPECTOR_TOKEN" | jq -r .status);
+      [ "$status" = done ] || [ "$status" = error ]; do sleep 5; done
+
+curl -fsS "$API/scan/$id" -H "Authorization: Bearer $SKILLSPECTOR_TOKEN" \
+  | jq '.result.risk_assessment'                      # { score, severity, recommendation }
+curl -fsS "$API/scan/$id/export?format=sarif" -H "Authorization: Bearer $SKILLSPECTOR_TOKEN" -o skillspector.sarif
+```
+
+The recommendation is `SAFE`, `CAUTION` or `DO_NOT_INSTALL`, so a CI job can fail on, say,
+`DO_NOT_INSTALL`; the SARIF file can be uploaded to GitHub code scanning.
 
 ## Behaviour worth knowing
 

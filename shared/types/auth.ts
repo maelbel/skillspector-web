@@ -31,3 +31,20 @@ export interface ClaudeKeyStatus {
   hint: string
   updated_at: number
 }
+
+// A personal API token as listed (backend/app/auth/api_tokens.py): never the token itself.
+export interface ApiToken {
+  id: string
+  name: string
+  // Its first characters, e.g. "sst_a1B2c3", to tell tokens apart.
+  prefix: string
+  scopes: string[]
+  created_at: number
+  expires_at: number | null
+  last_used_at: number | null
+}
+
+// Only the response that creates a token holds it, this once.
+export interface CreatedApiToken extends ApiToken {
+  token: string
+}

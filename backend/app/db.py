@@ -183,6 +183,34 @@ def delete_user(id: str) -> bool:
     return _store_or_raise().delete_user(id)
 
 
+def create_api_token(
+    *, id: str, user_id: str, name: str, token_hash: str, prefix: str, scopes: str, created_at: float, expires_at: float | None
+) -> None:
+    _store_or_raise().create_api_token(
+        id=id, user_id=user_id, name=name, token_hash=token_hash, prefix=prefix, scopes=scopes, created_at=created_at, expires_at=expires_at
+    )
+
+
+def list_api_tokens(user_id: str) -> list[dict[str, Any]]:
+    """A user's tokens, newest first, without their hashes."""
+    return _store_or_raise().list_api_tokens(user_id)
+
+
+def get_api_token_user(token_hash: str, *, now: float) -> dict[str, Any] | None:
+    """The active user a token that hasn't expired belongs to, with token_id, token_name,
+    token_scopes and token_last_used_at."""
+    return _store_or_raise().get_api_token_user(token_hash, now=now)
+
+
+def mark_api_token_used(token_id: str, at: float) -> None:
+    _store_or_raise().mark_api_token_used(token_id, at)
+
+
+def delete_api_token(token_id: str, *, user_id: str) -> dict[str, Any] | None:
+    """Revoke one of a user's tokens; the token as it was, or None if they have no such token."""
+    return _store_or_raise().delete_api_token(token_id, user_id=user_id)
+
+
 def create_session(*, token_hash: str, user_id: str, created_at: float, expires_at: float) -> None:
     _store_or_raise().create_session(token_hash=token_hash, user_id=user_id, created_at=created_at, expires_at=expires_at)
 

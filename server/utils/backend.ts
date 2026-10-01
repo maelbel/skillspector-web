@@ -15,13 +15,15 @@ function errorMessage(data: unknown, fallback: string): string {
 }
 
 /**
- * Call the API on behalf of the browser: forwards the client IP (for rate limits) and the session
- * cookie (as a bearer token), and turns API errors into h3 errors with the API's message.
+ * Call the API on behalf of the browser, or of a script: forwards the client IP (for rate limits)
+ * and the session cookie, or the script's API token, as a bearer token, and turns API errors into
+ * h3 errors with the API's message.
  */
 export async function backendFetch<T>(event: H3Event, path: string, options: BackendOptions): Promise<T> {
   const { apiBase } = useRuntimeConfig()
   const { fallbackMessage, headers, ...rest } = options
-  const token = getSessionToken(event)
+  const apiToken = getApiToken(event)
+  const token = apiToken ?? getSessionToken(event)
 
   try {
     return await $fetch<T>(path, {
@@ -37,7 +39,7 @@ export async function backendFetch<T>(event: H3Event, path: string, options: Bac
     const { response, data } = (error ?? {}) as { response?: { status?: number }, data?: unknown }
     const statusCode = response?.status ?? 502
     // An expired or revoked session: drop the cookie so the next page asks to sign in again.
-    if (statusCode === 401 && token) clearSessionToken(event)
+    if (statusCode === 401 && token && !apiToken) clearSessionToken(event)
     throw createError({ statusCode, statusMessage: errorMessage(data, fallbackMessage) })
   }
 }
@@ -48,7 +50,7 @@ export async function backendFetch<T>(event: H3Event, path: string, options: Bac
  */
 export async function backendDownload(event: H3Event, path: string, query: Record<string, string>, fallbackMessage: string) {
   const { apiBase } = useRuntimeConfig()
-  const token = getSessionToken(event)
+  const token = getApiToken(event) ?? getSessionToken(event)
   try {
     const response = await $fetch.raw<ArrayBuffer>(path, {
       baseURL: apiBase,

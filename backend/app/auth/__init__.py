@@ -173,6 +173,9 @@ class Viewer:
 
     user: dict[str, Any] | None
     is_admin: bool
+    # What an API token lets it do (app/auth/api_tokens.py); None for a browser session, which may
+    # do everything its user may.
+    scopes: frozenset[str] | None = None
 
     @property
     def user_id(self) -> str | None:

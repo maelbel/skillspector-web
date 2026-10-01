@@ -1,10 +1,10 @@
 import time
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import claude_key, db, quotas
-from app.auth import AuthError
+from app.auth import AuthError, api_tokens
 from app.auth.deps import CurrentViewer
 
 router = APIRouter(prefix="/account", tags=["account"])
@@ -91,3 +91,57 @@ def read_usage(viewer: CurrentViewer) -> UsageResponse:
         concurrent_scan_quota=usage.limits.concurrent,
         ai_usage=ai_usage(viewer.user_id),
     )
+
+
+# Personal API tokens (app/auth/api_tokens.py), for scripts and CI.
+
+
+class ApiToken(BaseModel):
+    id: str
+    name: str
+    # The token's first characters, e.g. "sst_a1B2c3", to tell tokens apart; never the token.
+    prefix: str
+    scopes: list[str]
+    created_at: float
+    expires_at: float | None
+    last_used_at: float | None
+
+
+class CreateTokenRequest(BaseModel):
+    name: str = Field(max_length=200)
+    # None: until it's revoked.
+    expires_in_days: int | None = Field(default=90, ge=1, le=366)
+
+
+class CreatedToken(ApiToken):
+    # Shown this once; only its hash is kept.
+    token: str
+
+
+def _token_owner(viewer) -> dict:
+    if viewer.user is None:
+        raise HTTPException(status_code=404, detail="API tokens need accounts to be turned on on this server")
+    return viewer.user
+
+
+@router.get("/tokens", response_model=list[ApiToken])
+def list_tokens(viewer: CurrentViewer) -> list[ApiToken]:
+    return [ApiToken(**api_tokens.public_token(row)) for row in db.list_api_tokens(_token_owner(viewer)["id"])]
+
+
+@router.post("/tokens", response_model=CreatedToken, status_code=201)
+def create_token(req: CreateTokenRequest, viewer: CurrentViewer) -> CreatedToken:
+    try:
+        token, listed = api_tokens.create(_token_owner(viewer), name=req.name, expires_in_days=req.expires_in_days)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return CreatedToken(token=token, **listed)
+
+
+@router.delete("/tokens/{token_id}", status_code=204)
+def revoke_token(token_id: str, viewer: CurrentViewer) -> None:
+    owner = _token_owner(viewer)
+    try:
+        api_tokens.revoke(owner, owner, token_id)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
