@@ -36,6 +36,10 @@ export interface Finding {
   // Set on findings in a referenced file the scan followed (skillspector's --transitive).
   source_url?: string | null
   transitive_depth?: number | null
+  // Every place the rule matched; location is the first.
+  occurrences?: { file: string, start_line: number, end_line: number | null }[]
+  // Rule-specific detail, e.g. the file and reasons for a partly inspected one (AE1).
+  evidence?: Record<string, unknown> | null
 }
 
 // Whether a scan's AI review ran fully, partly or not at all (backend/app/ai_review.py); null for

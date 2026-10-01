@@ -4,6 +4,10 @@ import type { Finding } from '~~/shared/types/scan'
 const props = defineProps<{
   finding: Finding
   expanded: boolean
+  // The scan's target and, in a repository of several skills, this skill's folder: for links to
+  // the code.
+  target?: string
+  skillPath?: string
 }>()
 
 defineEmits<{
@@ -11,6 +15,39 @@ defineEmits<{
 }>()
 
 const title = computed(() => findingTitle(props.finding))
+const ruleDocs = computed(() => ruleDocsLink(props.finding.id))
+const ruleLabel = computed(() => ruleName(props.finding.id))
+
+// Every place it matched, each linked to its line on the code host when the target is on one. A
+// finding in a referenced file links into that file's source instead.
+const places = computed(() => {
+  const occurrences = props.finding.occurrences?.length ? props.finding.occurrences : [props.finding.location]
+  const source = props.finding.transitive_depth && props.finding.source_url ? props.finding.source_url : props.target
+  return occurrences.map(place => ({
+    label: findingLocation({ ...props.finding, location: { ...place, end_line: place.end_line ?? null } }),
+    href: source ? codeLink(source, place.file, place.start_line, props.finding.transitive_depth ? undefined : props.skillPath) : null
+  }))
+})
+const host = computed(() => {
+  const href = places.value.find(place => place.href)?.href
+  return href ? new URL(href).hostname.replace(/^www\./, '') : null
+})
+
+// Evidence, flattened to label/value pairs; reasons (AE1) become their messages.
+const evidence = computed(() => {
+  const entries: { label: string, value: string }[] = []
+  for (const [key, value] of Object.entries(props.finding.evidence ?? {})) {
+    if (value === null || value === '' || (Array.isArray(value) && !value.length)) continue
+    const label = key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())
+    if (Array.isArray(value)) {
+      const items = value.map(item => typeof item === 'object' && item ? String((item as { message?: unknown }).message ?? JSON.stringify(item)) : String(item))
+      entries.push({ label, value: [...new Set(items)].join(' · ') })
+    } else {
+      entries.push({ label, value: typeof value === 'object' ? JSON.stringify(value) : String(value) })
+    }
+  }
+  return entries
+})
 const location = computed(() => findingLocation(props.finding))
 // Snippets often open with blank lines around the match; they only push the code out of view.
 const snippet = computed(() => props.finding.code_snippet?.replace(/^\s*\n/, '').trimEnd() ?? '')
@@ -37,8 +74,9 @@ const matched = computed(() => {
       <span class="flex min-w-0 flex-col gap-1.5">
         <span class="text-base font-semibold break-words text-highlighted">{{ title }}</span>
         <span class="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
+          <span v-if="finding.id">{{ finding.id }}</span>
           <span v-if="finding.category && finding.category !== title">{{ finding.category }}</span>
-          <span class="break-all">{{ location }}</span>
+          <span class="break-all">{{ location }}<template v-if="places.length > 1"> +{{ places.length - 1 }}</template></span>
         </span>
         <span
           v-if="finding.transitive_depth && finding.source_url"
@@ -74,6 +112,64 @@ const matched = computed(() => {
       >
         <span class="font-semibold text-highlighted">Likely intent:</span> {{ finding.intent }}
       </p>
+
+      <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+        <dt class="font-semibold text-highlighted">
+          Rule
+        </dt>
+        <dd class="text-muted">
+          <code class="font-mono text-xs text-highlighted">{{ finding.id }}</code><template v-if="ruleLabel">
+            {{ ruleLabel }}
+          </template><template v-if="ruleDocs">
+            · <ULink
+              :to="ruleDocs"
+              target="_blank"
+              class="font-medium text-highlighted underline underline-offset-2"
+            >skillspector docs</ULink>
+          </template>
+        </dd>
+        <dt class="font-semibold text-highlighted">
+          {{ places.length > 1 ? `Found in ${places.length} places` : 'Found in' }}
+        </dt>
+        <dd class="flex min-w-0 flex-col gap-0.5">
+          <template
+            v-for="place in places"
+            :key="place.label"
+          >
+            <ULink
+              v-if="place.href"
+              :to="place.href"
+              target="_blank"
+              class="inline-flex items-center gap-1 font-mono text-xs break-all text-highlighted underline underline-offset-2"
+            >
+              {{ place.label }}
+              <UIcon
+                name="i-lucide-external-link"
+                class="size-3 shrink-0"
+              />
+            </ULink>
+            <span
+              v-else
+              class="font-mono text-xs break-all text-muted"
+            >{{ place.label }}</span>
+          </template>
+          <span
+            v-if="host"
+            class="text-xs text-dimmed"
+          >Opens on {{ host }}, at the branch the scan fetched or its default one.</span>
+        </dd>
+        <template
+          v-for="item in evidence"
+          :key="item.label"
+        >
+          <dt class="font-semibold text-highlighted">
+            {{ item.label }}
+          </dt>
+          <dd class="min-w-0 font-mono text-xs break-all text-muted">
+            {{ item.value }}
+          </dd>
+        </template>
+      </dl>
 
       <p
         v-if="matched"
