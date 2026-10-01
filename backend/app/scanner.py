@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
-from app import db, scan_logs
+from app import db, scan_logs, uploads
 from app.core.config import get_settings
 from app.sandbox_executor import SandboxExecutor, executor_kind
 from app.sandbox_runner import run_scan
@@ -82,6 +82,8 @@ class Job:
     baseline: str | None = None
     # Levels of external references to follow and scan too; None follows none.
     transitive_depth: int | None = None
+    # Where an uploaded file is held (app/uploads.py); its name is the target's.
+    upload: str | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -105,8 +107,10 @@ def create_job(
     owner_id: str | None = None,
     baseline: str | None = None,
     transitive_depth: int | None = None,
+    upload: str | None = None,
+    job_id: str | None = None,
 ) -> Job:
-    job = Job(id=uuid.uuid4().hex, target=target, llm=llm, baseline=baseline, transitive_depth=transitive_depth)
+    job = Job(id=job_id or uuid.uuid4().hex, target=target, llm=llm, baseline=baseline, transitive_depth=transitive_depth, upload=upload)
     db.insert_scan(
         id=job.id,
         target=job.target,
@@ -117,6 +121,7 @@ def create_job(
         llm_model=llm.model if llm else None,
         baseline=baseline,
         transitive_depth=transitive_depth,
+        upload=upload,
     )
     return job
 
@@ -155,27 +160,23 @@ async def run_job(job: Job) -> None:
     scan_logs.forget(job.id)
     job.status = JobStatus.RUNNING
     db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
-    loop = asyncio.get_running_loop()
     try:
         if executor_kind(get_settings()) == "sandbox":
             job.result = await _sandbox_executor().run(
-                job.id, job.target, llm=job.llm, baseline=job.baseline, transitive_depth=job.transitive_depth
+                job.id, job.target, llm=job.llm, baseline=job.baseline, transitive_depth=job.transitive_depth, upload=job.upload
             )
-        elif job.llm is not None:
-            async with _llm_lock:
-                with _llm_env(job.llm):
-                    job.result = await loop.run_in_executor(
-                        None, _invoke_graph, job.id, job.target, True, job.baseline, job.transitive_depth
-                    )
+        elif job.upload is not None:
+            async with uploads.local_copy(job.upload, job.target.removeprefix(uploads.TARGET_PREFIX)) as path:
+                job.result = await _run_locally(job, path)
         else:
-            job.result = await loop.run_in_executor(
-                None, _invoke_graph, job.id, job.target, False, job.baseline, job.transitive_depth
-            )
+            job.result = await _run_locally(job, job.target)
         job.status = JobStatus.DONE
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)
         job.status = JobStatus.ERROR
     finally:
+        # Never kept once scanned, whatever the outcome.
+        await uploads.delete(job.upload)
         job.finished_at = time.time()
         job.llm = None
         db.update_scan(
@@ -185,6 +186,17 @@ async def run_job(job: Job) -> None:
             result=job.result,
             error=job.error,
         )
+
+
+async def _run_locally(job: Job, path: str) -> dict[str, Any]:
+    """Scan path (the target, or a local copy of the upload) in this process."""
+    loop = asyncio.get_running_loop()
+    scan = functools.partial(_invoke_graph, job.id, path, job.llm is not None, job.baseline, job.transitive_depth, label=job.target)
+    if job.llm is None:
+        return await loop.run_in_executor(None, scan)
+    async with _llm_lock:
+        with _llm_env(job.llm):
+            return await loop.run_in_executor(None, scan)
 
 
 @contextmanager
@@ -215,10 +227,17 @@ def _llm_env(config: LLMConfig) -> Iterator[None]:
 
 
 def _invoke_graph(
-    job_id: str, target: str, use_llm: bool, baseline: str | None = None, transitive_depth: int | None = None
+    job_id: str,
+    target: str,
+    use_llm: bool,
+    baseline: str | None = None,
+    transitive_depth: int | None = None,
+    *,
+    label: str | None = None,
 ) -> dict[str, Any]:
+    """Scan target; label is what the log calls it, when that's not the target (an upload's copy)."""
     scan_logs.start_capture(job_id)
-    scan_logs.append(job_id, f"Starting scan of {target}")
+    scan_logs.append(job_id, f"Starting scan of {label or target}")
     settings = get_settings()
     baseline_file = None
     try:

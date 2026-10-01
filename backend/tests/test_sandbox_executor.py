@@ -19,6 +19,7 @@ from app.sandbox_executor import (
     BROKERED_KEY_PLACEHOLDER,
     RUNNER_PATH,
     SCAN_HOSTS,
+    UPLOAD_DIR,
     YARA_RULES_PATH,
     SandboxExecutor,
     executor_kind,
@@ -81,7 +82,7 @@ class _Fs:
         _local_path(self.root, path).write_text(text)
 
     async def write_bytes(self, path: str, data: bytes) -> None:
-        self.files[path] = data.decode()
+        self.files[path] = data.decode(errors="replace")
         _local_path(self.root, path).write_bytes(data)
 
     async def mkdir(self, path: str) -> None:
@@ -349,6 +350,21 @@ def test_a_custom_yara_rule_finds_a_matching_skill_in_the_sandbox(memory_logs, s
     assert box.commands[0][1][-2:] == ["--yara-rules-dir", YARA_RULES_PATH]
 
 
+def test_an_upload_is_written_into_the_sandbox_and_scanned_there(memory_logs, skill_dir, sandboxes, tmp_path):
+    import shutil
+
+    created, create_sandbox = sandboxes
+    held = Path(shutil.make_archive(str(tmp_path / "held" / "skill"), "zip", skill_dir))
+    executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
+
+    report = anyio.run(lambda: executor.run("s", "upload:skill.zip", llm=None, upload=str(held)))
+
+    assert _comparable(report) == _comparable(scanner._invoke_graph("local", str(held), False))
+    box = created[0]
+    assert box.commands[0][1][:2] == [RUNNER_PATH, f"{UPLOAD_DIR}/skill.zip"]
+    assert scan_logs.get_logs("s")[0] == "Starting scan of upload:skill.zip"
+
+
 def test_the_sandbox_gets_the_analysis_settings_and_nothing_else(memory_logs, skill_dir, sandboxes, monkeypatch):
     created, create_sandbox = sandboxes
     # Set for the API, but not one of the settings passed on: it never reaches the VM.
@@ -429,7 +445,7 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None):
+        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None, upload=None):
             calls.append((job_id, target, llm, baseline))
             return {"risk_assessment": {"score": 1}, "issues": []}
 

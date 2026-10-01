@@ -201,6 +201,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN transitive_depth INTEGER",
         ],
     ),
+    (
+        13,
+        [
+            # Where a scan's uploaded file is held until it ends (app/uploads.py): a local path, or
+            # blob:<pathname>. NULL for scans of a link.
+            "ALTER TABLE scans ADD COLUMN upload TEXT",
+        ],
+    ),
 ]
 
 
@@ -258,11 +266,12 @@ class PostgresStore:
         llm_model: str | None = None,
         baseline: str | None = None,
         transitive_depth: int | None = None,
+        upload: str | None = None,
     ) -> None:
         self._execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload),
         )
 
     def update_scan(

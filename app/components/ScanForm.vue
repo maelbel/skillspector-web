@@ -81,7 +81,46 @@ const targetProblem = computed(() =>
 )
 // An MCP server is checked from its registry entry alone: the depth and the options, which are
 // about a skill's code, don't apply to it.
-const isMcpServer = computed(() => targetInfo.value?.ok === true && targetInfo.value.kind === 'mcp')
+const isMcpServer = computed(() => !file.value && targetInfo.value?.ok === true && targetInfo.value.kind === 'mcp')
+
+// A skill uploaded from this computer instead of a link: a .zip, or a SKILL.md on its own. Offered
+// when the server takes uploads, which it holds only until the scan ends (backend/app/uploads.py).
+const uploadStore = computed(() => health.value?.upload_store ?? null)
+const file = ref<File | null>(null)
+const fileError = ref('')
+const fileInput = ref<HTMLInputElement>()
+const dragging = ref(false)
+
+function pickFile(picked: File | null | undefined) {
+  fileError.value = ''
+  if (!picked) return
+  const maxBytes = health.value?.max_upload_bytes ?? 0
+  if (!/\.(zip|md)$/i.test(picked.name)) {
+    fileError.value = 'Upload a .zip of the skill, or its SKILL.md'
+  } else if (picked.size > maxBytes) {
+    fileError.value = `${picked.name} is larger than ${formatBytes(maxBytes)}`
+  } else {
+    file.value = picked
+  }
+}
+
+function onFileInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  pickFile(input.files?.[0])
+  // Picking the same file again still fires a change.
+  input.value = ''
+}
+
+function onDrop(event: DragEvent) {
+  dragging.value = false
+  if (uploadStore.value && !submitting.value) pickFile(event.dataTransfer?.files?.[0])
+}
+
+function clearFile() {
+  file.value = null
+  fileError.value = ''
+  nextTick(() => targetInput.value?.inputRef?.focus())
+}
 
 // Point at an existing result before starting a duplicate scan of the same URL.
 const { data: recentScans } = useRecentScans()
@@ -91,7 +130,7 @@ const normalizeTarget = (value: string) => {
   return server ? mcpEntryUrl(server) : value.trim().replace(/\/+$/, '')
 }
 const previousScan = computed(() => {
-  if (!targetInfo.value?.ok) return undefined
+  if (file.value || !targetInfo.value?.ok) return undefined
   const wanted = normalizeTarget(target.value)
   return recentScans.value?.items.find(scan => scan.status !== 'error' && normalizeTarget(scan.target) === wanted)
 })
@@ -220,7 +259,7 @@ const claudeCliUnauthenticated = computed(() =>
 const backendDown = computed(() => health.value?.status === 'down')
 const canSubmit = computed(() => {
   if (backendDown.value) return false
-  if (!targetInfo.value?.ok) return false
+  if (!file.value && !targetInfo.value?.ok) return false
   if (isMcpServer.value) return true
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
   if (useLlm.value && needsEndpoint.value && !baseUrl.value.trim()) return false
@@ -298,6 +337,23 @@ const moreSummary = computed(() => {
   return set.join(' · ')
 })
 
+// Self-hosted, the file goes with the scan; hosted, to the Blob store first, as function request
+// bodies are limited to 4.5 MB (server/api/scan/upload-token.post.ts).
+async function submitUpload(picked: File, options: Record<string, unknown>): Promise<{ id: string }> {
+  if (uploadStore.value === 'blob') {
+    const { upload } = await import('@vercel/blob/client')
+    const blob = await upload(`uploads/${session.value?.user?.id ?? 'anonymous'}/${picked.name}`, picked, {
+      access: 'private',
+      handleUploadUrl: '/api/scan/upload-token'
+    })
+    return await $fetch<{ id: string }>('/api/scan', { method: 'POST', body: { upload: { pathname: blob.pathname, name: picked.name }, ...options } })
+  }
+  const form = new FormData()
+  form.append('file', picked)
+  form.append('options', JSON.stringify(options))
+  return await $fetch<{ id: string }>('/api/scan/upload', { method: 'POST', body: form })
+}
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -316,16 +372,16 @@ async function submit() {
       }
     : undefined
 
+  const options = {
+    llm,
+    baseline: forCode ? baseline.value?.text : undefined,
+    transitiveDepth: forCode && followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
+  }
+
   try {
-    const { id } = await $fetch<{ id: string }>('/api/scan', {
-      method: 'POST',
-      body: {
-        target: target.value.trim(),
-        llm,
-        baseline: forCode ? baseline.value?.text : undefined,
-        transitiveDepth: forCode && followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
-      }
-    })
+    const { id } = file.value
+      ? await submitUpload(file.value, options)
+      : await $fetch<{ id: string }>('/api/scan', { method: 'POST', body: { target: target.value.trim(), ...options } })
     savePrefs()
     await navigateTo(`/scan/${id}`)
   } catch (err) {
@@ -337,9 +393,23 @@ async function submit() {
 
 <template>
   <form
-    class="surface flex flex-col gap-5 rounded-xs p-4 sm:p-5"
+    class="surface relative flex flex-col gap-5 rounded-xs p-4 sm:p-5"
     @submit.prevent="submit"
+    @dragover.prevent="dragging = !!uploadStore"
+    @dragleave.self="dragging = false"
+    @drop.prevent="onDrop"
   >
+    <div
+      v-if="dragging"
+      class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xs bg-default/90 font-semibold text-highlighted ring-2 ring-brand ring-inset"
+    >
+      <UIcon
+        name="i-lucide-upload"
+        class="size-5"
+      />
+      Drop a .zip or SKILL.md to scan it
+    </div>
+
     <UAlert
       v-if="backendDown"
       color="warning"
@@ -351,11 +421,33 @@ async function submit() {
 
     <UFormField
       label="Skill or MCP server"
-      :error="targetProblem"
+      :error="fileError || (file ? undefined : targetProblem)"
       :ui="{ label: 'font-semibold text-highlighted' }"
     >
       <div class="flex gap-2 rounded-xs bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-brand max-sm:flex-col">
+        <div
+          v-if="file"
+          class="flex h-12 min-w-0 flex-1 items-center gap-2 px-3"
+        >
+          <UIcon
+            :name="file.name.toLowerCase().endsWith('.zip') ? 'i-lucide-file-archive' : 'i-lucide-file-text'"
+            class="size-5 shrink-0 text-dimmed"
+          />
+          <span class="truncate font-mono text-sm text-highlighted">{{ file.name }}</span>
+          <span class="shrink-0 text-xs text-muted">{{ formatBytes(file.size) }}</span>
+          <UButton
+            icon="i-lucide-x"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            class="ml-auto"
+            aria-label="Remove the file, to scan a link instead"
+            :disabled="submitting"
+            @click="clearFile"
+          />
+        </div>
         <UInput
+          v-else
           id="scan-target"
           ref="targetInput"
           v-model="target"
@@ -386,8 +478,11 @@ async function submit() {
         </UButton>
       </div>
       <template #help>
+        <span v-if="file">
+          Uploaded for this scan only, and deleted once it’s scanned.
+        </span>
         <span
-          v-if="targetInfo?.ok"
+          v-else-if="targetInfo?.ok"
           class="flex min-w-0 items-center gap-1.5"
         >
           <UIcon
@@ -399,7 +494,22 @@ async function submit() {
         </span>
         <span v-else-if="!target.trim()">
           A repository, a folder in one, or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face, or an MCP server’s name in the MCP Registry.
+          <template v-if="uploadStore">
+            Or <button
+              type="button"
+              class="cursor-pointer font-medium text-highlighted underline underline-offset-2 hover:text-brand"
+              :disabled="submitting"
+              @click="fileInput?.click()"
+            >upload a .zip or SKILL.md</button>, or drop one here.
+          </template>
         </span>
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".zip,.md,application/zip,text/markdown"
+          class="hidden"
+          @change="onFileInput"
+        >
       </template>
     </UFormField>
 
@@ -766,7 +876,7 @@ async function submit() {
     />
 
     <div class="flex flex-wrap items-center gap-2 px-1 pb-1 text-sm text-muted">
-      <template v-if="!target.trim()">
+      <template v-if="!target.trim() && !file">
         <span>Try an example:</span>
         <UButton
           v-for="example in EXAMPLES"

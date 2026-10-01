@@ -199,6 +199,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN transitive_depth INTEGER",
         ],
     ),
+    (
+        13,
+        [
+            # Where a scan's uploaded file is held until it ends (app/uploads.py): a local path, or
+            # blob:<pathname>. NULL for scans of a link.
+            "ALTER TABLE scans ADD COLUMN upload TEXT",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -264,11 +272,12 @@ class SQLiteStore:
         llm_model: str | None = None,
         baseline: str | None = None,
         transitive_depth: int | None = None,
+        upload: str | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload),
         )
         self._conn.commit()
 

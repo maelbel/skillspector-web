@@ -4,7 +4,7 @@ import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
-from app import retention
+from app import retention, uploads
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/internal", tags=["internal"])
@@ -21,5 +21,9 @@ def _require_cron(authorization: str | None = Header(default=None)) -> None:
 
 
 @router.post("/retention", dependencies=[Depends(_require_cron)])
-def sweep_retention() -> dict:
-    return {"deleted": retention.sweep_once()}
+async def sweep_retention() -> dict:
+    swept = {"deleted": retention.sweep_once()}
+    if uploads.store_kind() == "blob":
+        # Uploads no scan will read: its queueing failed, or the scan was deleted first.
+        swept["stale_uploads"] = await uploads.sweep_stale_blobs()
+    return swept

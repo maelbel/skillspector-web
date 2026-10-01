@@ -35,7 +35,15 @@ export function mcpEntryUrl(server: { name: string, version: string }): string {
   return `${MCP_ENTRY_PREFIX}${encodeURIComponent(server.name)}/versions/${encodeURIComponent(server.version)}`
 }
 
+// A skill uploaded from the browser is recorded as `upload:<file name>` (backend/app/uploads.py).
+const UPLOAD_PREFIX = 'upload:'
+
+export function isUploadTarget(target: string): boolean {
+  return target.startsWith(UPLOAD_PREFIX)
+}
+
 export function parseScanTarget(target: string): { title: string, isGithub: boolean } {
+  if (isUploadTarget(target)) return { title: target.slice(UPLOAD_PREFIX.length), isGithub: false }
   const server = parseMcpServer(target)
   if (server) {
     return { title: server.version === 'latest' ? server.name : `${server.name}@${server.version}`, isGithub: false }

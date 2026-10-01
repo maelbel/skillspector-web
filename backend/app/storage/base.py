@@ -29,6 +29,7 @@ class ScanStore(Protocol):
         llm_model: str | None = None,
         baseline: str | None = None,
         transitive_depth: int | None = None,
+        upload: str | None = None,
     ) -> None: ...
 
     def update_scan(

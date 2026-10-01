@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from app import db, scanner
+from app import db, scanner, uploads
 from app.core.config import get_settings
 from app.scanner import Job, LLMConfig
 
@@ -18,6 +18,8 @@ class InProcessRunner:
     def on_startup(self) -> None:
         # Jobs run in this process, so anything still pending/running from a previous one is dead.
         db.fail_unfinished_scans(error="Interrupted: the API restarted before this scan finished", finished_at=time.time())
+        # So no upload is waiting for a scan any more.
+        uploads.clear_local()
 
     def is_full(self) -> bool:
         return len(self._tasks) >= get_settings().max_queued_scans
