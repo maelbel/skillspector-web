@@ -1,507 +1,544 @@
 <script setup lang="ts">
 import type { SettingsResponse } from '~~/shared/types/settings'
 
-useSeoMeta({ title: 'Admin — Skillspector Web' })
-
-const { accounts, session } = useAuth()
-const { data: health } = useHealth()
-
 useSeoMeta({ title: 'Settings — Backoffice — Skillspector Web' })
 
-const step = ref<'idle' | 'started' | 'done'>('idle')
-const loginUrl = ref('')
-const code = ref('')
-const starting = ref(false)
-const completing = ref(false)
-const errorMessage = ref('')
-const resultMessage = ref('')
-const resultSuccess = ref(false)
-
-const stepNumber = computed(() => ({ idle: 1, started: 2, done: 3 })[step.value])
-
-async function startLogin() {
-  starting.value = true
-  errorMessage.value = ''
-
-  try {
-    const { url } = await $fetch<{ url: string }>('/api/admin/claude-login/start', { method: 'POST' })
-    loginUrl.value = url
-    step.value = 'started'
-  } catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Failed to start login')
-  } finally {
-    starting.value = false
-  }
-}
-
-async function completeLogin() {
-  if (!code.value.trim()) return
-
-  completing.value = true
-  errorMessage.value = ''
-
-  try {
-    const { success, output } = await $fetch<{ success: boolean, output: string }>(
-      '/api/admin/claude-login/complete',
-      { method: 'POST', body: { code: code.value.trim() } }
-    )
-    resultSuccess.value = success
-    resultMessage.value = output
-    step.value = 'done'
-  } catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Failed to complete login')
-  } finally {
-    completing.value = false
-  }
-}
-
-function reset() {
-  step.value = 'idle'
-  loginUrl.value = ''
-  code.value = ''
-  errorMessage.value = ''
-  resultMessage.value = ''
-}
-
+const { accounts, session } = useAuth()
+const { data: health, refresh: refreshHealth } = useHealth()
 const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
 
-const retentionMode = ref<'forever' | 'days'>('forever')
-const retentionDays = ref(30)
-const savingRetention = ref(false)
-const retentionError = ref('')
-const retentionSaved = ref(false)
+// Every change saves the same way: a switch as soon as it's flipped, a field with its Save button
+// (shown once it's changed) or Enter. Either says "Saved" beside it for a moment.
+type SettingKey = 'signup' | 'pause' | 'quotas' | 'retention'
+const saving = ref<SettingKey | null>(null)
+const saved = ref<SettingKey | null>(null)
+const errors = ref<Partial<Record<SettingKey, string>>>({})
+let savedTimer: ReturnType<typeof setTimeout> | undefined
 
-watch(settingsData, (value) => {
-  if (!value) return
-  if (value.scan_retention_days === null) {
-    retentionMode.value = 'forever'
-  } else {
-    retentionMode.value = 'days'
-    retentionDays.value = value.scan_retention_days
-  }
-}, { immediate: true })
-
-const savingSignup = ref(false)
-const signupError = ref('')
-
-async function setSignup(allowSignup: boolean) {
-  savingSignup.value = true
-  signupError.value = ''
+async function save(key: SettingKey, body: Record<string, unknown>, after?: () => Promise<unknown>) {
+  saving.value = key
+  errors.value = { ...errors.value, [key]: undefined }
   try {
-    settingsData.value = await $fetch<SettingsResponse>('/api/settings', { method: 'PUT', body: { allowSignup } })
-    await refreshNuxtData('auth-session')
+    settingsData.value = await $fetch<SettingsResponse>('/api/settings', { method: 'PUT', body })
+    await after?.()
+    saved.value = key
+    clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => {
+      saved.value = null
+    }, 2500)
   } catch (err) {
-    signupError.value = apiErrorMessage(err, 'Failed to save')
+    errors.value = { ...errors.value, [key]: apiErrorMessage(err, 'Couldn’t save') }
   } finally {
-    savingSignup.value = false
+    saving.value = null
   }
 }
+onUnmounted(() => clearTimeout(savedTimer))
 
-const savingPause = ref(false)
-const pauseError = ref('')
+const setSignup = (allowSignup: boolean) => save('signup', { allowSignup }, () => refreshNuxtData('auth-session'))
+const setPaused = (scansPaused: boolean) => save('pause', { scansPaused })
 
-async function setPaused(scansPaused: boolean) {
-  savingPause.value = true
-  pauseError.value = ''
-  try {
-    settingsData.value = await $fetch<SettingsResponse>('/api/settings', { method: 'PUT', body: { scansPaused } })
-  } catch (err) {
-    pauseError.value = apiErrorMessage(err, 'Failed to save')
-  } finally {
-    savingPause.value = false
-  }
-}
-
-// An empty field means no limit.
+// Quotas: an empty field means no limit.
 const dailyQuota = ref<number | ''>('')
 const concurrentQuota = ref<number | ''>('')
-const savingQuotas = ref(false)
-const quotasError = ref('')
-const quotasSaved = ref(false)
-
 watch(settingsData, (value) => {
   if (!value) return
   dailyQuota.value = value.daily_scan_quota ?? ''
   concurrentQuota.value = value.concurrent_scan_quota ?? ''
 }, { immediate: true })
-
 const quotaValid = (value: number | '') => value === '' || (Number.isInteger(value) && value >= 1)
+const quotasChanged = computed(() =>
+  (dailyQuota.value === '' ? null : dailyQuota.value) !== (settingsData.value?.daily_scan_quota ?? null)
+  || (concurrentQuota.value === '' ? null : concurrentQuota.value) !== (settingsData.value?.concurrent_scan_quota ?? null))
+const quotasValid = computed(() => quotaValid(dailyQuota.value) && quotaValid(concurrentQuota.value))
 
-async function saveQuotas() {
-  savingQuotas.value = true
-  quotasError.value = ''
-  quotasSaved.value = false
+function saveQuotas() {
+  if (!quotasChanged.value || !quotasValid.value) return
+  return save('quotas', {
+    dailyScanQuota: dailyQuota.value === '' ? null : dailyQuota.value,
+    concurrentScanQuota: concurrentQuota.value === '' ? null : concurrentQuota.value
+  })
+}
+
+// Retention: a few common periods, or any number of days.
+const RETENTION_PRESETS = [7, 30, 90, 365]
+const retentionItems = [
+  { label: 'Forever', value: 'forever' },
+  ...RETENTION_PRESETS.map(days => ({ label: days === 365 ? '1 year' : `${days} days`, value: String(days) })),
+  { label: 'Another number of days', value: 'custom' }
+]
+const retentionChoice = ref('forever')
+const customDays = ref<number | ''>(60)
+watch(settingsData, (value) => {
+  if (!value) return
+  const days = value.scan_retention_days
+  if (days === null) {
+    retentionChoice.value = 'forever'
+  } else if (RETENTION_PRESETS.includes(days)) {
+    retentionChoice.value = String(days)
+  } else {
+    retentionChoice.value = 'custom'
+    customDays.value = days
+  }
+}, { immediate: true })
+const retentionDays = computed<number | null>(() => {
+  if (retentionChoice.value === 'forever') return null
+  if (retentionChoice.value === 'custom') return customDays.value === '' ? Number.NaN : customDays.value
+  return Number(retentionChoice.value)
+})
+const retentionValid = computed(() => retentionDays.value === null || (Number.isInteger(retentionDays.value) && retentionDays.value >= 1))
+const retentionChanged = computed(() => retentionDays.value !== (settingsData.value?.scan_retention_days ?? null))
+// Saving a shorter period deletes the older scans straight away: say so before.
+const retentionDeletes = computed(() => {
+  const next = retentionDays.value
+  const current = settingsData.value?.scan_retention_days ?? null
+  return retentionChanged.value && retentionValid.value && next !== null && (current === null || next < current)
+})
+
+function saveRetention() {
+  if (!retentionChanged.value || !retentionValid.value) return
+  return save('retention', { scanRetentionDays: retentionDays.value })
+}
+
+// The server's Claude login, which every Claude CLI scan shares (self-hosted only): start it here,
+// sign in at Anthropic, and paste the code it shows back.
+const claudeSignedIn = computed(() => !!health.value?.claude_cli_available)
+const loginStep = ref<'idle' | 'started' | 'done'>('idle')
+const loginUrl = ref('')
+const code = ref('')
+const loginBusy = ref<'start' | 'complete' | null>(null)
+const loginError = ref('')
+const loginResult = ref<{ success: boolean, output: string } | null>(null)
+
+async function startLogin() {
+  loginBusy.value = 'start'
+  loginError.value = ''
   try {
-    settingsData.value = await $fetch<SettingsResponse>('/api/settings', {
-      method: 'PUT',
-      body: {
-        dailyScanQuota: dailyQuota.value === '' ? null : dailyQuota.value,
-        concurrentScanQuota: concurrentQuota.value === '' ? null : concurrentQuota.value
-      }
-    })
-    quotasSaved.value = true
+    loginUrl.value = (await $fetch<{ url: string }>('/api/admin/claude-login/start', { method: 'POST' })).url
+    loginStep.value = 'started'
   } catch (err) {
-    quotasError.value = apiErrorMessage(err, 'Failed to save')
+    loginError.value = apiErrorMessage(err, 'Couldn’t start the sign-in')
   } finally {
-    savingQuotas.value = false
+    loginBusy.value = null
   }
 }
 
-async function saveRetention() {
-  savingRetention.value = true
-  retentionError.value = ''
-  retentionSaved.value = false
-
+async function completeLogin() {
+  if (!code.value.trim()) return
+  loginBusy.value = 'complete'
+  loginError.value = ''
   try {
-    const updated = await $fetch<SettingsResponse>('/api/settings', {
-      method: 'PUT',
-      body: {
-        scanRetentionDays: retentionMode.value === 'forever' ? null : retentionDays.value
-      }
+    loginResult.value = await $fetch<{ success: boolean, output: string }>('/api/admin/claude-login/complete', {
+      method: 'POST',
+      body: { code: code.value.trim() }
     })
-    settingsData.value = updated
-    retentionSaved.value = true
+    loginStep.value = 'done'
+    await refreshHealth()
   } catch (err) {
-    retentionError.value = apiErrorMessage(err, 'Failed to save')
+    loginError.value = apiErrorMessage(err, 'Couldn’t finish the sign-in')
   } finally {
-    savingRetention.value = false
+    loginBusy.value = null
   }
+}
+
+function resetLogin() {
+  loginStep.value = 'idle'
+  loginUrl.value = ''
+  code.value = ''
+  loginError.value = ''
+  loginResult.value = null
+}
+
+const STATUS_CLASSES = {
+  on: 'bg-safe-tint text-safe-ink ring-1 ring-safe-line',
+  off: 'bg-elevated text-muted ring-1 ring-default',
+  warn: 'bg-medium-tint text-medium-ink ring-1 ring-medium-line'
 }
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-8">
     <BackofficeHeader
       title="Settings"
-      lead="How this server runs: accounts, scans, email, the Claude login and scan retention."
+      lead="Who can sign up, how scans run and how long they're kept, and what this server connects to."
     />
 
-    <div class="flex max-w-2xl flex-col gap-6">
+    <div class="flex max-w-3xl flex-col gap-8">
       <NoAuthWarning v-if="!accounts" />
 
-      <UCard
-        v-else
-        :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
-      >
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Sign-up
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Whether visitors can create their own account from the landing page. When it's off,
-              admins add users from the Users page.
-            </p>
-          </div>
-          <USwitch
-            :model-value="settingsData?.allow_signup ?? false"
-            :loading="savingSignup"
-            label="Visitors can create an account"
-            @update:model-value="setSignup"
-          />
-          <UAlert
-            v-if="signupError"
-            color="error"
-            variant="subtle"
-            :title="signupError"
-          />
-        </div>
-      </UCard>
-
-      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Scans
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Pausing refuses new scans for everyone, admins included, until you resume. Scans
-              already running finish.
-            </p>
-          </div>
-          <USwitch
-            :model-value="settingsData?.scans_paused ?? false"
-            :loading="savingPause"
-            label="Pause new scans"
-            @update:model-value="setPaused"
-          />
-          <UAlert
-            v-if="pauseError"
-            color="error"
-            variant="subtle"
-            :title="pauseError"
-          />
-
-          <template v-if="accounts">
-            <div class="border-t border-default pt-4">
-              <h3 class="text-sm font-semibold text-highlighted">
-                Quotas per user
-              </h3>
-              <p class="mt-1 text-sm text-muted">
-                Limits for each signed-in user; admins have none. Leave a field empty for no limit.
-              </p>
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Scans per 24 hours">
-                <UInput
-                  id="daily-scan-quota"
-                  v-model.number="dailyQuota"
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder="No limit"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Scans in progress at once">
-                <UInput
-                  id="concurrent-scan-quota"
-                  v-model.number="concurrentQuota"
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder="No limit"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-            <UButton
-              icon="i-lucide-save"
-              class="self-start"
-              :loading="savingQuotas"
-              :disabled="!quotaValid(dailyQuota) || !quotaValid(concurrentQuota)"
-              @click="saveQuotas"
-            >
-              Save quotas
-            </UButton>
-            <UAlert
-              v-if="quotasSaved"
-              color="primary"
-              variant="subtle"
-              icon="i-lucide-check-circle-2"
-              title="Saved"
-            />
-            <UAlert
-              v-if="quotasError"
-              color="error"
-              variant="subtle"
-              :title="quotasError"
-            />
-          </template>
-        </div>
-      </UCard>
-
-      <UCard
+      <section
         v-if="accounts"
-        :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
+        aria-labelledby="access-heading"
+        class="flex flex-col gap-3"
       >
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Email
-            </h2>
+        <h2
+          id="access-heading"
+          class="eyebrow text-muted"
+        >
+          Access
+        </h2>
+        <div class="surface px-5 py-5 sm:px-6">
+          <SettingRow
+            label="Sign-up"
+            inline
+            description="Visitors can create their own account from the landing page. Off, admins add users from the Users page."
+          >
+            <SettingSaved :show="saved === 'signup'" />
+            <USwitch
+              :model-value="settingsData?.allow_signup ?? false"
+              :loading="saving === 'signup'"
+              :aria-label="settingsData?.allow_signup ? 'Sign-up is on' : 'Sign-up is off'"
+              @update:model-value="setSignup"
+            />
+            <template #below>
+              <UAlert
+                v-if="errors.signup"
+                color="error"
+                variant="subtle"
+                :title="errors.signup"
+              />
+            </template>
+          </SettingRow>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="scans-heading"
+        class="flex flex-col gap-3"
+      >
+        <h2
+          id="scans-heading"
+          class="eyebrow text-muted"
+        >
+          Scans
+        </h2>
+        <div class="surface divide-y divide-muted px-5 py-5 sm:px-6">
+          <SettingRow
+            label="Pause new scans"
+            inline
+            description="Refuses new scans for everyone, admins included, until you resume. Scans already running finish."
+          >
             <span
-              class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold"
-              :class="session?.email_enabled ? 'bg-safe-tint text-safe-ink' : 'bg-elevated text-muted'"
+              v-if="settingsData?.scans_paused"
+              class="inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-xs font-semibold"
+              :class="STATUS_CLASSES.warn"
+            >
+              <UIcon
+                name="i-lucide-circle-pause"
+                class="size-3.5"
+              />
+              Paused
+            </span>
+            <SettingSaved :show="saved === 'pause'" />
+            <USwitch
+              :model-value="settingsData?.scans_paused ?? false"
+              :loading="saving === 'pause'"
+              :aria-label="settingsData?.scans_paused ? 'New scans are paused' : 'New scans are allowed'"
+              @update:model-value="setPaused"
+            />
+            <template #below>
+              <UAlert
+                v-if="errors.pause"
+                color="error"
+                variant="subtle"
+                :title="errors.pause"
+              />
+            </template>
+          </SettingRow>
+
+          <SettingRow
+            v-if="accounts"
+            label="Quotas per user"
+            description="For each signed-in user other than admins. Empty means no limit."
+          >
+            <template #below>
+              <form
+                class="flex flex-wrap items-end gap-3"
+                @submit.prevent="saveQuotas"
+              >
+                <UFormField
+                  label="Scans per 24 hours"
+                  class="w-44"
+                >
+                  <UInput
+                    id="daily-scan-quota"
+                    v-model.number="dailyQuota"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="No limit"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="In progress at once"
+                  class="w-44"
+                >
+                  <UInput
+                    id="concurrent-scan-quota"
+                    v-model.number="concurrentQuota"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="No limit"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UButton
+                  v-if="quotasChanged"
+                  type="submit"
+                  color="primary"
+                  :loading="saving === 'quotas'"
+                  :disabled="!quotasValid"
+                >
+                  Save
+                </UButton>
+                <SettingSaved :show="saved === 'quotas'" />
+              </form>
+              <p
+                v-if="!quotasValid"
+                class="text-sm text-critical-ink"
+              >
+                A quota is a whole number of scans, at least 1.
+              </p>
+              <UAlert
+                v-if="errors.quotas"
+                color="error"
+                variant="subtle"
+                :title="errors.quotas"
+              />
+            </template>
+          </SettingRow>
+
+          <SettingRow
+            label="Keep scans"
+            description="Scans older than this are deleted from the history automatically. Forever deletes nothing."
+            label-for="retention-choice"
+          >
+            <template #below>
+              <form
+                class="flex flex-wrap items-end gap-3"
+                @submit.prevent="saveRetention"
+              >
+                <USelect
+                  id="retention-choice"
+                  v-model="retentionChoice"
+                  :items="retentionItems"
+                  value-key="value"
+                  class="w-56"
+                />
+                <UInput
+                  v-if="retentionChoice === 'custom'"
+                  id="retention-days"
+                  v-model.number="customDays"
+                  type="number"
+                  min="1"
+                  step="1"
+                  aria-label="Days to keep scans"
+                  class="w-28"
+                >
+                  <template #trailing>
+                    <span class="text-xs text-muted">days</span>
+                  </template>
+                </UInput>
+                <UButton
+                  v-if="retentionChanged"
+                  type="submit"
+                  :color="retentionDeletes ? 'error' : 'primary'"
+                  :loading="saving === 'retention'"
+                  :disabled="!retentionValid"
+                >
+                  Save
+                </UButton>
+                <SettingSaved :show="saved === 'retention'" />
+              </form>
+              <p
+                v-if="retentionDeletes"
+                class="flex items-center gap-1.5 text-sm text-critical-ink"
+              >
+                <UIcon
+                  name="i-lucide-triangle-alert"
+                  class="size-4 shrink-0"
+                />
+                Saving deletes scans older than {{ retentionDays }} days straight away.
+              </p>
+              <UAlert
+                v-if="errors.retention"
+                color="error"
+                variant="subtle"
+                :title="errors.retention"
+              />
+            </template>
+          </SettingRow>
+        </div>
+      </section>
+
+      <section
+        v-if="health?.mode !== 'hosted' || accounts"
+        aria-labelledby="integrations-heading"
+        class="flex flex-col gap-3"
+      >
+        <h2
+          id="integrations-heading"
+          class="eyebrow text-muted"
+        >
+          Integrations
+        </h2>
+        <div class="surface divide-y divide-muted px-5 py-5 sm:px-6">
+          <SettingRow
+            v-if="health?.mode !== 'hosted'"
+            label="Claude login"
+            description="The server's own Claude sign-in, which every “Claude via this server” scan uses. Sign in again when it expires."
+          >
+            <span
+              class="inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-xs font-semibold"
+              :class="claudeSignedIn ? STATUS_CLASSES.on : STATUS_CLASSES.off"
+            >
+              <UIcon
+                :name="claudeSignedIn ? 'i-lucide-circle-check' : 'i-lucide-circle-dashed'"
+                class="size-3.5"
+              />
+              {{ claudeSignedIn ? 'Signed in' : 'Not signed in' }}
+            </span>
+            <UButton
+              v-if="loginStep === 'idle'"
+              :color="claudeSignedIn ? 'neutral' : 'primary'"
+              :variant="claudeSignedIn ? 'outline' : 'solid'"
+              icon="i-lucide-log-in"
+              :loading="loginBusy === 'start'"
+              @click="startLogin"
+            >
+              {{ claudeSignedIn ? 'Sign in again' : 'Sign in' }}
+            </UButton>
+            <template #below>
+              <ol
+                v-if="loginStep === 'started'"
+                class="flex flex-col gap-4 rounded-xs bg-muted p-4 ring ring-default"
+              >
+                <li class="flex flex-col gap-2">
+                  <p class="text-sm font-semibold text-highlighted">
+                    1. Sign in at Anthropic
+                  </p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <UButton
+                      :to="loginUrl"
+                      target="_blank"
+                      icon="i-lucide-external-link"
+                      color="neutral"
+                      variant="outline"
+                    >
+                      Open the sign-in page
+                    </UButton>
+                    <code class="min-w-0 flex-1 truncate font-mono text-xs text-muted">{{ loginUrl }}</code>
+                  </div>
+                </li>
+                <li>
+                  <form
+                    class="flex flex-col gap-2"
+                    @submit.prevent="completeLogin"
+                  >
+                    <label
+                      for="claude-login-code"
+                      class="text-sm font-semibold text-highlighted"
+                    >2. Paste the code it shows you</label>
+                    <div class="flex flex-wrap gap-2">
+                      <UInput
+                        id="claude-login-code"
+                        v-model="code"
+                        icon="i-lucide-clipboard-paste"
+                        autocomplete="off"
+                        class="min-w-48 flex-1"
+                      />
+                      <UButton
+                        type="submit"
+                        color="primary"
+                        :loading="loginBusy === 'complete'"
+                        :disabled="!code.trim()"
+                      >
+                        Finish
+                      </UButton>
+                      <UButton
+                        color="neutral"
+                        variant="ghost"
+                        @click="resetLogin"
+                      >
+                        Cancel
+                      </UButton>
+                    </div>
+                  </form>
+                </li>
+              </ol>
+              <div
+                v-if="loginStep === 'done' && loginResult"
+                class="flex flex-col gap-2"
+              >
+                <UAlert
+                  :color="loginResult.success ? 'success' : 'error'"
+                  variant="subtle"
+                  :icon="loginResult.success ? 'i-lucide-circle-check' : 'i-lucide-circle-x'"
+                  :title="loginResult.success ? 'Signed in: Claude CLI scans work again' : 'The sign-in didn’t work'"
+                  :actions="[{ label: loginResult.success ? 'Done' : 'Try again', color: 'neutral', variant: 'outline', onClick: resetLogin }]"
+                />
+                <details v-if="loginResult.output">
+                  <summary class="cursor-pointer text-sm text-muted">
+                    What the Claude CLI said
+                  </summary>
+                  <pre class="mt-2 overflow-x-auto rounded-xs bg-elevated p-3 font-mono text-xs">{{ loginResult.output }}</pre>
+                </details>
+              </div>
+              <UAlert
+                v-if="loginError"
+                color="error"
+                variant="subtle"
+                :title="loginError"
+              />
+            </template>
+          </SettingRow>
+
+          <SettingRow
+            v-if="accounts"
+            label="Email"
+          >
+            <template #description>
+              <template v-if="session?.email_enabled">
+                Users can reset a forgotten password by email, and you can email them a reset link
+                from their page.
+              </template>
+              <template v-else>
+                Off, forgotten passwords go through reset links you copy from a user's page.
+              </template>
+            </template>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-xs font-semibold"
+              :class="session?.email_enabled ? STATUS_CLASSES.on : STATUS_CLASSES.off"
             >
               <UIcon
                 :name="session?.email_enabled ? 'i-lucide-mail-check' : 'i-lucide-mail-x'"
                 class="size-3.5"
               />
-              {{ session?.email_enabled ? 'Sending' : 'Not configured' }}
+              {{ session?.email_enabled ? 'Configured' : 'Not configured' }}
             </span>
-          </div>
-          <p class="text-sm text-muted">
-            <template v-if="session?.email_enabled">
-              Users can reset a forgotten password by email from the sign-in page, and you can email
-              them a reset link from their page.
-            </template>
-            <template v-else>
-              Without email, forgotten passwords go through reset links you copy from a user's page.
-              To send reset emails, set these on the API and restart it:
-            </template>
-          </p>
-          <pre
-            v-if="!session?.email_enabled"
-            class="overflow-x-auto bg-muted p-3 font-mono text-xs text-highlighted"
-          >SKILLSPECTOR_WEB_SMTP_HOST=smtp.example.com
+            <template
+              v-if="!session?.email_enabled"
+              #below
+            >
+              <details class="rounded-xs bg-muted px-4 py-3 ring ring-default">
+                <summary class="cursor-pointer text-sm font-medium text-highlighted">
+                  How to turn it on
+                </summary>
+                <p class="mt-2 text-sm text-muted">
+                  Set these on the API, with your SMTP server's details, and restart it:
+                </p>
+                <pre class="mt-2 overflow-x-auto bg-default p-3 font-mono text-xs text-highlighted">SKILLSPECTOR_WEB_SMTP_HOST=smtp.example.com
 SKILLSPECTOR_WEB_SMTP_PORT=587
 SKILLSPECTOR_WEB_SMTP_USERNAME=…
 SKILLSPECTOR_WEB_SMTP_PASSWORD=…
 SKILLSPECTOR_WEB_MAIL_FROM=Skillspector &lt;noreply@example.com&gt;
 SKILLSPECTOR_WEB_PUBLIC_URL=https://skillspector.example.com</pre>
-        </div>
-      </UCard>
-
-      <UCard
-        v-if="health?.mode !== 'hosted'"
-        :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
-      >
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Claude CLI login
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Re-authenticates the server-wide login every visitor's Claude CLI scans share.
-            </p>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <template
-              v-for="n in 3"
-              :key="n"
-            >
-              <div
-                class="flex items-center justify-center size-6 rounded-xs text-xs font-semibold shrink-0"
-                :class="n <= stepNumber ? 'bg-primary text-inverted' : 'bg-elevated text-muted'"
-              >
-                {{ n }}
-              </div>
-              <div
-                v-if="n < 3"
-                class="h-px flex-1"
-                :class="n < stepNumber ? 'bg-primary' : 'bg-default'"
-              />
+              </details>
             </template>
-          </div>
-
-          <UButton
-            v-if="step === 'idle'"
-            icon="i-lucide-play"
-            :loading="starting"
-            @click="startLogin"
-          >
-            Start login
-          </UButton>
-
-          <template v-if="step === 'started'">
-            <UAlert
-              color="primary"
-              variant="subtle"
-              icon="i-lucide-external-link"
-              title="Visit this link to sign in"
-              :description="loginUrl"
-            />
-            <UButton
-              :to="loginUrl"
-              target="_blank"
-              variant="outline"
-              icon="i-lucide-external-link"
-            >
-              Open login page
-            </UButton>
-
-            <UFormField
-              label="Code"
-              description="Paste the code Anthropic shows you after signing in."
-            >
-              <UInput
-                id="claude-login-code"
-                v-model="code"
-                icon="i-lucide-clipboard-paste"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UButton
-              icon="i-lucide-check"
-              :loading="completing"
-              :disabled="!code.trim()"
-              @click="completeLogin"
-            >
-              Complete login
-            </UButton>
-          </template>
-
-          <template v-if="step === 'done'">
-            <UAlert
-              :color="resultSuccess ? 'primary' : 'error'"
-              variant="subtle"
-              :icon="resultSuccess ? 'i-lucide-check-circle-2' : 'i-lucide-circle-x'"
-              :title="resultSuccess ? 'Logged in' : 'Login failed'"
-            />
-            <pre class="overflow-x-auto rounded-xs bg-elevated p-3 text-xs font-mono">{{ resultMessage }}</pre>
-            <UButton
-              variant="outline"
-              icon="i-lucide-rotate-ccw"
-              @click="reset"
-            >
-              Start over
-            </UButton>
-          </template>
-
-          <UAlert
-            v-if="errorMessage"
-            color="error"
-            variant="subtle"
-            :title="errorMessage"
-          />
+          </SettingRow>
         </div>
-      </UCard>
-
-      <UCard :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }">
-        <div class="flex flex-col gap-4">
-          <div>
-            <h2 class="text-lg font-semibold tracking-tight text-highlighted">
-              Scan retention
-            </h2>
-            <p class="mt-1 text-sm text-muted">
-              Automatically delete scans from history after a set number of days.
-            </p>
-          </div>
-
-          <UFormField label="Keep scans">
-            <USelect
-              id="retention-mode"
-              v-model="retentionMode"
-              :items="[
-                { label: 'Forever', value: 'forever' },
-                { label: 'For a set number of days', value: 'days' }
-              ]"
-              value-key="value"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField
-            v-if="retentionMode === 'days'"
-            label="Days"
-          >
-            <UInput
-              id="retention-days"
-              v-model.number="retentionDays"
-              type="number"
-              min="1"
-              step="1"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UButton
-            icon="i-lucide-save"
-            :loading="savingRetention"
-            :disabled="retentionMode === 'days' && (!retentionDays || retentionDays <= 0)"
-            @click="saveRetention"
-          >
-            Save
-          </UButton>
-
-          <UAlert
-            v-if="retentionSaved"
-            color="primary"
-            variant="subtle"
-            icon="i-lucide-check-circle-2"
-            title="Saved"
-          />
-          <UAlert
-            v-if="retentionError"
-            color="error"
-            variant="subtle"
-            :title="retentionError"
-          />
-        </div>
-      </UCard>
+      </section>
     </div>
   </div>
 </template>
