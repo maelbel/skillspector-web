@@ -35,11 +35,12 @@ isn't protected:
   Claude-backed scans on it.
 - **Scan targets are constrained** by skillspector: https only, an allowlist of Git and download
   hosts, private and internal addresses refused, no redirects followed, and size limits on clones,
-  archives and downloads.
+  archives and downloads. An MCP server scan reads only the server's entry from the MCP Registry's
+  API (`registry.modelcontextprotocol.io`): nothing it points to is downloaded, installed or run.
 - **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
   `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
   microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound
-  traffic limited to the code hosts above with private address ranges blocked, and nothing from
+  traffic limited to the code hosts above and the MCP Registry, with private address ranges blocked, and nothing from
   the app's environment passed in.
 - **Custom AI base URLs are not restricted.** A visitor-supplied Base URL makes the server send
   requests to that address — another reason not to expose the app without authentication.

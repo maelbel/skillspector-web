@@ -396,6 +396,11 @@ const errorMessage = computed(() => {
         :gaps="gaps"
       />
 
+      <McpServerPanel
+        v-if="report.mcp_server"
+        :server="report.mcp_server"
+      />
+
       <div
         v-if="issues.length"
         class="grid items-start gap-6 lg:gap-10"

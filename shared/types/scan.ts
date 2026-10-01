@@ -160,6 +160,34 @@ export interface ScanReport {
   // A repository holding several skills: each one's summary, and those left out.
   skills?: SkillSummary[]
   unscanned_skills?: UnscannedSkill[]
+  // An MCP server scan: its registry entry, as skillspector read it.
+  mcp_server?: McpServer
+}
+
+// An MCP server's entry in the MCP Registry, as skillspector normalizes it (its mcp_registry.py),
+// with the checks the entry gave nothing to go on for (app/sandbox_runner.py).
+export interface McpServer {
+  name: string
+  title: string | null
+  description: string | null
+  version: string | null
+  website_url: string | null
+  repository: { url: string | null, source: string | null, id: string | null, subfolder: string | null } | null
+  packages: {
+    registry_type: string | null
+    identifier: string | null
+    version: string | null
+    file_sha256: string | null
+    transport_type: string | null
+    transport_url: string | null
+  }[]
+  remotes: { type: string | null, url: string | null }[]
+  // active, deprecated or deleted, as the registry says.
+  status: string | null
+  published_at: string | null
+  updated_at: string | null
+  is_latest: boolean | null
+  unchecked: { id: string, message: string, target: string }[]
 }
 
 export interface ScanStatus {

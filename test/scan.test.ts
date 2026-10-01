@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { describeScanTarget, parseScanTarget, splitScanTitle } from '../shared/utils/scan'
+import { describeScanTarget, mcpEntryUrl, parseMcpServer, parseScanTarget, splitScanTitle } from '../shared/utils/scan'
+
+const ENTRY = 'https://registry.modelcontextprotocol.io/v0/servers/io.github.acme%2Fweather/versions/latest'
 
 describe('parseScanTarget', () => {
   it('shortens a GitHub repo URL to owner/repo', () => {
@@ -35,7 +37,10 @@ describe('describeScanTarget', () => {
     ['https://github.com/acme/skills/blob/main/pdf/SKILL.md', 'file', 'GitHub', 'acme/skills/pdf/SKILL.md'],
     ['https://raw.githubusercontent.com/acme/skills/main/pdf/SKILL.md', 'file', 'GitHub', 'acme/skills/pdf/SKILL.md'],
     ['https://github.com/acme/skills/archive/refs/heads/main.zip', 'archive', 'GitHub', 'acme/skills'],
-    ['https://huggingface.co/acme/skill/resolve/main/skill.zip', 'archive', 'Hugging Face', 'https://huggingface.co/acme/skill/resolve/main/skill.zip']
+    ['https://huggingface.co/acme/skill/resolve/main/skill.zip', 'archive', 'Hugging Face', 'https://huggingface.co/acme/skill/resolve/main/skill.zip'],
+    ['io.github.acme/weather', 'mcp', 'MCP Registry', 'io.github.acme/weather'],
+    [ENTRY, 'mcp', 'MCP Registry', 'io.github.acme/weather'],
+    ['https://registry.modelcontextprotocol.io/v0.1/servers/io.github.acme%2Fweather/versions/1.0.0', 'mcp', 'MCP Registry', 'io.github.acme/weather@1.0.0']
   ])('accepts %s as a %s on %s', (target, kind, host, title) => {
     expect(describeScanTarget(target)).toEqual({ ok: true, kind, host, title })
   })
@@ -45,7 +50,10 @@ describe('describeScanTarget', () => {
     ['http://github.com/acme/skills', 'https://'],
     ['https://example.com/skill.zip', 'GitHub, GitLab, Bitbucket or Hugging Face'],
     ['https://github.com/acme/skills/tree/main/pdf', 'Folder links'],
-    ['https://github.com/acme', 'Link to a repository']
+    ['https://github.com/acme', 'Link to a repository'],
+    // A GitHub owner/repo isn't an MCP server's name: those have a reverse-DNS namespace.
+    ['acme/skills', 'MCP server’s name'],
+    ['https://registry.modelcontextprotocol.io/v0/servers', 'one server in the MCP Registry']
   ])('rejects %s', (target, problem) => {
     const info = describeScanTarget(target)
     expect(info?.ok).toBe(false)
@@ -61,5 +69,23 @@ describe('splitScanTitle', () => {
   it('keeps short titles whole', () => {
     expect(splitScanTitle('https://github.com/acme/skills')).toEqual({ name: 'acme/skills' })
     expect(splitScanTitle('https://example.com/skill.zip')).toEqual({ name: 'https://example.com/skill.zip' })
+  })
+})
+
+describe('MCP servers', () => {
+  it('reads a server and its version from a name or a registry link', () => {
+    expect(parseMcpServer(' io.github.acme/weather ')).toEqual({ name: 'io.github.acme/weather', version: 'latest' })
+    expect(parseMcpServer('https://registry.modelcontextprotocol.io/v0/servers/io.github.acme%2Fweather')).toEqual({ name: 'io.github.acme/weather', version: 'latest' })
+    expect(parseMcpServer('https://evil.example/v0/servers/io.github.acme%2Fweather')).toBeNull()
+    expect(parseMcpServer('https://github.com/acme/weather')).toBeNull()
+  })
+
+  it('stores a named server as the API does, so the history finds it again', () => {
+    expect(mcpEntryUrl(parseMcpServer('io.github.acme/weather')!)).toBe(ENTRY)
+  })
+
+  it('titles a scan by the server, shown whole in the history', () => {
+    expect(parseScanTarget(ENTRY)).toEqual({ title: 'io.github.acme/weather', isGithub: false })
+    expect(splitScanTitle(ENTRY)).toEqual({ name: 'io.github.acme/weather' })
   })
 })

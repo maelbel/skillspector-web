@@ -34,7 +34,11 @@ const topFinding = computed(() =>
 const summaryLine = computed(() => {
   if (props.summary) return props.summary
   const top = topFinding.value
-  if (!top) return 'None of the analyzers flagged anything in this skill.'
+  if (!top) {
+    return props.report.mcp_server
+      ? 'None of the checks of its registry entry flagged anything.'
+      : 'None of the analyzers flagged anything in this skill.'
+  }
   const title = findingTitle(top)
   const explanation = top.explanation?.trim()
   if (!explanation || explanation === title) return `Top finding: ${title}.`

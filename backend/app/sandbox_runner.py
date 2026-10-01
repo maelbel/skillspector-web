@@ -34,7 +34,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 PREFIX = "@@skillspector-web@@ "
 
@@ -257,6 +257,135 @@ def _scan_with_cli(
             return json.load(file)
 
 
+# MCP servers, by their entry in the official MCP Registry: skillspector checks the entry's posture
+# (pinned package versions and hashes, a repository, official status, plain-HTTP endpoints) rather
+# than any code. Scanned by this URL, for the entry's latest version or a given one.
+MCP_REGISTRY_HOST = "registry.modelcontextprotocol.io"
+MCP_ENTRY_PREFIX = f"https://{MCP_REGISTRY_HOST}/v0/servers/"
+MCP_POSTURE_CATEGORY = "MCP posture"
+# What each posture rule's finding means, and what to do about it; skillspector only names the problem.
+_MCP_RULE_TEXT = {
+    "MCP-PACKAGE-VERSION": (
+        "The registry entry gives a version range or a moving tag (such as latest), so what gets installed can change without the entry changing.",
+        "Pin the package to an exact version in the server's registry entry.",
+    ),
+    "MCP-PACKAGE-SHA256": (
+        "The package's fileSha256 isn't a SHA-256 digest, so the downloaded file can't be verified.",
+        "Publish the SHA-256 digest of the package file in the registry entry.",
+    ),
+    "MCP-OFFICIAL-STATUS": (
+        "The registry no longer lists this server as active: a deprecated or deleted server isn't maintained any more.",
+        "Use an active server, or the replacement its publisher points to.",
+    ),
+    "MCP-PLAIN-HTTP": (
+        "The remote endpoint is reached over plain HTTP, so traffic, credentials included, can be read or changed on the way.",
+        "Connect to the server over HTTPS only.",
+    ),
+}
+# skillspector's risk bands (skillspector/nodes/report.py), for a score skillspector sums itself.
+_RISK_BANDS = ((81, "CRITICAL"), (51, "HIGH"), (21, "MEDIUM"), (0, "LOW"))
+_RISK_RECOMMENDATION = {"LOW": "SAFE", "MEDIUM": "CAUTION", "HIGH": "DO_NOT_INSTALL", "CRITICAL": "DO_NOT_INSTALL"}
+_SEVERITY_ORDER = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+
+
+def is_mcp_entry(target: str) -> bool:
+    return target.startswith(MCP_ENTRY_PREFIX)
+
+
+def _fetch_mcp_entry(url: str) -> dict[str, Any]:
+    import httpx
+    from skillspector.mcp_registry import MAX_REGISTRY_BYTES
+
+    name = unquote(url.removeprefix(MCP_ENTRY_PREFIX).split("/versions/")[0])
+    try:
+        response = httpx.get(url, timeout=30)
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Couldn't reach the MCP Registry: {exc}") from exc
+    if response.status_code == 404:
+        raise RuntimeError(f"{name} isn't in the MCP Registry, or not at that version")
+    if response.status_code != 200:
+        raise RuntimeError(f"The MCP Registry answered {response.status_code} for {name}")
+    if len(response.content) > MAX_REGISTRY_BYTES:
+        raise RuntimeError(f"{name}'s registry entry is larger than {MAX_REGISTRY_BYTES // (1024 * 1024)} MB")
+    try:
+        entry = response.json()
+    except ValueError as exc:
+        raise RuntimeError(f"The MCP Registry's entry for {name} isn't JSON") from exc
+    return entry
+
+
+def scan_mcp_entry(url: str, *, on_step: Callable[[str], None], on_log: Callable[[str], None]) -> dict[str, Any]:
+    """An MCP Registry entry's posture checks, as a report shaped like a skill's.
+
+    Findings skillspector couldn't check (the entry leaves out what they need, such as a package's
+    fileSha256) carry no risk: they're listed under mcp_server.unchecked rather than as issues.
+    """
+    import skillspector
+    from skillspector.mcp_registry import normalize_payload, posture_findings
+
+    on_log(f"Fetching the MCP Registry entry {url}")
+    entry = _fetch_mcp_entry(url)
+    on_step("fetch_registry_entry")
+    try:
+        (snapshot,) = normalize_payload({"servers": [entry]}, source=url)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    findings = posture_findings(snapshot)
+    on_step("mcp_posture")
+    on_log(f"Checked {snapshot.name} {snapshot.version or ''}".rstrip())
+
+    issues: list[dict[str, Any]] = []
+    unchecked: list[dict[str, str]] = []
+    for finding in findings:
+        if finding["evidence"] == "unavailable":
+            unchecked.append({"id": finding["id"], "message": finding["message"], "target": finding["target"]})
+            continue
+        explanation, remediation = _MCP_RULE_TEXT.get(finding["id"], (finding["message"], ""))
+        severity = finding["severity"].upper()
+        issues.append(
+            {
+                "id": finding["id"],
+                "finding_id": f"mcp-{len(issues) + 1}",
+                "category": MCP_POSTURE_CATEGORY,
+                "pattern": finding["message"],
+                "severity": severity if severity in _SEVERITY_ORDER else "LOW",
+                "confidence": 1.0,
+                "finding": finding["target"],
+                # What the finding is about (a package, an endpoint, the server) stands in for a file.
+                "location": {"file": finding["target"], "start_line": 0, "end_line": None},
+                "explanation": explanation,
+                "remediation": remediation,
+                "code_snippet": None,
+                "intent": None,
+                "tags": [MCP_POSTURE_CATEGORY],
+                "evidence": {},
+            }
+        )
+    score = min(sum(finding["risk_score"] for finding in findings), 100)
+    band = next(band for threshold, band in _RISK_BANDS if score >= threshold)
+    return {
+        "skill": {"name": snapshot.name, "source": url, "scanned_at": snapshot.scanned_at},
+        "risk_assessment": {
+            "score": score,
+            "severity": band,
+            "recommendation": _RISK_RECOMMENDATION[band],
+            "max_issue_severity": max((issue["severity"] for issue in issues), key=_SEVERITY_ORDER.index, default=None),
+        },
+        "issues": issues,
+        "suppressed_count": 0,
+        "suppressed": [],
+        "metadata": {
+            "skillspector_version": skillspector.__version__,
+            "llm_requested": False,
+            "llm_available": False,
+            "meta_analysis_applied": False,
+            "inference_usage": [],
+        },
+        "execution_successful": True,
+        "mcp_server": {**snapshot.to_dict(), "unchecked": unchecked},
+    }
+
+
 def run_scan(
     target: str,
     *,
@@ -276,8 +405,11 @@ def run_scan(
     deadline_seconds, skills are only started while there's time left for them. With transitive
     ({"depth", "allow", "deny"}), each scan also follows the skill's external references; it runs
     through skillspector's CLI, so it makes no baseline (that needs the scanned files' contents).
-    yara_rules_dir adds a directory of YARA rules to skillspector's own.
+    yara_rules_dir adds a directory of YARA rules to skillspector's own. An MCP Registry entry's URL
+    is checked by scan_mcp_entry instead, which none of these options apply to.
     """
+    if is_mcp_entry(target):
+        return scan_mcp_entry(target, on_step=on_step, on_log=on_log)
     from skillspector.graph import graph
 
     base_state = {"output_format": "json", "use_llm": use_llm, **baseline_state(baseline_path)}

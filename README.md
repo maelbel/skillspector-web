@@ -39,6 +39,9 @@ or deploy to Vercel.
   MCP tool poisoning: skillspector's full pipeline, run as a library rather than a CLI wrapper.
 - **Optional AI review.** Add a deeper semantic analysis with your own Claude, OpenAI or Ollama
   endpoint, or with a Claude key saved to your account.
+- **MCP servers too.** Enter a server's name from the [MCP Registry](https://registry.modelcontextprotocol.io)
+  (e.g. `io.github.github/github-mcp-server`) to check its entry's posture: packages pinned to
+  exact versions with valid hashes, a source repository, an active status, and HTTPS endpoints.
 
 **Results**
 - **Findings you can act on.** Filter, sort and group by severity or category. Each finding shows
@@ -191,14 +194,14 @@ the repository layout.
 
 Self-hosted, Skillspector Web is built for a trusted audience: yourself, a team, a homelab.
 - **Sign-in:** turn on `AUTH=accounts` before exposing it beyond that.
-- **Scan targets:** https only, from an allowlist of code hosts, with private addresses refused
-  and size limits on every download.
+- **Scan targets:** https only, from an allowlist of code hosts (and the MCP Registry, for MCP
+  servers), with private addresses refused and size limits on every download.
 - **Passwords and sessions:** passwords are hashed with scrypt, and session tokens are stored only
   as hashes.
 - **API keys:** they never appear in responses, logs or browser storage.
 
 The hosted version adds isolation:
-- Every scan runs in a throwaway microVM that can only reach the code hosts.
+- Every scan runs in a throwaway microVM that can only reach the code hosts and the MCP Registry.
 - A user's Claude key is added to requests by the sandbox firewall and never enters the VM.
 
 [docs/SECURITY_MODEL.md](./docs/SECURITY_MODEL.md) describes what is and isn't protected. To report

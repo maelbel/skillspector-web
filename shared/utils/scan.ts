@@ -1,4 +1,46 @@
+// MCP servers are scanned by their entry in the official MCP Registry, named
+// (io.github.acme/weather) or linked; the API stores the registry API's URL for the entry
+// (backend/app/targets.py, which these mirror).
+export const MCP_REGISTRY_HOST = 'registry.modelcontextprotocol.io'
+const MCP_ENTRY_PREFIX = `https://${MCP_REGISTRY_HOST}/v0/servers/`
+// A reverse-DNS namespace, so always with a dot: that tells it from a GitHub owner/repo.
+const MCP_SERVER_NAME = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[\w.-]+$/i
+const MCP_ENTRY_PATH = /^\/v0(?:\.\d+)?\/servers\/([^/]+)(?:\/versions\/([^/]+))?\/?$/
+
+/** The MCP server a target names or links to in the registry, at a version or "latest"; else null. */
+export function parseMcpServer(target: string): { name: string, version: string } | null {
+  let name = target.trim()
+  let version = 'latest'
+  if (name.includes('://')) {
+    let url: URL
+    try {
+      url = new URL(name)
+    } catch {
+      return null
+    }
+    const match = url.hostname === MCP_REGISTRY_HOST ? url.pathname.match(MCP_ENTRY_PATH) : null
+    if (!match) return null
+    try {
+      name = decodeURIComponent(match[1]!)
+      version = match[2] ? decodeURIComponent(match[2]) : 'latest'
+    } catch {
+      return null
+    }
+  }
+  return MCP_SERVER_NAME.test(name) ? { name, version } : null
+}
+
+/** The target the API stores for an MCP server: its registry entry's URL. */
+export function mcpEntryUrl(server: { name: string, version: string }): string {
+  return `${MCP_ENTRY_PREFIX}${encodeURIComponent(server.name)}/versions/${encodeURIComponent(server.version)}`
+}
+
 export function parseScanTarget(target: string): { title: string, isGithub: boolean } {
+  const server = parseMcpServer(target)
+  if (server) {
+    return { title: server.version === 'latest' ? server.name : `${server.name}@${server.version}`, isGithub: false }
+  }
+
   let url: URL
   try {
     url = new URL(target)
@@ -33,7 +75,7 @@ export function splitScanTitle(target: string): { name: string, source?: string 
   return { name: parts.slice(-2).join('/'), source: parts.slice(0, 2).join('/') }
 }
 
-export type ScanTargetKind = 'repository' | 'file' | 'archive'
+export type ScanTargetKind = 'repository' | 'file' | 'archive' | 'mcp'
 
 export type ScanTargetInfo
   = | { ok: true, kind: ScanTargetKind, host: string, title: string }
@@ -53,24 +95,33 @@ const DOWNLOAD_HOSTS: Record<string, string> = {
 }
 const DIRECT_FILE_SUFFIXES = ['.md', '.py', '.sh']
 const SUPPORTED_HOSTS = 'GitHub, GitLab, Bitbucket or Hugging Face'
+const MCP_EXAMPLE = 'io.github.acme/weather'
 
 export function describeScanTarget(target: string): ScanTargetInfo | null {
   const value = target.trim()
   if (!value) return null
 
+  const server = parseMcpServer(value)
+  if (server) {
+    return { ok: true, kind: 'mcp', host: 'MCP Registry', title: parseScanTarget(value).title }
+  }
+
   let url: URL
   try {
     url = new URL(value)
   } catch {
-    return { ok: false, problem: 'Enter a full URL, starting with https://' }
+    return { ok: false, problem: `Enter a full URL starting with https://, or an MCP server’s name such as ${MCP_EXAMPLE}` }
   }
   if (url.protocol !== 'https:') {
     return { ok: false, problem: 'Only https:// URLs can be scanned' }
   }
 
+  if (url.hostname === MCP_REGISTRY_HOST) {
+    return { ok: false, problem: `Link to one server in the MCP Registry, or enter its name, such as ${MCP_EXAMPLE}` }
+  }
   const hostName = GIT_HOSTS[url.hostname] ?? DOWNLOAD_HOSTS[url.hostname]
   if (!hostName) {
-    return { ok: false, problem: `Only ${SUPPORTED_HOSTS} URLs can be scanned` }
+    return { ok: false, problem: `Only ${SUPPORTED_HOSTS} URLs can be scanned, or an MCP server by its name` }
   }
 
   const path = url.pathname.toLowerCase()

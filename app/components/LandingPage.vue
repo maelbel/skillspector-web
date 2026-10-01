@@ -2,7 +2,7 @@
 const { session } = useAuth()
 
 const STEPS = [
-  { icon: 'i-lucide-link', title: 'Paste a link', text: 'A GitHub, GitLab, Bitbucket or Hugging Face repository, or a single SKILL.md.' },
+  { icon: 'i-lucide-link', title: 'Paste a link', text: 'A GitHub, GitLab, Bitbucket or Hugging Face repository, a single SKILL.md, or an MCP server’s name.' },
   { icon: 'i-lucide-scan-eye', title: 'We inspect it', text: 'More than 20 analyzers read the skill for hidden instructions, exfiltration and dangerous code.' },
   { icon: 'i-lucide-shield-check', title: 'Get a verdict', text: 'Safe, review first, or do not install, with every finding explained and a fix suggested.' }
 ]

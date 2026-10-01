@@ -3,11 +3,17 @@
 A code host's file link (GitHub's /blob/) is a web page around the file. skillspector downloads it
 as a direct file, so without a rewrite it scans the page's HTML instead of the skill. Each link
 here becomes the host's raw download of the same file, at the same ref and path.
+
+An MCP server is scanned by its entry in the MCP Registry, named or linked: either becomes the
+registry API's URL for that entry, which app/sandbox_runner.py recognises.
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit, urlunsplit
+import re
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+from app.sandbox_runner import MCP_ENTRY_PREFIX, MCP_REGISTRY_HOST
 
 _GITHUB_HOSTS = {"github.com", "www.github.com"}
 
@@ -38,3 +44,28 @@ def raw_file_url(target: str) -> str:
         path = "/" + "/".join([*segments[:i], "resolve", *segments[i + 1 :]])
         return urlunsplit(("https", host, path, "", ""))
     return target
+
+
+# A server's name in the registry: a reverse-DNS namespace, then its own name (the registry's
+# server.schema.json), e.g. io.github.acme/weather.
+# The namespace always has a dot, which tells a name from a GitHub owner/repo.
+_MCP_SERVER_NAME = re.compile(r"^[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/[a-zA-Z0-9._-]+$")
+# The registry API's paths for one server: /v0/servers/<name>[/versions/<version>], in any API version.
+_MCP_ENTRY_PATH = re.compile(r"^/v0(?:\.\d+)?/servers/([^/]+)(?:/versions/([^/]+))?/?$")
+
+
+def mcp_entry_url(target: str) -> str | None:
+    """The registry API's URL for an MCP server's entry, from its name or a registry link; else None.
+
+    A name, or a link without a version, means the latest version.
+    """
+    name, version = target, "latest"
+    parts = urlsplit(target)
+    if parts.scheme:
+        match = _MCP_ENTRY_PATH.match(parts.path) if (parts.hostname or "").lower() == MCP_REGISTRY_HOST else None
+        if match is None:
+            return None
+        name, version = unquote(match.group(1)), unquote(match.group(2) or "latest")
+    if not _MCP_SERVER_NAME.match(name):
+        return None
+    return f"{MCP_ENTRY_PREFIX}{quote(name, safe='')}/versions/{quote(version, safe='')}"

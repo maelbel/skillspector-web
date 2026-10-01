@@ -19,7 +19,7 @@ from app import scan_logs
 from app.analysis_settings import skillspector_env
 from app.core.config import Settings, yara_rule_files
 from app.core.mode import Mode
-from app.sandbox_runner import PREFIX
+from app.sandbox_runner import MCP_REGISTRY_HOST, PREFIX
 from app.sandbox_snapshot import snapshot_id_for
 from app.transitive import transitive_options
 
@@ -48,6 +48,8 @@ SCAN_HOSTS = (
     "huggingface.co",
     "cdn-lfs.huggingface.co",
     "cdn-lfs-us-1.hf.co",
+    # MCP server scans read the server's entry there.
+    MCP_REGISTRY_HOST,
 )
 
 # Never reachable from a scan, whatever a target's DNS resolves to: private, loopback,
