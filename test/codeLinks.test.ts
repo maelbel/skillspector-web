@@ -35,4 +35,9 @@ describe('ruleDocsLink', () => {
   it('has none for rules the docs don\'t list', () => {
     expect(ruleDocsLink('AE1')).toBeNull()
   })
+
+  it('names the MCP Registry posture checks, which the docs don\'t list', () => {
+    expect(ruleName('MCP-PACKAGE-VERSION')).toBe('Unpinned Package Version')
+    expect(ruleDocsLink('MCP-PACKAGE-VERSION')).toBeNull()
+  })
 })

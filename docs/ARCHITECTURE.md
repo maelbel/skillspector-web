@@ -72,7 +72,7 @@ flowchart LR
    - **Self-hosted**, an asyncio task runs it in a worker thread.
    - **Hosted**, the scan id is published to the `scans` queue topic, and the subscriber function
      boots a sandbox from the snapshot and runs `sandbox_runner.py` in it. The sandbox's network
-     only reaches the code hosts, plus Anthropic when AI review is on.
+     only reaches the code hosts and the MCP Registry, plus Anthropic when AI review is on.
 4. As the pipeline runs, each finished step and log line is recorded against the scan. The result
    page polls status and logs every two seconds until the report is stored.
 

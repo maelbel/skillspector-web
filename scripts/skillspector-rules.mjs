@@ -46,6 +46,15 @@ const RULE_PAGES: Record<string, string> = {
   AS3: 'docs/AS3_SELF_REFERENCES.md'
 }
 
+// skillspector's MCP Registry posture checks (its mcp_registry.py), which its README doesn't list.
+const MCP_RULES: Record<string, string> = {
+  'MCP-PACKAGE-VERSION': 'Unpinned Package Version',
+  'MCP-PACKAGE-SHA256': 'Invalid Package Hash',
+  'MCP-REPOSITORY': 'Missing Repository',
+  'MCP-OFFICIAL-STATUS': 'Server Not Active',
+  'MCP-PLAIN-HTTP': 'Plain HTTP Endpoint'
+}
+
 /** Where skillspector documents a rule, or null for one its docs don't list. */
 export function ruleDocsLink(ruleId: string): string | null {
   if (RULE_PAGES[ruleId]) return \`\${SKILLSPECTOR_DOCS}/\${RULE_PAGES[ruleId]}\`
@@ -55,7 +64,7 @@ export function ruleDocsLink(ruleId: string): string | null {
 
 /** The rule's name in skillspector's docs, e.g. "Instruction Override". */
 export function ruleName(ruleId: string): string | null {
-  return RULES[ruleId]?.name ?? null
+  return RULES[ruleId]?.name ?? MCP_RULES[ruleId] ?? null
 }
 `)
 console.log(`${rules.length} rules from skillspector ${version}`)

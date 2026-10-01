@@ -79,21 +79,29 @@ const targetInfo = computed(() => describeScanTarget(target.value))
 const targetProblem = computed(() =>
   targetTouched.value && targetInfo.value && !targetInfo.value.ok ? targetInfo.value.problem : undefined
 )
+// An MCP server is checked from its registry entry alone: the depth and the options, which are
+// about a skill's code, don't apply to it.
+const isMcpServer = computed(() => targetInfo.value?.ok === true && targetInfo.value.kind === 'mcp')
 
 // Point at an existing result before starting a duplicate scan of the same URL.
 const { data: recentScans } = useRecentScans()
-const normalizeTarget = (value: string) => value.trim().replace(/\/+$/, '')
+// As the API stores it: an MCP server's name becomes its registry entry's URL.
+const normalizeTarget = (value: string) => {
+  const server = parseMcpServer(value)
+  return server ? mcpEntryUrl(server) : value.trim().replace(/\/+$/, '')
+}
 const previousScan = computed(() => {
   if (!targetInfo.value?.ok) return undefined
   const wanted = normalizeTarget(target.value)
   return recentScans.value?.items.find(scan => scan.status !== 'error' && normalizeTarget(scan.target) === wanted)
 })
 
-// Real, stable URLs: a published skill, and a skillspector test fixture that's flagged
-// DO_NOT_INSTALL even without AI analysis.
+// Real, stable targets: a published skill, a skillspector test fixture that's flagged
+// DO_NOT_INSTALL even without AI analysis, and a well-known MCP server.
 const EXAMPLES = [
   { label: 'Anthropic’s PDF skill', icon: 'i-lucide-file-text', target: 'https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md' },
-  { label: 'A poisoned MCP tool', icon: 'i-lucide-skull', target: 'https://github.com/NVIDIA/skillspector/blob/main/tests/fixtures/mcp_poisoned_tool/SKILL.md' }
+  { label: 'A poisoned MCP tool', icon: 'i-lucide-skull', target: 'https://github.com/NVIDIA/skillspector/blob/main/tests/fixtures/mcp_poisoned_tool/SKILL.md' },
+  { label: 'GitHub’s MCP server', icon: 'i-lucide-server', target: 'io.github.github/github-mcp-server' }
 ]
 
 function useExample(example: typeof EXAMPLES[number]) {
@@ -106,7 +114,8 @@ function useExample(example: typeof EXAMPLES[number]) {
 const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
   repository: { icon: 'i-lucide-git-branch', label: 'repository' },
   file: { icon: 'i-lucide-file-text', label: 'single file' },
-  archive: { icon: 'i-lucide-file-archive', label: 'archive' }
+  archive: { icon: 'i-lucide-file-archive', label: 'archive' },
+  mcp: { icon: 'i-lucide-server', label: 'MCP server' }
 }
 
 const useLlm = ref(false)
@@ -184,10 +193,12 @@ watch([hosted, provider], ([isHosted, current]) => {
 }, { immediate: true })
 
 // Measured on this deployment: static scans of a repo or SKILL.md take about a minute.
-const durationHint = computed(() => useLlm.value
-  ? 'With AI analysis, a scan usually takes a few minutes.'
-  : 'A scan usually takes about a minute.'
-)
+const durationHint = computed(() => {
+  if (isMcpServer.value) return 'Checking an MCP server takes a few seconds.'
+  return useLlm.value
+    ? 'With AI analysis, a scan usually takes a few minutes.'
+    : 'A scan usually takes about a minute.'
+})
 
 const depthOptions = [
   { value: 'static', label: 'Static analysis' },
@@ -209,6 +220,7 @@ const backendDown = computed(() => health.value?.status === 'down')
 const canSubmit = computed(() => {
   if (backendDown.value) return false
   if (!targetInfo.value?.ok) return false
+  if (isMcpServer.value) return true
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
   if (useLlm.value && needsEndpoint.value && !baseUrl.value.trim()) return false
   if (useLlm.value && claudeCliUnauthenticated.value) return false
@@ -292,7 +304,8 @@ async function submit() {
   submitting.value = true
   errorMessage.value = ''
 
-  const llm: LLMConfig | undefined = useLlm.value
+  const forCode = !isMcpServer.value
+  const llm: LLMConfig | undefined = forCode && useLlm.value
     ? {
         provider: provider.value,
         useSavedKey: usingSavedKey.value || undefined,
@@ -308,8 +321,8 @@ async function submit() {
       body: {
         target: target.value.trim(),
         llm,
-        baseline: baseline.value?.text,
-        transitiveDepth: followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
+        baseline: forCode ? baseline.value?.text : undefined,
+        transitiveDepth: forCode && followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
       }
     })
     savePrefs()
@@ -336,7 +349,7 @@ async function submit() {
     />
 
     <UFormField
-      label="Skill source"
+      label="Skill or MCP server"
       :error="targetProblem"
       :ui="{ label: 'font-semibold text-highlighted' }"
     >
@@ -345,8 +358,11 @@ async function submit() {
           id="scan-target"
           ref="targetInput"
           v-model="target"
-          type="url"
+          type="text"
           inputmode="url"
+          autocapitalize="off"
+          autocomplete="off"
+          spellcheck="false"
           placeholder="https://github.com/org/repo"
           icon="i-lucide-link"
           size="xl"
@@ -365,7 +381,7 @@ async function submit() {
           :loading="submitting"
           :disabled="!canSubmit"
         >
-          Scan skill
+          {{ isMcpServer ? 'Scan server' : 'Scan skill' }}
         </UButton>
       </div>
       <template #help>
@@ -381,7 +397,7 @@ async function submit() {
           <span class="truncate font-mono text-xs text-highlighted">{{ targetInfo.title }}</span>
         </span>
         <span v-else-if="!target.trim()">
-          A repository or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face.
+          A repository or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face, or an MCP server’s name in the MCP Registry.
         </span>
       </template>
     </UFormField>
@@ -405,12 +421,28 @@ async function submit() {
           </template>
         </template>
         <template v-else>
-          This skill is being scanned right now
+          This {{ isMcpServer ? 'server' : 'skill' }} is being scanned right now
         </template>
       </template>
     </UAlert>
 
+    <p
+      v-if="isMcpServer"
+      class="flex gap-2 rounded-xs bg-muted p-3 text-sm text-muted ring ring-default"
+    >
+      <UIcon
+        name="i-lucide-server"
+        class="mt-0.5 size-4 shrink-0"
+      />
+      <span>
+        Checks the server’s entry in the MCP Registry: that its packages are pinned to exact versions
+        with valid hashes, that it names its source repository, that it’s still active, and that its
+        remote endpoints use HTTPS. Nothing is installed or run.
+      </span>
+    </p>
+
     <URadioGroup
+      v-if="!isMcpServer"
       v-model="depth"
       variant="card"
       orientation="horizontal"
@@ -449,7 +481,7 @@ async function submit() {
       leave-to-class="opacity-0 -translate-y-1"
     >
       <div
-        v-if="useLlm"
+        v-if="useLlm && !isMcpServer"
         class="flex flex-col gap-3 rounded-xs bg-muted p-4 ring ring-default"
       >
         <p class="text-sm text-muted">
@@ -616,6 +648,7 @@ async function submit() {
     </Transition>
 
     <UCollapsible
+      v-if="!isMcpServer"
       v-model:open="moreOpen"
       class="flex flex-col gap-4"
     >

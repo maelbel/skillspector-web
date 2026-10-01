@@ -14,7 +14,7 @@ from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
 from app.core.mode import Mode
 from app.jobs import JobRejectedError, get_runner
-from app.sandbox_runner import baseline_state
+from app.sandbox_runner import baseline_state, is_mcp_entry
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
@@ -26,7 +26,7 @@ from app.scanner import (
     get_job,
     list_jobs,
 )
-from app.targets import raw_file_url
+from app.targets import mcp_entry_url, raw_file_url
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -79,9 +79,11 @@ class ScanRequest(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("target is required")
+        if entry := mcp_entry_url(value):
+            return entry
         if not value.startswith(get_settings().allowed_target_schemes):
             allowed = " or ".join(get_settings().allowed_target_schemes)
-            raise ValueError(f"target must start with {allowed} (a Git repo, zip, or file URL)")
+            raise ValueError(f"target must start with {allowed} (a Git repo, zip, or file URL), or name an MCP server")
         # Stored rewritten too, so the history shows what was actually scanned.
         return raw_file_url(value)
 
@@ -213,6 +215,12 @@ def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
 async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
     limits = quotas.current()
     quotas.ensure_not_paused(limits)
+    if is_mcp_entry(req.target) and (req.llm or req.baseline is not None or req.transitive_depth):
+        # Its checks read the registry entry alone: there's no code to review, suppress or follow.
+        raise HTTPException(
+            status_code=422,
+            detail="An MCP server scan checks its registry entry only: AI review, baselines and external references don't apply",
+        )
     if req.baseline is not None:
         check_baseline(req.baseline)
     max_depth = get_settings().transitive_max_depth
