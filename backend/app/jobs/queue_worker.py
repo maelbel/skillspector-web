@@ -47,7 +47,7 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
         db.update_scan(id=scan["id"], status=JobStatus.ERROR, finished_at=time.time(), result=None, error=str(exc))
         return
     try:
-        await scanner.run_job(Job(id=scan["id"], target=scan["target"], llm=llm))
+        await scanner.run_job(Job(id=scan["id"], target=scan["target"], llm=llm, baseline=scan.get("baseline")))
     finally:
         # A one-off key lives only as long as its scan.
         db.delete_scan_secret(scan["id"])

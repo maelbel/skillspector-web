@@ -2,7 +2,7 @@ import type { LLMConfig } from '~~/shared/types/scan'
 
 export default defineEventHandler(async (event) => {
   await refuseBots(event)
-  const { target, llm } = await readBody<{ target?: string, llm?: LLMConfig }>(event)
+  const { target, llm, baseline } = await readBody<{ target?: string, llm?: LLMConfig, baseline?: string }>(event)
 
   if (!target || typeof target !== 'string') {
     throw createError({ statusCode: 400, statusMessage: 'Missing "target" in request body' })
@@ -20,7 +20,9 @@ export default defineEventHandler(async (event) => {
             base_url: llm.baseUrl,
             model: llm.model
           }
-        : null
+        : null,
+      // Checked by the API, which explains what's wrong with it.
+      baseline: typeof baseline === 'string' ? baseline : null
     },
     fallbackMessage: 'Failed to queue scan'
   })

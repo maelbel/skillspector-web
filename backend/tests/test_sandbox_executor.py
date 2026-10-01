@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_executor import (
     ANTHROPIC_HOST,
+    BASELINE_PATH,
     BLOCKED_SUBNETS,
     BROKERED_KEY_PLACEHOLDER,
     RUNNER_PATH,
@@ -92,7 +94,8 @@ class FakeSandbox:
 
     async def create_process(self, command, args, *, kill_after=None):
         self.commands.append((command, list(args), kill_after))
-        local_args = [str(self.root / Path(arg).name) if arg == RUNNER_PATH else arg for arg in args]
+        # Files uploaded to the sandbox live in root locally.
+        local_args = [str(self.root / Path(arg).name) if arg in self.fs.files else arg for arg in args]
         process = await asyncio.create_subprocess_exec(
             sys.executable, *local_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
         )
@@ -161,6 +164,26 @@ def test_a_sandboxed_scan_streams_logs_and_matches_an_in_process_scan(memory_log
     assert box.destroyed == {}
     assert box.fs.files[RUNNER_PATH].startswith('"""Run one skillspector scan')
     assert box.commands == [("python3", [RUNNER_PATH, str(skill_dir)], 240.0)]
+
+
+def test_a_baseline_from_a_scan_suppresses_its_findings_on_a_rescan(memory_logs, skill_dir, sandboxes):
+    created, create_sandbox = sandboxes
+    executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
+    first = anyio.run(lambda: executor.run("scan1", str(skill_dir), llm=None))
+    assert first["issues"]
+    baseline_path = skill_dir.parent / "baseline.json"
+    baseline_path.write_text(json.dumps(first["generated_baseline"]))
+
+    rescan = anyio.run(lambda: executor.run("scan2", str(skill_dir), llm=None, baseline=baseline_path.read_text()))
+
+    assert rescan["issues"] == []
+    assert rescan["suppressed_count"] == len(first["issues"])
+    assert rescan["risk_assessment"]["score"] == 0
+    # Uploaded next to the runner, and handed to it.
+    assert created[1].commands[0][1][-2:] == ["--baseline", BASELINE_PATH]
+    # The same in the API's own process.
+    local = scanner._invoke_graph("local", str(skill_dir), False, baseline_path.read_text())
+    assert local["issues"] == [] and local["suppressed_count"] == len(first["issues"])
 
 
 def test_the_sandbox_is_locked_down(memory_logs, skill_dir, sandboxes):
@@ -339,17 +362,18 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, llm):
-            calls.append((job_id, target, llm))
+        async def run(self, job_id, target, *, llm, baseline=None):
+            calls.append((job_id, target, llm, baseline))
             return {"risk_assessment": {"score": 1}, "issues": []}
 
     monkeypatch.setattr(scanner, "executor_kind", lambda settings: "sandbox")
     monkeypatch.setattr(scanner, "_sandbox_executor", lambda: Executor())
     db.insert_scan(id="a", target="https://github.com/acme/skill", status="pending", created_at=1.0, provider=None)
 
-    anyio.run(scanner.run_job, scanner.Job(id="a", target="https://github.com/acme/skill", llm=None))
+    job = scanner.Job(id="a", target="https://github.com/acme/skill", llm=None, baseline="version: 2")
+    anyio.run(scanner.run_job, job)
 
-    assert calls == [("a", "https://github.com/acme/skill", None)]
+    assert calls == [("a", "https://github.com/acme/skill", None, "version: 2")]
     assert db.get_scan("a")["status"] == "done"
 
 

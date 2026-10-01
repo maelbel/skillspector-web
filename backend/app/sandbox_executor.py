@@ -30,6 +30,7 @@ ExecutorKind = Literal["local", "sandbox"]
 
 RUNNER_SOURCE = (Path(__file__).parent / "sandbox_runner.py").read_text()
 RUNNER_PATH = "/vercel/sandbox/sandbox_runner.py"
+BASELINE_PATH = "/vercel/sandbox/baseline.yaml"
 
 # Where skillspector fetches targets from (see describeScanTarget in shared/utils/scan.ts),
 # including the hosts GitHub and Hugging Face redirect downloads to. TLS only: the allow-list
@@ -132,7 +133,7 @@ class SandboxExecutor:
             from vercel.sandbox import create_sandbox
         self._create_sandbox = create_sandbox
 
-    async def run(self, job_id: str, target: str, *, llm: LLMConfig | None) -> dict[str, Any]:
+    async def run(self, job_id: str, target: str, *, llm: LLMConfig | None, baseline: str | None = None) -> dict[str, Any]:
         if llm is not None and (llm.provider != "anthropic" or not llm.api_key):
             raise RuntimeError("AI review in the scan sandbox needs a Claude (Anthropic) key")
 
@@ -157,7 +158,9 @@ class SandboxExecutor:
                 destroy=False,
             ) as box:
                 await box.fs.write_text(RUNNER_PATH, RUNNER_SOURCE)
-                args = [RUNNER_PATH, target, *(["--llm"] if llm else [])]
+                if baseline is not None:
+                    await box.fs.write_text(BASELINE_PATH, baseline)
+                args = [RUNNER_PATH, target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
                 process = await box.create_process("python3", args, kill_after=limit)
                 report, error = await self._consume(job_id, process.stdout)
                 returncode = await process.wait()

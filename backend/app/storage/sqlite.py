@@ -183,6 +183,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN ai_cached_tokens INTEGER",
         ],
     ),
+    (
+        11,
+        [
+            # The baseline file a scan was started with (YAML or JSON text), so a queued scan can
+            # apply it wherever it runs. NULL for scans without one.
+            "ALTER TABLE scans ADD COLUMN baseline TEXT",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -246,10 +254,12 @@ class SQLiteStore:
         provider: str | None,
         owner_id: str | None = None,
         llm_model: str | None = None,
+        baseline: str | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider, owner_id, llm_model),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline),
         )
         self._conn.commit()
 

@@ -97,6 +97,62 @@ def test_a_scan_reports_its_ai_tokens(client):
     assert client.get("/scan/ai").json()["ai_tokens"] == {"input": 500, "output": 50, "cached": 100}
 
 
+BASELINE = """version: 2
+rules:
+  - id: "TR3"
+    reason: "Accepted: the skill documents this"
+"""
+
+
+def test_a_scan_keeps_its_baseline(client):
+    scan_id = client.post("/scan", json={"target": "https://example.com/skill.zip", "baseline": BASELINE}).json()["id"]
+
+    assert db.get_scan(scan_id)["baseline"] == BASELINE
+
+
+@pytest.mark.parametrize(
+    ("baseline", "message"),
+    [
+        ("version: 2\nfingerprints:\n  - hash: nope\n", "Couldn't use the baseline file"),
+        ("[unclosed", "Couldn't use the baseline file"),
+        ("x" * (256 * 1024 + 1), "larger than 256 KB"),
+    ],
+    ids=["invalid-fingerprint", "not-yaml", "too-large"],
+)
+def test_a_bad_baseline_is_refused_before_the_scan_is_queued(client, baseline, message):
+    response = client.post("/scan", json={"target": "https://example.com/skill.zip", "baseline": baseline})
+
+    assert response.status_code == 422
+    assert message in str(response.json()["detail"])
+    assert "/tmp/" not in str(response.json()["detail"])
+    assert db.list_scans(10, 0)[1] == 0
+
+
+def test_a_scans_baseline_downloads_with_the_reason_given(client):
+    _insert("b", created_at=1.0)
+    generated = {
+        "version": 2,
+        "scanner_version": "2.12.0",
+        "rules": [],
+        "fingerprints": [{"hash": "sha256:" + "a" * 64, "rule_id": "TR3", "file": "SKILL.md", "reason": "Accepted finding (auto-generated baseline)"}],
+    }
+    db.update_scan(id="b", status="done", finished_at=2.0, result={"issues": [], "generated_baseline": generated}, error=None)
+
+    body = client.get("/scan/b/baseline", params={"reason": "Reviewed by the security team"}).json()
+
+    assert body["filename"] == ".skillspector-baseline.yaml"
+    assert "sha256:" + "a" * 64 in body["content"]
+    assert "Reviewed by the security team" in body["content"]
+    assert "auto-generated" not in body["content"]
+
+
+def test_a_scan_without_findings_has_no_baseline(client):
+    _insert("c", created_at=1.0)
+    db.update_scan(id="c", status="done", finished_at=2.0, result={"issues": []}, error=None)
+
+    assert client.get("/scan/c/baseline").status_code == 404
+
+
 def test_unknown_scan_is_404_for_read_and_delete(client):
     assert client.get("/scan/missing").status_code == 404
     assert client.delete("/scan/missing").status_code == 404

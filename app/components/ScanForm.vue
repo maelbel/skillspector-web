@@ -214,6 +214,27 @@ const baseUrlPlaceholder = computed(() => {
   }
 })
 
+// An optional skillspector baseline: findings it accepts don't count. Read in the browser and sent
+// as text; the API checks it before queueing the scan.
+const MAX_BASELINE_BYTES = 256 * 1024
+const baselineInput = ref<HTMLInputElement>()
+const baseline = ref<{ name: string, text: string } | null>(null)
+const baselineError = ref('')
+
+async function pickBaseline(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  baselineError.value = ''
+  if (!file) return
+  if (file.size > MAX_BASELINE_BYTES) {
+    baselineError.value = `${file.name} is larger than ${MAX_BASELINE_BYTES / 1024} KB`
+    baseline.value = null
+  } else {
+    baseline.value = { name: file.name, text: await file.text() }
+  }
+  // Picking the same file again still fires a change.
+  if (baselineInput.value) baselineInput.value.value = ''
+}
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -234,7 +255,7 @@ async function submit() {
   try {
     const { id } = await $fetch<{ id: string }>('/api/scan', {
       method: 'POST',
-      body: { target: target.value.trim(), llm }
+      body: { target: target.value.trim(), llm, baseline: baseline.value?.text }
     })
     savePrefs()
     await navigateTo(`/scan/${id}`)
@@ -500,6 +521,55 @@ async function submit() {
         </UCollapsible>
       </div>
     </Transition>
+
+    <div class="flex flex-col gap-1.5">
+      <p class="font-semibold text-highlighted">
+        Baseline <span class="font-normal text-muted">(optional)</span>
+      </p>
+      <p class="text-sm text-muted">
+        A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
+        suppressed and don’t count towards the score. Download one from a scan’s result page.
+      </p>
+      <div class="mt-1 flex flex-wrap items-center gap-2">
+        <input
+          ref="baselineInput"
+          type="file"
+          accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
+          class="sr-only"
+          aria-label="Baseline file"
+          :disabled="submitting"
+          @change="pickBaseline"
+        >
+        <UButton
+          :label="baseline ? 'Replace file' : 'Choose a file'"
+          icon="i-lucide-file-check"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          class="rounded-xs"
+          :disabled="submitting"
+          @click="baselineInput?.click()"
+        />
+        <template v-if="baseline">
+          <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
+          <UButton
+            icon="i-lucide-x"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            aria-label="Remove the baseline"
+            :disabled="submitting"
+            @click="baseline = null"
+          />
+        </template>
+      </div>
+      <p
+        v-if="baselineError"
+        class="text-sm text-critical-ink"
+      >
+        {{ baselineError }}
+      </p>
+    </div>
 
     <UAlert
       v-if="errorMessage"

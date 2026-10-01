@@ -78,6 +78,14 @@ export interface AnalysisCompleteness {
   ledger_exceptions?: LedgerException[]
 }
 
+// A finding a baseline accepted: listed, but not counted in the score.
+export type SuppressedFinding = Finding & { suppression_reason: string }
+
+export interface BaselineDownload {
+  filename: string
+  content: string
+}
+
 export interface ScanReport {
   skill: {
     name: string
@@ -96,6 +104,10 @@ export interface ScanReport {
   // Missing from reports stored before skillspector added them.
   metadata?: ReportMetadata
   analysis_completeness?: AnalysisCompleteness
+  suppressed?: SuppressedFinding[]
+  // A baseline accepting every active finding, made during the scan (app/sandbox_runner.py). Absent
+  // without findings, and for scans from before it existed.
+  generated_baseline?: Record<string, unknown>
 }
 
 export interface ScanStatus {

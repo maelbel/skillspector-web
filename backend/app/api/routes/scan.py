@@ -1,7 +1,10 @@
+import os
+import tempfile
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
+from skillspector.suppression import dump_baseline
 
 from app import claude_key, db, quotas, rate_limit
 from app.ai_review import AIReview, ai_review_status
@@ -11,6 +14,7 @@ from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
 from app.core.mode import Mode
 from app.jobs import JobRejectedError, get_runner
+from app.sandbox_runner import baseline_state
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
@@ -39,9 +43,33 @@ def _rate_limit_scan(request: Request, viewer: CurrentViewer) -> None:
         rate_limit.enforce(f"scan:ip:{address}", settings.scan_ip_rate_limit, window, "Too many scans from this address")
 
 
+# Well under skillspector's own limit (2 MB): the file is stored with the scan, and each accepted
+# finding is a few lines.
+MAX_BASELINE_BYTES = 256 * 1024
+
+
+def check_baseline(text: str) -> None:
+    """Refuse a baseline skillspector wouldn't load, with its reason, before the scan is queued."""
+    if len(text.encode()) > MAX_BASELINE_BYTES:
+        raise HTTPException(status_code=422, detail=f"The baseline file is larger than {MAX_BASELINE_BYTES // 1024} KB")
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as file:
+        file.write(text)
+    try:
+        baseline_state(file.name)
+    except ValueError as exc:
+        # skillspector's messages name the file: here, a temporary one.
+        reason = str(exc).replace(f": {file.name}", "").replace(file.name, "the file")
+        raise HTTPException(status_code=422, detail=f"Couldn't use the baseline file: {reason}") from exc
+    finally:
+        os.unlink(file.name)
+
+
 class ScanRequest(BaseModel):
     target: str
     llm: LLMConfig | None = None
+    # A skillspector baseline file's text (YAML or JSON): the findings it accepts are suppressed.
+    # Its size is checked by check_baseline, for a readable error.
+    baseline: str | None = None
 
     @field_validator("target")
     @classmethod
@@ -111,6 +139,15 @@ class ScanLogsResponse(BaseModel):
     lines: list[str]
 
 
+# The name skillspector looks for in a skill, and writes by default.
+SHIPPED_NAME = ".skillspector-baseline.yaml"
+
+
+class BaselineResponse(BaseModel):
+    filename: str
+    content: str
+
+
 def _to_response(job: Job) -> ScanStatusResponse:
     completed_steps = TOTAL_GRAPH_STEPS if job.status == JobStatus.DONE else get_progress(job.id)
     return ScanStatusResponse(
@@ -151,6 +188,8 @@ def _resolve_llm(llm: LLMConfig | None, viewer: Viewer) -> LLMConfig | None:
 async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedResponse:
     limits = quotas.current()
     quotas.ensure_not_paused(limits)
+    if req.baseline is not None:
+        check_baseline(req.baseline)
     llm = _resolve_llm(req.llm, viewer)
     runner = get_runner()
     try:
@@ -161,7 +200,7 @@ async def start_scan(req: ScanRequest, viewer: CurrentViewer) -> ScanQueuedRespo
         raise HTTPException(status_code=503, detail="The scan queue is full — try again in a few minutes")
     # Last, so a scan refused for any other reason doesn't count towards today's quota.
     quotas.enforce(viewer, limits)
-    job = create_job(req.target, llm, owner_id=viewer.user_id)
+    job = create_job(req.target, llm, owner_id=viewer.user_id, baseline=req.baseline)
     try:
         await runner.submit(job)
     except Exception as exc:
@@ -213,6 +252,29 @@ async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
     return _to_response(job)
+
+
+@router.get("/{job_id}/baseline", response_model=BaselineResponse)
+def read_scan_baseline(
+    job_id: str,
+    viewer: CurrentViewer,
+    reason: str | None = Query(default=None, max_length=500),
+) -> BaselineResponse:
+    """A baseline accepting every active finding of the scan, made while it ran (app/sandbox_runner.py)."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    baseline = ((scan or {}).get("result") or {}).get("generated_baseline")
+    if not baseline:
+        raise HTTPException(status_code=404, detail="This scan has no baseline to download")
+    if reason and reason.strip():
+        baseline = {**baseline, "fingerprints": [{**entry, "reason": reason.strip()} for entry in baseline["fingerprints"]]}
+    # Written by skillspector itself, header included, as `skillspector baseline` would.
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, SHIPPED_NAME)
+        dump_baseline(baseline, path)
+        with open(path, encoding="utf-8") as file:
+            content = file.read()
+    return BaselineResponse(filename=SHIPPED_NAME, content=content)
 
 
 @router.get("/{job_id}/logs", response_model=ScanLogsResponse)
