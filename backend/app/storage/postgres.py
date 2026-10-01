@@ -174,6 +174,17 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN ai_review TEXT",
         ],
     ),
+    (
+        10,
+        [
+            # Tokens the scan's AI review used, as the provider reported them (app/ai_usage.py).
+            # NULL for static scans, for counters a provider didn't report, and for scans
+            # finished before these columns existed.
+            "ALTER TABLE scans ADD COLUMN ai_input_tokens INTEGER",
+            "ALTER TABLE scans ADD COLUMN ai_output_tokens INTEGER",
+            "ALTER TABLE scans ADD COLUMN ai_cached_tokens INTEGER",
+        ],
+    ),
 ]
 
 
@@ -248,7 +259,8 @@ class PostgresStore:
             """
             UPDATE scans
             SET status = %s, finished_at = %s, result = %s, error = %s,
-                risk_score = %s, severity = %s, recommendation = %s, ai_review = %s
+                risk_score = %s, severity = %s, recommendation = %s, ai_review = %s,
+                ai_input_tokens = %s, ai_output_tokens = %s, ai_cached_tokens = %s
             WHERE id = %s
             """,
             (
@@ -273,6 +285,18 @@ class PostgresStore:
         with self._pool.connection() as conn:
             row = conn.execute(query, params).fetchone()
         return row["active"]
+
+    def ai_token_totals(self, *, since: float, owner_id: str | None = None) -> dict[str, int]:
+        where, params = (" AND owner_id = %s", (owner_id,)) if owner_id is not None else ("", ())
+        query = f"""
+            SELECT COUNT(ai_input_tokens) AS scans, COALESCE(SUM(ai_input_tokens), 0) AS input_tokens,
+                   COALESCE(SUM(ai_output_tokens), 0) AS output_tokens, COALESCE(SUM(ai_cached_tokens), 0) AS cached_tokens
+            FROM scans WHERE created_at >= %s{where}
+        """
+        with self._pool.connection() as conn:
+            row = conn.execute(query, (since, *params)).fetchone()
+        # SUM over BIGINT is NUMERIC in Postgres.
+        return {key: int(value) for key, value in row.items()}
 
     def get_scan(self, id: str) -> ScanRow | None:
         with self._pool.connection() as conn:

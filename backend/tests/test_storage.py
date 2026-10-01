@@ -23,6 +23,18 @@ def test_result_round_trips_as_a_dict(temp_db):
     assert scan["ai_review"] is None
 
 
+def test_ai_tokens_are_added_up_per_owner_and_period(temp_db):
+    usage = [{"node": "meta_analyzer", "prompt_tokens": 1000, "completion_tokens": 100, "cached_tokens": 400}]
+    report = {"risk_assessment": {}, "metadata": {"llm_requested": True, "inference_usage": usage}}
+    for scan_id, owner, created_at in (("old", "alice", 1.0), ("new", "alice", 10.0), ("bob", "bob", 10.0), ("static", "alice", 10.0)):
+        db.insert_scan(id=scan_id, target="t", status="running", created_at=created_at, provider=None, owner_id=owner)
+        db.update_scan(id=scan_id, status="done", finished_at=created_at, result=None if scan_id == "static" else report, error=None)
+
+    assert db.ai_token_totals(since=5.0, owner_id="alice") == {"scans": 1, "input_tokens": 1000, "output_tokens": 100, "cached_tokens": 400}
+    assert db.ai_token_totals(since=0.0)["scans"] == 3
+    assert db.ai_token_totals(since=5.0, owner_id="nobody") == {"scans": 0, "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0}
+
+
 def test_history_records_whether_the_ai_review_ran(temp_db):
     report = {"risk_assessment": {}, "metadata": {"llm_requested": True, "llm_calls_succeeded": 0, "llm_error": "bad key"}}
     db.insert_scan(id="a", target="t", status="pending", created_at=1.0, provider="anthropic")

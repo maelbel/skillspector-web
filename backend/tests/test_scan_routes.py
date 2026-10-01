@@ -84,7 +84,17 @@ def test_a_failed_ai_review_is_reported_on_the_scan_and_in_history(client):
     db.update_scan(id="ai", status="done", finished_at=2.0, result=report, error=None)
 
     assert client.get("/scan/ai").json()["ai_review"] == "failed"
+    assert client.get("/scan/ai").json()["ai_tokens"] is None
     assert client.get("/scan").json()["items"][0]["ai_review"] == "failed"
+
+
+def test_a_scan_reports_its_ai_tokens(client):
+    _insert("ai", created_at=1.0)
+    usage = [{"node": "meta_analyzer", "prompt_tokens": 500, "completion_tokens": 50, "cached_tokens": 100}]
+    report = {"risk_assessment": {}, "metadata": {"llm_requested": True, "inference_usage": usage}}
+    db.update_scan(id="ai", status="done", finished_at=2.0, result=report, error=None)
+
+    assert client.get("/scan/ai").json()["ai_tokens"] == {"input": 500, "output": 50, "cached": 100}
 
 
 def test_unknown_scan_is_404_for_read_and_delete(client):

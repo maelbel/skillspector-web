@@ -1,3 +1,4 @@
+import type { AIUsage } from './settings'
 import type { Recommendation } from './scan'
 import type { User } from './auth'
 
@@ -27,6 +28,7 @@ export interface UserDetail {
     risk_score: number | null
   }[]
   activity: ActivityEntry[]
+  ai_usage: AIUsage
 }
 
 export interface Overview {

@@ -309,6 +309,13 @@ async function deleteUser() {
           >
             Recent scans
           </h2>
+          <p
+            v-if="data.ai_usage.scans"
+            class="text-sm text-muted"
+          >
+            AI review used {{ formatTokenUsage({ input: data.ai_usage.input_tokens, output: data.ai_usage.output_tokens, cached: data.ai_usage.cached_tokens }) }}
+            tokens across {{ data.ai_usage.scans }} scan{{ data.ai_usage.scans === 1 ? '' : 's' }} in the last {{ data.ai_usage.days }} days.
+          </p>
           <ul
             v-if="data.recent_scans.length"
             class="divide-y divide-default"

@@ -11,11 +11,13 @@ const limits = computed(() => {
     { label: 'Scans in progress', used: value.active_scans, limit: value.concurrent_scan_quota }
   ].filter(row => row.limit !== null) as { label: string, used: number, limit: number }[]
 })
+
+const aiUsage = computed(() => usage.value?.ai_usage.scans ? usage.value.ai_usage : null)
 </script>
 
 <template>
   <UCard
-    v-if="usage && (usage.scans_paused || limits.length)"
+    v-if="usage && (usage.scans_paused || limits.length || aiUsage)"
     :ui="{ root: 'rounded-xs', body: 'p-5 sm:p-6' }"
   >
     <div class="flex flex-col gap-4">
@@ -23,7 +25,10 @@ const limits = computed(() => {
         <h2 class="text-lg font-semibold tracking-tight text-highlighted">
           Usage
         </h2>
-        <p class="mt-1 text-sm text-muted">
+        <p
+          v-if="limits.length"
+          class="mt-1 text-sm text-muted"
+        >
           How many scans you can start on this server. Deleting a scan doesn't give it back.
         </p>
       </div>
@@ -52,6 +57,20 @@ const limits = computed(() => {
           :color="row.used >= row.limit ? 'warning' : 'neutral'"
           size="sm"
         />
+      </div>
+
+      <div
+        v-if="aiUsage"
+        class="flex flex-col gap-0.5 text-sm"
+      >
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-default">AI review tokens, last {{ aiUsage.days }} days</span>
+          <span class="font-mono text-xs text-muted tabular-nums">{{ aiUsage.scans }} scan{{ aiUsage.scans === 1 ? '' : 's' }}</span>
+        </div>
+        <p class="text-muted">
+          {{ formatTokenUsage({ input: aiUsage.input_tokens, output: aiUsage.output_tokens, cached: aiUsage.cached_tokens }) }},
+          as your AI provider reported them. Deleted scans aren't counted.
+        </p>
       </div>
     </div>
   </UCard>

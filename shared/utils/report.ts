@@ -67,6 +67,21 @@ export function formatDuration(seconds: number): string {
   return rest ? `${minutes} min ${rest} s` : `${minutes} min`
 }
 
+/** 950 → "950", 48_200 → "48.2k", 1_250_000 → "1.25M". */
+export function formatTokens(count: number): string {
+  if (count < 1000) return String(count)
+  if (count < 1_000_000) return `${Number((count / 1000).toPrecision(3))}k`
+  return `${Number((count / 1_000_000).toPrecision(3))}M`
+}
+
+/** "48.2k input (12.1k cached) · 3.4k output", leaving out counters nobody reported. */
+export function formatTokenUsage(tokens: { input: number | null, output: number | null, cached: number | null }): string {
+  const parts = []
+  if (tokens.input !== null) parts.push(`${formatTokens(tokens.input)} input${tokens.cached ? ` (${formatTokens(tokens.cached)} cached)` : ''}`)
+  if (tokens.output !== null) parts.push(`${formatTokens(tokens.output)} output`)
+  return parts.join(' · ')
+}
+
 /** The models the AI review used, as skillspector recorded them, without repeats. */
 export function aiReviewModels(report: ScanReport): string[] {
   const analyzers = report.metadata?.llm_provenance?.analyzers ?? []

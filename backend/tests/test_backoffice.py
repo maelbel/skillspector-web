@@ -196,6 +196,7 @@ def test_a_user_page_shows_their_recent_scans_and_history(client):
     assert [s["id"] for s in detail["recent_scans"]] == [scan_id]
     assert [a["action"] for a in detail["activity"]] == ["user.role_changed", "account.created"]
     assert detail["activity"][0]["detail"] == "user → admin"
+    assert detail["ai_usage"] == {"days": 30, "scans": 0, "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0}
     assert client.get("/admin/users/nobody", headers=_bearer(admin)).status_code == 404
 
 

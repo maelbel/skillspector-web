@@ -18,4 +18,16 @@ export interface UsageResponse {
   daily_scan_quota: number | null
   active_scans: number
   concurrent_scan_quota: number | null
+  // Everyone's, without accounts.
+  ai_usage: AIUsage
+}
+
+// AI tokens over the last `days` days, from scans still in history.
+export interface AIUsage {
+  days: number
+  // Scans with AI usage recorded.
+  scans: number
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
 }

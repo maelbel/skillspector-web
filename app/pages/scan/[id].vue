@@ -273,6 +273,12 @@ const errorMessage = computed(() => {
             </button>
           </template>
         </p>
+        <p
+          v-if="status.ai_tokens"
+          class="text-sm text-muted"
+        >
+          AI review used {{ formatTokenUsage(status.ai_tokens) }} tokens
+        </p>
       </VerdictPanel>
 
       <ScanLogPanel

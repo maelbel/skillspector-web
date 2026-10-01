@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app import auth, db
+from app.api.routes.account import AIUsage, ai_usage
 from app.api.routes.auth import UserResponse
 from app.auth.deps import AdminViewer
 
@@ -47,6 +48,7 @@ class UserDetail(BaseModel):
     user: DirectoryUser
     recent_scans: list[RecentScan]
     activity: list[ActivityEntry]
+    ai_usage: AIUsage
 
 
 class CreateUserRequest(BaseModel):
@@ -88,6 +90,7 @@ def read_user(user_id: str, viewer: AdminViewer) -> UserDetail:
         user=DirectoryUser(**user),
         recent_scans=[RecentScan(**scan) for scan in scans],
         activity=[ActivityEntry(**entry) for entry in activity],
+        ai_usage=ai_usage(user_id),
     )
 
 

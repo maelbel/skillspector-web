@@ -107,8 +107,17 @@ export interface ScanStatus {
   result: ScanReport | null
   error: string | null
   ai_review: AIReview | null
+  ai_tokens: AITokens | null
   completed_steps: number
   total_steps: number
+}
+
+// Tokens a scan's AI review used, as the provider reported them; null for counters it didn't report.
+// `input` includes `cached`.
+export interface AITokens {
+  input: number | null
+  output: number | null
+  cached: number | null
 }
 
 export interface ScanSummary {
