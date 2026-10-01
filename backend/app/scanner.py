@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import json
 import os
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator
@@ -18,6 +18,7 @@ from skillspector.graph import graph
 from app import db, scan_logs
 from app.core.config import get_settings
 from app.sandbox_executor import SandboxExecutor, executor_kind
+from app.sandbox_runner import baseline_state, scan_report
 
 TOTAL_GRAPH_STEPS = len([n for n in graph.get_graph().nodes if n not in ("__start__", "__end__")])
 
@@ -65,6 +66,8 @@ class Job:
     id: str
     target: str
     llm: LLMConfig | None
+    # A baseline file's text (YAML or JSON): findings it accepts are suppressed.
+    baseline: str | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -81,8 +84,8 @@ def _sandbox_executor() -> SandboxExecutor:
 _llm_lock = asyncio.Lock()
 
 
-def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = None) -> Job:
-    job = Job(id=uuid.uuid4().hex, target=target, llm=llm)
+def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = None, baseline: str | None = None) -> Job:
+    job = Job(id=uuid.uuid4().hex, target=target, llm=llm, baseline=baseline)
     db.insert_scan(
         id=job.id,
         target=job.target,
@@ -91,6 +94,7 @@ def create_job(target: str, llm: LLMConfig | None, *, owner_id: str | None = Non
         provider=llm.provider if llm else None,
         owner_id=owner_id,
         llm_model=llm.model if llm else None,
+        baseline=baseline,
     )
     return job
 
@@ -132,13 +136,13 @@ async def run_job(job: Job) -> None:
     loop = asyncio.get_running_loop()
     try:
         if executor_kind(get_settings()) == "sandbox":
-            job.result = await _sandbox_executor().run(job.id, job.target, llm=job.llm)
+            job.result = await _sandbox_executor().run(job.id, job.target, llm=job.llm, baseline=job.baseline)
         elif job.llm is not None:
             async with _llm_lock:
                 with _llm_env(job.llm):
-                    job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True)
+                    job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, True, job.baseline)
         else:
-            job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False)
+            job.result = await loop.run_in_executor(None, _invoke_graph, job.id, job.target, False, job.baseline)
         job.status = JobStatus.DONE
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)
@@ -182,14 +186,21 @@ def _llm_env(config: LLMConfig) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _invoke_graph(job_id: str, target: str, use_llm: bool) -> dict[str, Any]:
+def _invoke_graph(job_id: str, target: str, use_llm: bool, baseline: str | None = None) -> dict[str, Any]:
     scan_logs.start_capture(job_id)
     scan_logs.append(job_id, f"Starting scan of {target}")
+    baseline_file = None
     try:
+        if baseline is not None:
+            # skillspector loads baselines from a file.
+            baseline_file = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)  # noqa: SIM115
+            with baseline_file:
+                baseline_file.write(baseline)
         state: dict[str, Any] = {
             "input_path": target,
             "output_format": "json",
             "use_llm": use_llm,
+            **baseline_state(baseline_file.name if baseline_file else None),
         }
         config = {
             "run_name": "skillspector-web-scan",
@@ -209,7 +220,8 @@ def _invoke_graph(job_id: str, target: str, use_llm: bool) -> dict[str, Any]:
             scan_logs.append(job_id, f"Scan failed: {exc}")
             raise
         scan_logs.append(job_id, "Scan complete")
-        report_body = (final_state or {}).get("report_body") or "{}"
-        return json.loads(report_body)
+        return scan_report(final_state)
     finally:
         scan_logs.stop_capture()
+        if baseline_file is not None:
+            os.unlink(baseline_file.name)

@@ -27,6 +27,7 @@ class ScanStore(Protocol):
         provider: str | None,
         owner_id: str | None = None,
         llm_model: str | None = None,
+        baseline: str | None = None,
     ) -> None: ...
 
     def update_scan(

@@ -185,6 +185,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN ai_cached_tokens INTEGER",
         ],
     ),
+    (
+        11,
+        [
+            # The baseline file a scan was started with (YAML or JSON text), so a queued scan can
+            # apply it wherever it runs. NULL for scans without one.
+            "ALTER TABLE scans ADD COLUMN baseline TEXT",
+        ],
+    ),
 ]
 
 
@@ -240,10 +248,12 @@ class PostgresStore:
         provider: str | None,
         owner_id: str | None = None,
         llm_model: str | None = None,
+        baseline: str | None = None,
     ) -> None:
         self._execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (id, target, status, created_at, provider, owner_id, llm_model),
+            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (id, target, status, created_at, provider, owner_id, llm_model, baseline),
         )
 
     def update_scan(

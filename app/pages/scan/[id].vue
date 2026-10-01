@@ -447,16 +447,14 @@ const errorMessage = computed(() => {
             title="No findings match your filters"
             :actions="[{ label: 'Show all', color: 'neutral', variant: 'outline', onClick: clearFilters }]"
           />
-
-          <p
-            v-if="status.result.suppressed_count > 0"
-            class="text-sm text-muted"
-          >
-            {{ status.result.suppressed_count }} more finding{{ status.result.suppressed_count === 1 ? '' : 's' }}
-            suppressed by baseline.
-          </p>
         </section>
       </div>
+
+      <BaselinePanel
+        v-if="status.result.suppressed?.length || status.result.generated_baseline"
+        :scan-id="id"
+        :report="status.result"
+      />
     </template>
   </UContainer>
 </template>

@@ -44,6 +44,7 @@ def insert_scan(
     provider: str | None,
     owner_id: str | None = None,
     llm_model: str | None = None,
+    baseline: str | None = None,
 ) -> None:
     _store_or_raise().insert_scan(
         id=id,
@@ -53,6 +54,7 @@ def insert_scan(
         provider=provider,
         owner_id=owner_id,
         llm_model=llm_model,
+        baseline=baseline,
     )
 
 
