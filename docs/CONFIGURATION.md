@@ -26,7 +26,7 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `RATE_LIMIT_STORE` | *by mode* | Where rate limits count requests: `memory` (the `self_hosted` default: this process only) or `database` (the `hosted` default: the scan database, so every instance enforces the same limits). |
 | `SCAN_EXECUTOR` | *by mode* | Where a scan's fetch and analysis happen: `local` (the `self_hosted` default: inside the API) or `sandbox` (the `hosted` default: a fresh Vercel Sandbox microVM per scan). |
 | `SANDBOX_SNAPSHOT_ID` | *unset* | Snapshot sandboxed scans boot from, with skillspector preinstalled. Build it with `uv run python -m app.sandbox_snapshot` (needs Vercel credentials). Required with `SCAN_EXECUTOR=sandbox`. |
-| `SANDBOX_VCPUS`<br>`SANDBOX_TIMEOUT_SECONDS` | `2`<br>`240` | vCPUs per scan sandbox, and how long a sandboxed scan may run before it's stopped and reported as timed out. |
+| `SANDBOX_VCPUS`<br>`SANDBOX_TIMEOUT_SECONDS` | `2`<br>`240` | vCPUs per scan sandbox, and how long a sandboxed scan may run before it's stopped and reported as timed out. skillspector's own analysis deadline is set 30 seconds shorter, so a slow scan ends with a partial report instead of being stopped. |
 | `MAX_CONCURRENT_SCANS` | `2` | Scans running at once. Scans with AI analysis also run one at a time. |
 | `MAX_QUEUED_SCANS` | `20` | Running + waiting scans; beyond this, new scans get `503`. |
 | `SCAN_RATE_LIMIT`<br>`SCAN_RATE_LIMIT_WINDOW_SECONDS` | `5`<br>`60` | Scans allowed per signed-in user (per client IP with `AUTH=none`) within the window. |

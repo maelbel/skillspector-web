@@ -19,6 +19,7 @@ from app.sandbox_executor import (
     SCAN_HOSTS,
     SandboxExecutor,
     executor_kind,
+    workflow_deadline,
 )
 from app.sandbox_runner import PREFIX
 from app.sandbox_snapshot import skillspector_requirement
@@ -264,7 +265,12 @@ def test_ai_review_brokers_the_key_at_the_firewall(memory_logs, skill_dir, sandb
     rule = next(iter(policy[ANTHROPIC_HOST]))
     assert dict(next(iter(rule.transform)).headers) == {"x-api-key": "sk-ant-real-secret-key-123"}
     env = box.options["env"]
-    assert env == {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER, "SKILLSPECTOR_MODEL": "claude-sonnet-5"}
+    assert env == {
+        "SKILLSPECTOR_MAX_WORKFLOW_SECONDS": "210",
+        "SKILLSPECTOR_PROVIDER": "anthropic",
+        "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER,
+        "SKILLSPECTOR_MODEL": "claude-sonnet-5",
+    }
     assert "sk-ant-real" not in " ".join(box.fs.files.values())
     assert box.commands[0][1][-1] == "--llm"
 
@@ -275,7 +281,13 @@ def test_static_scans_never_reach_anthropic(memory_logs, skill_dir, sandboxes):
     anyio.run(lambda: SandboxExecutor(_settings(), create_sandbox=create_sandbox).run("s", str(skill_dir), llm=None))
 
     assert ANTHROPIC_HOST not in dict(created[0].options["network_policy"].allow)
-    assert created[0].options["env"] is None
+    assert created[0].options["env"] == {"SKILLSPECTOR_MAX_WORKFLOW_SECONDS": "210"}
+
+
+@pytest.mark.parametrize(("limit", "deadline"), [(240, 210), (600, 570), (40, 20)])
+def test_skillspector_stops_before_the_sandbox_kills_the_scan(limit, deadline):
+    # A partial report beats a killed scan: skillspector's own deadline ends first.
+    assert workflow_deadline(limit) == deadline
 
 
 def test_only_claude_runs_in_the_sandbox(memory_logs, sandboxes):

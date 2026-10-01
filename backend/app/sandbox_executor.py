@@ -85,13 +85,27 @@ def scan_network_policy(api_key: str | None = None) -> Any:
     return NetworkPolicy.custom(allow=allow, subnets=NetworkPolicySubnets(deny=list(BLOCKED_SUBNETS)))
 
 
-def _llm_env(llm: LLMConfig | None) -> dict[str, str] | None:
-    """Provider settings for skillspector inside the VM: everything but the key itself."""
-    if llm is None:
-        return None
-    env = {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER}
-    if llm.model:
-        env["SKILLSPECTOR_MODEL"] = llm.model
+# Time skillspector keeps after its own deadline to score and write the report, before the sandbox
+# kills the scan.
+REPORT_HEADROOM_SECONDS = 30.0
+
+
+def workflow_deadline(limit: float) -> float:
+    """skillspector's analysis deadline for a scan the sandbox kills after `limit` seconds.
+
+    skillspector's default (600 s) is longer than the sandbox's limit, so without this a slow scan
+    is killed with no report, instead of ending with a partial one.
+    """
+    return max(limit - REPORT_HEADROOM_SECONDS, limit / 2)
+
+
+def _scan_env(llm: LLMConfig | None, limit: float) -> dict[str, str]:
+    """skillspector's settings inside the VM; for AI review, the provider's but never the key."""
+    env = {"SKILLSPECTOR_MAX_WORKFLOW_SECONDS": f"{workflow_deadline(limit):g}"}
+    if llm is not None:
+        env |= {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER}
+        if llm.model:
+            env["SKILLSPECTOR_MODEL"] = llm.model
     return env
 
 
@@ -133,7 +147,7 @@ class SandboxExecutor:
                 execution_time_limit=limit + 60,
                 persistent=False,
                 network_policy=scan_network_policy(llm.api_key if llm else None),
-                env=_llm_env(llm),
+                env=_scan_env(llm, limit),
                 tags={"app": "skillspector-web", "scan": job_id},
                 destroy=False,
             ) as box:

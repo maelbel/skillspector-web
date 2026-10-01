@@ -1443,8 +1443,8 @@ wheels = [
 
 [[package]]
 name = "skillspector"
-version = "2.11.0"
-source = { git = "https://github.com/NVIDIA/skillspector.git?rev=7805bb94843d91cb9937f57264ca52642164499b#7805bb94843d91cb9937f57264ca52642164499b" }
+version = "2.12.0"
+source = { git = "https://github.com/NVIDIA/skillspector.git?rev=c7958a3268d9498644b22edb75d0f051bbc8cbfc#c7958a3268d9498644b22edb75d0f051bbc8cbfc" }
 dependencies = [
     { name = "boto3" },
     { name = "httpx" },
@@ -1494,7 +1494,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
-    { name = "skillspector", git = "https://github.com/NVIDIA/skillspector.git?rev=7805bb94843d91cb9937f57264ca52642164499b" },
+    { name = "skillspector", git = "https://github.com/NVIDIA/skillspector.git?rev=c7958a3268d9498644b22edb75d0f051bbc8cbfc" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "vercel-queue", specifier = ">=0.1" },
     { name = "vercel-sandbox", specifier = ">=0.7" },
