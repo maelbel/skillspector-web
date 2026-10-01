@@ -31,13 +31,22 @@ class JobStatus(StrEnum):
     ERROR = "error"
 
 
-LLMProvider = Literal["anthropic", "openai", "ollama", "claude_cli"]
+LLMProvider = Literal["anthropic", "openai", "azure_openai", "openai_compatible", "nv_build", "ollama", "claude_cli"]
 
 _NO_API_KEY_PROVIDERS = {"ollama", "claude_cli"}
+# Providers that only work with an endpoint of the user's: an Azure resource, or any
+# OpenAI-compatible API (Groq, Together, Mistral, a gateway…).
+NEEDS_BASE_URL = {"azure_openai", "openai_compatible"}
 
+# The variables skillspector reads each provider's key and endpoint from (skillspector/providers/).
 _PROVIDER_ENV_VARS: dict[LLMProvider, tuple[str | None, str | None]] = {
     "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
     "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL"),
+    # The model is the Azure deployment's name.
+    "azure_openai": ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"),
+    "openai_compatible": ("SKILLSPECTOR_COMPAT_API_KEY", "SKILLSPECTOR_COMPAT_BASE_URL"),
+    # build.nvidia.com; its endpoint is fixed.
+    "nv_build": ("NVIDIA_INFERENCE_KEY", None),
     "ollama": (None, "OLLAMA_BASE_URL"),
     "claude_cli": (None, None),
 }
@@ -59,6 +68,8 @@ class LLMConfig(BaseModel):
             return self
         if self.provider not in _NO_API_KEY_PROVIDERS and not (self.api_key and self.api_key.strip()):
             raise ValueError(f"{self.provider} requires an api_key")
+        if self.provider in NEEDS_BASE_URL and not (self.base_url and self.base_url.strip()):
+            raise ValueError(f"{self.provider} requires a base_url (its endpoint)")
         return self
 
 
