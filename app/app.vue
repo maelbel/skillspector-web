@@ -41,7 +41,7 @@ const accountMenu = computed(() => [
         colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
       }
     },
-    { label: 'Change password', icon: 'i-lucide-key-round', to: '/account' },
+    { label: 'Account', icon: 'i-lucide-user-round', to: '/account' },
     { label: 'Sign out', icon: 'i-lucide-log-out', onSelect: signOut }
   ]
 ])
