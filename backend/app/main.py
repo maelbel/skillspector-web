@@ -30,6 +30,7 @@ from app.core.config import get_settings
 from app.core.mode import Mode, check_mode
 from app.db import init_db
 from app.jobs import get_runner
+from app.models import model_catalog
 from app.scan_logs import init_logging
 
 settings = get_settings()
@@ -80,6 +81,12 @@ app.include_router(scan.router)
 app.include_router(admin.router)
 app.include_router(settings_routes.router)
 app.include_router(internal.router)
+
+
+@app.get("/models")
+def models() -> dict:
+    """The models skillspector knows per provider, for the scan form's model picker."""
+    return model_catalog()
 
 
 @app.get("/health")

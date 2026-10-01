@@ -14,6 +14,7 @@ dependencies = [
     "vercel-queue>=0.1",
     "vercel-sandbox>=0.7",
     "cryptography>=44",
+    "pyyaml>=6",
 ]
 
 # Hosted mode: what Vercel builds for the `api` service (see vercel.ts, whose entrypoint is this

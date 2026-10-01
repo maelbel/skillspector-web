@@ -8,6 +8,9 @@ const { data: health, pending: healthPending } = await useHealth()
 const PROVIDER_LABELS: Record<LLMProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
+  azure_openai: 'Azure OpenAI',
+  openai_compatible: 'OpenAI-compatible API (Groq, Together, Mistral…)',
+  nv_build: 'NVIDIA build.nvidia.com',
   ollama: 'Ollama (self-hosted)',
   claude_cli: 'Claude via this server — no key needed'
 }
@@ -15,18 +18,29 @@ const PROVIDER_LABELS: Record<LLMProvider, string> = {
 const PROVIDER_RECIPIENTS: Record<LLMProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI (or the endpoint you set)',
+  azure_openai: 'your Azure OpenAI resource',
+  openai_compatible: 'the API at the endpoint you set',
+  nv_build: 'NVIDIA',
   ollama: 'your Ollama server',
   claude_cli: 'Anthropic, through this server’s Claude login'
 }
 
 const API_KEY_LINKS: Partial<Record<LLMProvider, string>> = {
   anthropic: 'https://console.anthropic.com/settings/keys',
-  openai: 'https://platform.openai.com/api-keys'
+  openai: 'https://platform.openai.com/api-keys',
+  azure_openai: 'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
+  nv_build: 'https://build.nvidia.com/settings/api-keys'
 }
+
+// Providers that only work with an endpoint of the user's (scanner.NEEDS_BASE_URL on the API).
+const NEEDS_ENDPOINT: LLMProvider[] = ['azure_openai', 'openai_compatible']
 
 const PROVIDER_ICONS: Record<LLMProvider, string> = {
   anthropic: 'i-simple-icons-anthropic',
   openai: 'i-simple-icons-openai',
+  azure_openai: 'i-simple-icons-microsoftazure',
+  openai_compatible: 'i-lucide-plug',
+  nv_build: 'i-simple-icons-nvidia',
   ollama: 'i-simple-icons-ollama',
   claude_cli: 'i-lucide-terminal'
 }
@@ -45,6 +59,9 @@ const providerOptions = computed(() => {
   const withKey: ProviderOption[] = [
     { value: 'anthropic', label: PROVIDER_LABELS.anthropic, icon: PROVIDER_ICONS.anthropic },
     { value: 'openai', label: PROVIDER_LABELS.openai, icon: PROVIDER_ICONS.openai },
+    { value: 'azure_openai', label: PROVIDER_LABELS.azure_openai, icon: PROVIDER_ICONS.azure_openai },
+    { value: 'nv_build', label: PROVIDER_LABELS.nv_build, icon: PROVIDER_ICONS.nv_build },
+    { value: 'openai_compatible', label: PROVIDER_LABELS.openai_compatible, icon: PROVIDER_ICONS.openai_compatible },
     { value: 'ollama', label: PROVIDER_LABELS.ollama, icon: PROVIDER_ICONS.ollama }
   ]
   if (hosted.value) return withKey.filter(option => option.value === 'anthropic')
@@ -193,20 +210,35 @@ const canSubmit = computed(() => {
   if (backendDown.value) return false
   if (!targetInfo.value?.ok) return false
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
+  if (useLlm.value && needsEndpoint.value && !baseUrl.value.trim()) return false
   if (useLlm.value && claudeCliUnauthenticated.value) return false
   return true
 })
 
+const needsEndpoint = computed(() => NEEDS_ENDPOINT.includes(provider.value))
 const baseUrlPlaceholder = computed(() => {
   switch (provider.value) {
     case 'ollama':
       return 'http://host.docker.internal:11434/v1'
     case 'openai':
       return 'https://api.openai.com/v1 (or an OpenAI-compatible endpoint)'
+    case 'azure_openai':
+      return 'https://your-resource.openai.azure.com'
+    case 'openai_compatible':
+      return 'https://api.groq.com/openai/v1'
     default:
       return 'https://api.anthropic.com'
   }
 })
+
+// skillspector's known models for the provider (GET /api/models), offered first; any other model
+// can still be typed in.
+const { data: modelCatalog } = useFetch<Record<string, { default: string | null, models: string[] }>>('/api/models', { key: 'models', lazy: true })
+const modelItems = computed(() => {
+  const known = modelCatalog.value?.[provider.value]?.models ?? []
+  return model.value && !known.includes(model.value) ? [model.value, ...known] : known
+})
+const modelDefault = computed(() => modelCatalog.value?.[provider.value]?.default)
 
 // An optional skillspector baseline: findings it accepts don't count. Read in the browser and sent
 // as text; the API checks it before queueing the scan.
@@ -506,6 +538,21 @@ async function submit() {
           </template>
         </UFormField>
 
+        <UFormField
+          v-if="needsEndpoint"
+          :label="provider === 'azure_openai' ? 'Endpoint' : 'Base URL'"
+          :description="provider === 'azure_openai' ? 'Your Azure OpenAI resource’s endpoint.' : 'The API’s OpenAI-compatible base URL.'"
+          required
+        >
+          <UInput
+            id="scan-endpoint"
+            v-model="baseUrl"
+            :placeholder="baseUrlPlaceholder"
+            class="w-full"
+            :disabled="submitting"
+          />
+        </UFormField>
+
         <UAlert
           v-if="claudeCliUnauthenticated"
           color="warning"
@@ -532,7 +579,7 @@ async function submit() {
           <template #content>
             <div class="flex flex-col gap-3">
               <UFormField
-                v-if="provider !== 'claude_cli' && !hosted"
+                v-if="provider !== 'claude_cli' && provider !== 'nv_build' && !needsEndpoint && !hosted"
                 label="Base URL"
                 description="Override for a proxy or an OpenAI-compatible endpoint."
               >
@@ -546,15 +593,20 @@ async function submit() {
               </UFormField>
 
               <UFormField
-                label="Model"
-                description="Leave empty to use the provider’s recommended model."
+                :label="provider === 'azure_openai' ? 'Deployment' : 'Model'"
+                :description="provider === 'azure_openai'
+                  ? 'The name of your Azure deployment. Leave empty to use one named after skillspector’s default model.'
+                  : 'Pick one skillspector knows, or type any other. Leave empty for the provider’s recommended model.'"
               >
-                <UInput
+                <USelectMenu
                   id="scan-model"
                   v-model="model"
-                  placeholder="Provider default"
+                  :items="modelItems"
+                  create-item
+                  :placeholder="modelDefault ? `Default: ${modelDefault}` : 'Provider default'"
                   class="w-full"
                   :disabled="submitting"
+                  @create="(item: string) => { model = item }"
                 />
               </UFormField>
             </div>

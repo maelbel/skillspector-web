@@ -47,3 +47,30 @@ def test_claude_cli_leaves_api_keys_alone():
     with _llm_env(LLMConfig(provider="claude_cli")):
         assert os.environ["SKILLSPECTOR_PROVIDER"] == "claude_cli"
         assert os.environ["ANTHROPIC_API_KEY"] == "sk-placeholder"
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (
+            LLMConfig(provider="azure_openai", api_key="az-key", base_url="https://acme.openai.azure.com", model="my-deployment"),
+            {"AZURE_OPENAI_API_KEY": "az-key", "AZURE_OPENAI_ENDPOINT": "https://acme.openai.azure.com", "SKILLSPECTOR_MODEL": "my-deployment"},
+        ),
+        (
+            LLMConfig(provider="openai_compatible", api_key="gsk-key", base_url="https://api.groq.com/openai/v1"),
+            {"SKILLSPECTOR_COMPAT_API_KEY": "gsk-key", "SKILLSPECTOR_COMPAT_BASE_URL": "https://api.groq.com/openai/v1"},
+        ),
+        (LLMConfig(provider="nv_build", api_key="nvapi-key"), {"NVIDIA_INFERENCE_KEY": "nvapi-key"}),
+    ],
+    ids=["azure", "openai-compatible", "nvidia-build"],
+)
+def test_each_provider_gets_the_variables_skillspector_reads(config, expected):
+    with _llm_env(config):
+        assert os.environ["SKILLSPECTOR_PROVIDER"] == config.provider
+        assert {key: os.environ.get(key) for key in expected} == expected
+
+
+@pytest.mark.parametrize("provider", ["azure_openai", "openai_compatible"])
+def test_providers_on_your_own_endpoint_need_one(provider):
+    with pytest.raises(ValueError, match="base_url"):
+        LLMConfig(provider=provider, api_key="key")
