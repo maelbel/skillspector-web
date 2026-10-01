@@ -19,11 +19,12 @@ from fastapi import (
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from skillspector.suppression import dump_baseline
 
-from app import claude_key, db, quotas, rate_limit, uploads
+from app import claude_key, db, quotas, rate_limit, rescan, uploads
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer
 from app.auth.deps import CurrentViewer
+from app.claude_login import is_claude_cli_available
 from app.core.config import get_settings
 from app.core.mode import Mode
 from app.jobs import JobRejectedError, get_runner
@@ -150,6 +151,11 @@ class ScanStatusResponse(BaseModel):
     ai_tokens: AITokens | None
     completed_steps: int
     total_steps: int
+    # Whether POST /scan/{id}/rescan can scan the target again as this scan did.
+    rescan: bool = False
+    # What changed since the target's previous scan (app/rescan.py): None for its first, or one
+    # not finished. Each finding in result is then marked `change`: new or unchanged.
+    comparison: dict | None = None
 
 
 class ScanSummaryResponse(BaseModel):
@@ -165,6 +171,7 @@ class ScanSummaryResponse(BaseModel):
     ai_review: AIReview | None
     completed_steps: int
     total_steps: int
+    rescan: bool = False
 
 
 class ScanHistoryResponse(BaseModel):
@@ -367,14 +374,52 @@ async def _queue_scan(
     return ScanQueuedResponse(id=job.id, status=job.status)
 
 
+class _Rescans:
+    """Which scans a viewer can rescan as they ran: not an upload, whose file is gone, and AI review
+    only when it needs no key pasted again (the server's Claude login, or the viewer's saved key)."""
+
+    def __init__(self, viewer: Viewer) -> None:
+        self._viewer = viewer
+        self._saved_key: bool | None = None
+
+    def _has_saved_key(self) -> bool:
+        if self._saved_key is None:
+            user_id = self._viewer.user_id
+            self._saved_key = bool(user_id and claude_key.available() and claude_key.saved_key(user_id))
+        return self._saved_key
+
+    def llm(self, scan: dict) -> LLMConfig | None:
+        """The AI settings to rescan with; raises ValueError when they'd need a key again."""
+        provider = scan.get("provider")
+        if provider is None:
+            return None
+        if provider == "claude_cli" and get_settings().mode is Mode.SELF_HOSTED and is_claude_cli_available():
+            return LLMConfig(provider="claude_cli", model=scan.get("llm_model"))
+        if provider == "anthropic" and self._has_saved_key():
+            return LLMConfig(provider="anthropic", use_saved_key=True, model=scan.get("llm_model"))
+        raise ValueError("This scan's AI review needs its key again: use Scan again, and give it")
+
+    def allowed(self, scan: dict) -> bool:
+        if scan["status"] not in (JobStatus.DONE, JobStatus.ERROR) or uploads.is_upload_target(scan["target"]):
+            return False
+        try:
+            self.llm(scan)
+        except ValueError:
+            return False
+        return True
+
+
 @router.get("", response_model=ScanHistoryResponse)
 async def read_scan_history(
     viewer: CurrentViewer,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    # Only this target's scans: its timeline.
+    target: str | None = Query(default=None, max_length=2048),
 ) -> ScanHistoryResponse:
     # Admins see every scan, including ones from before accounts existed; users only their own.
-    rows, total = list_jobs(limit, offset, owner_id=None if viewer.is_admin else viewer.user_id)
+    rows, total = list_jobs(limit, offset, owner_id=None if viewer.is_admin else viewer.user_id, target=target)
+    rescans = _Rescans(viewer)
     items = [
         ScanSummaryResponse(
             id=row["id"],
@@ -389,6 +434,7 @@ async def read_scan_history(
             ai_review=row["ai_review"],
             completed_steps=TOTAL_GRAPH_STEPS if row["status"] == JobStatus.DONE else get_progress(row["id"]),
             total_steps=TOTAL_GRAPH_STEPS,
+            rescan=rescans.allowed(row),
         )
         for row in rows
     ]
@@ -405,20 +451,51 @@ def _visible_scan(job_id: str, viewer: Viewer) -> None:
 @router.get("/{job_id}", response_model=ScanStatusResponse)
 async def read_scan(job_id: str, viewer: CurrentViewer) -> ScanStatusResponse:
     _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
     job = get_job(job_id)
-    if job is None:
+    if scan is None or job is None:
         raise HTTPException(status_code=404, detail="scan not found")
-    return _to_response(job)
+    response = _to_response(job)
+    response.rescan = _Rescans(viewer).allowed(scan)
+    compared = rescan.comparison_for(scan)
+    if compared is not None:
+        response.comparison, before = compared
+        if response.result and response.result.get("issues"):
+            response.result = {**response.result, "issues": rescan.mark_changes(response.result["issues"], before)}
+    return response
 
 
 @router.get("/{job_id}/skills/{index}", response_model=dict)
 def read_scan_skill(job_id: str, index: int, viewer: CurrentViewer) -> dict:
-    """The report of one skill in a scan of a repository holding several."""
+    """The report of one skill in a scan of a repository holding several, its findings marked new or
+    unchanged when the scan has a previous one."""
     _visible_scan(job_id, viewer)
-    skills = ((db.get_scan(job_id) or {}).get("result") or {}).get("skills") or []
+    scan = db.get_scan(job_id) or {}
+    skills = (scan.get("result") or {}).get("skills") or []
     if not 0 <= index < len(skills) or "report" not in skills[index]:
         raise HTTPException(status_code=404, detail="skill not found")
-    return skills[index]["report"]
+    report = skills[index]["report"]
+    compared = rescan.comparison_for(scan)
+    if compared is not None:
+        report = {**report, "issues": rescan.mark_changes(report.get("issues") or [], compared[1], skills[index].get("path"))}
+    return report
+
+
+@router.post("/{job_id}/rescan", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])
+async def rescan_target(job_id: str, viewer: CurrentViewer) -> ScanQueuedResponse:
+    """Scan a scan's target again, as it was scanned: the result is compared with this one. Like any
+    scan, it counts towards the viewer's quotas."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    if uploads.is_upload_target(scan["target"]):
+        raise HTTPException(status_code=422, detail="An uploaded file isn't kept once scanned: upload it again to rescan it")
+    try:
+        llm = _Rescans(viewer).llm(scan)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    options = ScanOptions(llm=llm, baseline=scan.get("baseline"), transitive_depth=scan.get("transitive_depth"))
+    return await _queue_scan(scan["target"], options, viewer)
 
 
 @router.get("/{job_id}/baseline", response_model=BaselineResponse)

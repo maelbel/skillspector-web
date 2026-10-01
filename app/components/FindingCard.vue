@@ -90,6 +90,11 @@ const matched = computed(() => {
         </span>
       </span>
       <span class="flex items-center gap-2.5 max-sm:col-start-2">
+        <span
+          v-if="finding.change === 'new'"
+          class="rounded-xs bg-nv-100 px-1.5 py-0.5 text-xs font-semibold text-nv-900 dark:bg-nv-900/60 dark:text-nv-100"
+          title="Not in the previous scan of this target"
+        >New</span>
         <span class="font-mono text-xs whitespace-nowrap text-muted">{{ Math.round(finding.confidence * 100) }}% sure</span>
         <SeverityBadge :severity="finding.severity" />
       </span>

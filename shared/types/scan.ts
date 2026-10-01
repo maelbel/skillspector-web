@@ -40,6 +40,12 @@ export interface Finding {
   occurrences?: { file: string, start_line: number, end_line: number | null }[]
   // Rule-specific detail, e.g. the file and reasons for a partly inspected one (AE1).
   evidence?: Record<string, unknown> | null
+  // skillspector's digest of the rule and the matched text, the same from one scan to the next.
+  match_fingerprint?: string | null
+  // Since the target's previous scan, when it has one (backend/app/rescan.py).
+  change?: 'new' | 'unchanged'
+  // On a fixed finding of a repository holding several skills: the skill it was in.
+  skill_path?: string | null
 }
 
 // Whether a scan's AI review ran fully, partly or not at all (backend/app/ai_review.py); null for
@@ -202,6 +208,24 @@ export interface ScanStatus {
   ai_tokens: AITokens | null
   completed_steps: number
   total_steps: number
+  // POST /api/scan/{id}/rescan can scan the target again as this scan did.
+  rescan: boolean
+  // What changed since the target's previous scan; null for its first.
+  comparison: ScanComparison | null
+}
+
+export interface ScanComparison {
+  previous: {
+    id: string
+    created_at: number
+    risk_score: number | null
+    severity: Severity | null
+    recommendation: Recommendation | null
+  }
+  new_count: number
+  unchanged_count: number
+  // The previous scan's findings no longer found.
+  fixed: Finding[]
 }
 
 // Tokens a scan's AI review used, as the provider reported them; null for counters it didn't report.
@@ -225,6 +249,7 @@ export interface ScanSummary {
   ai_review: AIReview | null
   completed_steps: number
   total_steps: number
+  rescan: boolean
 }
 
 export interface ScanHistoryResponse {

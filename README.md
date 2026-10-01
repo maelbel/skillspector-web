@@ -35,6 +35,9 @@ or deploy to Vercel.
 - **Paste a link, get a verdict.** Scan a repository, one folder in it, or a single skill file on
   GitHub, GitLab, Bitbucket or Hugging Face. You get a 0–100 risk score, a severity, and one of three
   recommendations: *Safe to install*, *Review before installing* or *Do not install*.
+- **See what changed.** Rescan a skill from its result or the history: findings are marked new,
+  fixed or unchanged since its previous scan, with the change in score and verdict, and each
+  target's scans line up as a timeline.
 - **Or upload it.** Drop a `.zip` of a skill, or its `SKILL.md`, on the scan form to scan one you
   haven't published. The file is kept only until it's scanned.
 - **20+ static analyzers.** Prompt injection, data exfiltration, dangerous code, supply chain and

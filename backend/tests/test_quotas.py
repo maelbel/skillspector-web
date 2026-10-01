@@ -275,3 +275,17 @@ def test_usage_adds_up_the_users_ai_tokens(client):
     usage = client.get("/account/usage", headers=_bearer(alice)).json()["ai_usage"]
 
     assert usage == {"days": 30, "scans": 1, "input_tokens": 1000, "output_tokens": 100, "cached_tokens": 400}
+
+
+def test_a_rescan_counts_towards_the_quota(client, fake_runner):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    _limits(client, admin, daily_scan_quota=2, concurrent_scan_quota=None)
+    scan_id = client.post("/scan", json=SCAN, headers=_bearer(alice)).json()["id"]
+    db.update_scan(id=scan_id, status="done", finished_at=time.time(), result={"issues": []}, error=None)
+
+    assert client.post(f"/scan/{scan_id}/rescan", headers=_bearer(alice)).status_code == 200
+    refused = client.post(f"/scan/{scan_id}/rescan", headers=_bearer(alice))
+
+    assert refused.status_code == 429
+    assert len(fake_runner.submitted) == 2

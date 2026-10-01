@@ -7,7 +7,13 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from app.storage.base import SUMMARY_COLUMNS, ScanRow, summary_columns
+from app.storage.base import (
+    SUMMARY_COLUMNS,
+    ScanRow,
+    previous_scan_query,
+    scan_filter,
+    summary_columns,
+)
 
 # Serialises migrations when several instances start at once (any constant works, it just has to
 # be the same everywhere).
@@ -209,6 +215,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN upload TEXT",
         ],
     ),
+    (
+        14,
+        [
+            # A target's scans, newest first: the history of one target, and the scan a rescan is
+            # compared with (app/rescan.py).
+            "CREATE INDEX IF NOT EXISTS scans_target_created_at ON scans (target, created_at)",
+        ],
+    ),
 ]
 
 
@@ -330,6 +344,11 @@ class PostgresStore:
         with self._pool.connection() as conn:
             return conn.execute("SELECT * FROM scans WHERE id = %s", (id,)).fetchone()
 
+    def previous_scan(self, *, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None:
+        query, params = previous_scan_query("%s", target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
+        with self._pool.connection() as conn:
+            return conn.execute(query, params).fetchone()
+
     def delete_scan(self, id: str) -> bool:
         with self._pool.connection() as conn, conn.transaction():
             deleted = conn.execute("DELETE FROM scans WHERE id = %s", (id,)).rowcount
@@ -356,8 +375,10 @@ class PostgresStore:
     def set_retention_days(self, value: float | None) -> None:
         self._execute("UPDATE app_settings SET scan_retention_days = %s WHERE id = 1", (value,))
 
-    def list_scans(self, limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[ScanRow], int]:
-        where, params = ("WHERE owner_id = %s", (owner_id,)) if owner_id is not None else ("", ())
+    def list_scans(
+        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+    ) -> tuple[list[ScanRow], int]:
+        where, params = scan_filter("%s", owner_id=owner_id, target=target)
         with self._pool.connection() as conn:
             rows = conn.execute(
                 f"SELECT {SUMMARY_COLUMNS} FROM scans {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",

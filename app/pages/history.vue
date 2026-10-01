@@ -4,7 +4,10 @@ import type { SettingsResponse } from '~~/shared/types/settings'
 
 useSeoMeta({ title: 'Scan history — Skillspector Web' })
 
-const { data, status, error, refresh, hasMore, loadMore } = useScanHistory()
+// ?target=… shows one target's scans, e.g. from a result's "All scans of this target".
+const route = useRoute()
+const targetFilter = computed(() => typeof route.query.target === 'string' && route.query.target ? route.query.target : undefined)
+const { data, status, error, refresh, hasMore, loadMore } = useScanHistory(targetFilter)
 const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
 
 const retentionLabel = computed(() => {
@@ -63,6 +66,21 @@ function closeDeleteModal() {
   deleteTarget.value = null
 }
 
+// The target again, as that scan ran; the new result is compared with it.
+const rescanningId = ref<string | null>(null)
+const rescanError = ref('')
+async function rescanScan(scan: ScanSummary) {
+  rescanningId.value = scan.id
+  rescanError.value = ''
+  try {
+    const { id } = await $fetch<{ id: string }>(`/api/scan/${scan.id}/rescan`, { method: 'POST' })
+    await navigateTo(`/scan/${id}`)
+  } catch (err) {
+    rescanError.value = apiErrorMessage(err, 'Couldn’t rescan')
+    rescanningId.value = null
+  }
+}
+
 async function confirmDelete() {
   if (!deleteTarget.value) return
 
@@ -89,10 +107,23 @@ async function confirmDelete() {
           Scan history
         </h1>
         <p class="text-[15px] text-muted">
-          <template v-if="data">
-            {{ data.total }} scan{{ data.total === 1 ? '' : 's' }} on this server.
+          <template v-if="targetFilter && data">
+            {{ data.total }} scan{{ data.total === 1 ? '' : 's' }} of
+            <span class="font-mono text-sm text-highlighted">{{ parseScanTarget(targetFilter).title }}</span>,
+            newest first.
+            <ULink
+              to="/history"
+              class="font-medium text-primary"
+            >
+              All scans
+            </ULink>
           </template>
-          {{ retentionLabel }}
+          <template v-else>
+            <template v-if="data">
+              {{ data.total }} scan{{ data.total === 1 ? '' : 's' }} on this server.
+            </template>
+            {{ retentionLabel }}
+          </template>
         </p>
       </div>
       <UButton
@@ -105,6 +136,15 @@ async function confirmDelete() {
         New scan
       </UButton>
     </div>
+
+    <UAlert
+      v-if="rescanError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      title="Couldn’t rescan"
+      :description="rescanError"
+    />
 
     <UAlert
       v-if="error"
@@ -213,7 +253,7 @@ async function confirmDelete() {
               </th>
               <th
                 scope="col"
-                class="w-14 sm:w-16"
+                class="w-24 sm:w-28"
               >
                 <span class="sr-only">Actions</span>
               </th>
@@ -331,7 +371,19 @@ async function confirmDelete() {
                   relative
                 />
               </td>
-              <td class="px-2 py-2 sm:px-3">
+              <td class="px-2 py-2 whitespace-nowrap sm:px-3">
+                <UButton
+                  v-if="scan.rescan"
+                  icon="i-lucide-rotate-cw"
+                  variant="ghost"
+                  color="neutral"
+                  aria-label="Rescan, and compare with this scan"
+                  title="Rescan, and compare with this scan"
+                  class="size-10 justify-center text-dimmed hover:text-highlighted"
+                  :loading="rescanningId === scan.id"
+                  :disabled="rescanningId !== null"
+                  @click="rescanScan(scan)"
+                />
                 <UButton
                   v-if="scan.status !== 'pending' && scan.status !== 'running'"
                   icon="i-lucide-trash-2"

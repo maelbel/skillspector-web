@@ -107,8 +107,13 @@ def set_retention_days(value: float | None) -> None:
     _store_or_raise().set_retention_days(value)
 
 
-def list_scans(limit: int, offset: int, *, owner_id: str | None = None) -> tuple[list[ScanRow], int]:
-    return _store_or_raise().list_scans(limit, offset, owner_id=owner_id)
+def list_scans(limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None) -> tuple[list[ScanRow], int]:
+    return _store_or_raise().list_scans(limit, offset, owner_id=owner_id, target=target)
+
+
+def previous_scan(*, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None:
+    """The latest scan of target that finished before then, by the same owner and of the same kind."""
+    return _store_or_raise().previous_scan(target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
 
 
 def append_log_line(scan_id: str, line: str, *, keep: int) -> None:
