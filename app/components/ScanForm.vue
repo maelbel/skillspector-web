@@ -90,6 +90,7 @@ const file = ref<File | null>(null)
 const fileError = ref('')
 const fileInput = ref<HTMLInputElement>()
 const dragging = ref(false)
+const uploadHint = computed(() => `Upload a .zip or SKILL.md, up to ${formatBytes(health.value?.max_upload_bytes ?? 0)}`)
 
 function pickFile(picked: File | null | undefined) {
   fileError.value = ''
@@ -142,8 +143,11 @@ const EXAMPLES = [
   { label: 'A poisoned MCP tool', icon: 'i-lucide-skull', target: 'https://github.com/NVIDIA/skillspector/blob/main/tests/fixtures/mcp_poisoned_tool/SKILL.md' },
   { label: 'GitHub’s MCP server', icon: 'i-lucide-server', target: 'io.github.github/github-mcp-server' }
 ]
+const exampleItems = EXAMPLES.map(example => ({ label: example.label, icon: example.icon, onSelect: () => useExample(example) }))
 
 function useExample(example: typeof EXAMPLES[number]) {
+  file.value = null
+  fileError.value = ''
   target.value = example.target
   targetTouched.value = true
   // The clicked chip disappears once the field is filled; keep focus in the form so Enter scans.
@@ -159,12 +163,6 @@ const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }
 }
 
 const useLlm = ref(false)
-const depth = computed({
-  get: () => useLlm.value ? 'ai' : 'static',
-  set: (value: string) => {
-    useLlm.value = value === 'ai'
-  }
-})
 const provider = ref<LLMProvider>('anthropic')
 const apiKey = ref('')
 const baseUrl = ref('')
@@ -233,19 +231,10 @@ watch([hosted, provider], ([isHosted, current]) => {
 }, { immediate: true })
 
 // Measured on this deployment: static scans of a repo or SKILL.md take about a minute.
-const durationHint = computed(() => {
-  if (isMcpServer.value) return 'Checking an MCP server takes a few seconds.'
-  return useLlm.value
-    ? 'With AI analysis, a scan usually takes a few minutes.'
-    : 'A scan usually takes about a minute.'
-})
+const durationHint = computed(() => useLlm.value ? 'With AI review, takes a few minutes.' : 'Takes about a minute.')
 
-const depthOptions = [
-  { value: 'static', label: 'Static analysis' },
-  { value: 'ai', label: 'Static + AI review' }
-]
-const DEPTH_HELP = 'Static analysis: 20+ analyzers, and nothing leaves this server. '
-  + 'Static + AI review: adds a semantic read of the skill’s intent. Slower, and its content is sent to the AI provider.'
+const AI_REVIEW_HELP = 'Off, 20+ static analyzers run and nothing leaves this server. '
+  + 'On, an AI model also reads the skill’s intent: slower, and its content is sent to the AI provider.'
 
 // The Claude key saved to the user's account (app/claude_key.py on the API), used unless they
 // choose to paste a different one for this scan.
@@ -407,8 +396,15 @@ async function submit() {
         name="i-lucide-upload"
         class="size-5"
       />
-      Drop a .zip or SKILL.md to scan it
+      Drop a .zip or SKILL.md to scan it (up to {{ formatBytes(health?.max_upload_bytes ?? 0) }})
     </div>
+    <input
+      ref="fileInput"
+      type="file"
+      accept=".zip,.md,application/zip,text/markdown"
+      class="hidden"
+      @change="onFileInput"
+    >
 
     <UAlert
       v-if="backendDown"
@@ -422,7 +418,7 @@ async function submit() {
     <UFormField
       label="Skill or MCP server"
       :error="fileError || (file ? undefined : targetProblem)"
-      :ui="{ label: 'font-semibold text-highlighted' }"
+      :ui="{ label: 'sr-only' }"
     >
       <div class="flex gap-2 rounded-xs bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-brand max-sm:flex-col">
         <div
@@ -456,15 +452,34 @@ async function submit() {
           autocapitalize="off"
           autocomplete="off"
           spellcheck="false"
-          placeholder="https://github.com/org/repo"
+          placeholder="Link or MCP server name"
           icon="i-lucide-link"
           size="xl"
           class="min-w-0 flex-1"
           variant="none"
-          :ui="{ base: 'h-12 font-mono text-sm', leadingIcon: 'text-dimmed' }"
+          :ui="{ base: 'h-12 font-mono text-sm', leadingIcon: 'text-dimmed', trailing: 'pe-1' }"
           :disabled="submitting"
           @blur="targetTouched = true"
-        />
+        >
+          <template
+            v-if="uploadStore"
+            #trailing
+          >
+            <UTooltip
+              :text="uploadHint"
+              :content="{ side: 'top' }"
+            >
+              <UButton
+                icon="i-lucide-upload"
+                color="neutral"
+                variant="ghost"
+                :aria-label="uploadHint"
+                :disabled="submitting"
+                @click="fileInput?.click()"
+              />
+            </UTooltip>
+          </template>
+        </UInput>
         <UButton
           type="submit"
           color="primary"
@@ -492,24 +507,6 @@ async function submit() {
           <span class="shrink-0">{{ targetInfo.host }} · {{ TARGET_KIND_LABELS[targetInfo.kind].label }} ·</span>
           <span class="truncate font-mono text-xs text-highlighted">{{ targetInfo.title }}</span>
         </span>
-        <span v-else-if="!target.trim()">
-          A repository, a folder in one, or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face, or an MCP server’s name in the MCP Registry.
-          <template v-if="uploadStore">
-            Or <button
-              type="button"
-              class="cursor-pointer font-medium text-highlighted underline underline-offset-2 hover:text-brand"
-              :disabled="submitting"
-              @click="fileInput?.click()"
-            >upload a .zip or SKILL.md</button>, or drop one here.
-          </template>
-        </span>
-        <input
-          ref="fileInput"
-          type="file"
-          accept=".zip,.md,application/zip,text/markdown"
-          class="hidden"
-          @change="onFileInput"
-        >
       </template>
     </UFormField>
 
@@ -537,39 +534,20 @@ async function submit() {
       </template>
     </UAlert>
 
-    <p
-      v-if="isMcpServer"
-      class="flex gap-2 rounded-xs bg-muted p-3 text-sm text-muted ring ring-default"
-    >
-      <UIcon
-        name="i-lucide-server"
-        class="mt-0.5 size-4 shrink-0"
-      />
-      <span>
-        Checks the server’s entry in the MCP Registry: that its packages are pinned to exact versions
-        with valid hashes, that it names its source repository, that it’s still active, and that its
-        remote endpoints use HTTPS. Nothing is installed or run.
-      </span>
-    </p>
-
-    <URadioGroup
-      v-if="!isMcpServer"
-      v-model="depth"
-      variant="card"
-      orientation="horizontal"
-      :items="depthOptions"
-      :disabled="submitting"
-      :ui="{
-        legend: 'mb-2 flex items-center gap-1.5 font-semibold text-highlighted',
-        fieldset: 'flex flex-wrap gap-2',
-        item: 'rounded-xs border-default px-3 py-2 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
-        label: 'font-medium text-highlighted'
-      }"
-    >
-      <template #legend>
-        Scan depth
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+      <div
+        v-if="!isMcpServer"
+        class="flex items-center gap-1.5"
+      >
+        <USwitch
+          id="scan-ai-review"
+          v-model="useLlm"
+          label="AI review"
+          :disabled="submitting"
+          :ui="{ label: 'font-medium text-highlighted' }"
+        />
         <UTooltip
-          :text="DEPTH_HELP"
+          :text="AI_REVIEW_HELP"
           :content="{ side: 'top' }"
           :ui="{ content: 'max-w-xs h-auto whitespace-normal py-1.5' }"
         >
@@ -577,11 +555,46 @@ async function submit() {
             name="i-lucide-info"
             class="size-4 text-muted"
             tabindex="0"
-            :aria-label="DEPTH_HELP"
+            :aria-label="AI_REVIEW_HELP"
           />
         </UTooltip>
-      </template>
-    </URadioGroup>
+      </div>
+      <UDropdownMenu
+        :items="exampleItems"
+        :content="{ align: 'start' }"
+      >
+        <UButton
+          icon="i-lucide-sparkles"
+          color="neutral"
+          variant="link"
+          size="sm"
+          trailing-icon="i-lucide-chevron-down"
+          class="px-0"
+          :disabled="submitting"
+        >
+          Examples
+        </UButton>
+      </UDropdownMenu>
+      <UButton
+        v-if="!isMcpServer"
+        color="neutral"
+        variant="link"
+        size="sm"
+        trailing-icon="i-lucide-chevron-down"
+        class="px-0 text-left"
+        :aria-expanded="moreOpen"
+        aria-controls="scan-more-options"
+        :ui="{ trailingIcon: moreOpen ? 'transition-transform rotate-180' : 'transition-transform' }"
+        @click="moreOpen = !moreOpen"
+      >
+        <span>
+          More options<span
+            v-if="moreSummary"
+            class="font-normal text-muted"
+          > · {{ moreSummary }}</span>
+        </span>
+      </UButton>
+    </div>
 
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -758,113 +771,94 @@ async function submit() {
       </div>
     </Transition>
 
-    <UCollapsible
-      v-if="!isMcpServer"
-      v-model:open="moreOpen"
-      class="flex flex-col gap-4"
+    <div
+      v-if="moreOpen && !isMcpServer"
+      id="scan-more-options"
     >
-      <UButton
-        color="neutral"
-        variant="link"
-        size="sm"
-        trailing-icon="i-lucide-chevron-down"
-        class="self-start px-0 text-left"
-        :ui="{ trailingIcon: 'transition-transform group-data-[state=open]:rotate-180' }"
-      >
-        <span>
-          More options<span
-            v-if="moreSummary"
-            class="font-normal text-muted"
-          > · {{ moreSummary }}</span>
-        </span>
-      </UButton>
-
-      <template #content>
-        <div class="flex flex-col gap-5 border-l-2 border-muted pl-4">
-          <div class="flex flex-col gap-1.5">
-            <p class="flex items-center gap-1.5 font-semibold text-highlighted">
-              Baseline
-              <UTooltip text="What a baseline file looks like">
-                <ULink
-                  :to="BASELINE_FORMAT_DOCS"
-                  target="_blank"
-                  aria-label="What a baseline file looks like, in skillspector's documentation"
-                  class="inline-flex text-muted hover:text-highlighted"
-                >
-                  <UIcon
-                    name="i-lucide-info"
-                    class="size-4"
-                  />
-                </ULink>
-              </UTooltip>
-            </p>
-            <p class="text-sm text-muted">
-              A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
-              suppressed and don’t count towards the score. Download one from a scan’s result page.
-            </p>
-            <div class="mt-1 flex flex-wrap items-center gap-2">
-              <input
-                ref="baselineInput"
-                type="file"
-                accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
-                class="sr-only"
-                aria-label="Baseline file"
-                :disabled="submitting"
-                @change="pickBaseline"
+      <div class="flex flex-col gap-5 border-l-2 border-muted pl-4">
+        <div class="flex flex-col gap-1.5">
+          <p class="flex items-center gap-1.5 font-semibold text-highlighted">
+            Baseline
+            <UTooltip text="What a baseline file looks like">
+              <ULink
+                :to="BASELINE_FORMAT_DOCS"
+                target="_blank"
+                aria-label="What a baseline file looks like, in skillspector's documentation"
+                class="inline-flex text-muted hover:text-highlighted"
               >
-              <UButton
-                :label="baseline ? 'Replace file' : 'Choose a file'"
-                icon="i-lucide-file-check"
-                size="sm"
-                color="neutral"
-                variant="outline"
-                class="rounded-xs"
-                :disabled="submitting"
-                @click="baselineInput?.click()"
-              />
-              <template v-if="baseline">
-                <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
-                <UButton
-                  icon="i-lucide-x"
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  aria-label="Remove the baseline"
-                  :disabled="submitting"
-                  @click="baseline = null"
+                <UIcon
+                  name="i-lucide-info"
+                  class="size-4"
                 />
-              </template>
-            </div>
-            <p
-              v-if="baselineError"
-              class="text-sm text-critical-ink"
+              </ULink>
+            </UTooltip>
+          </p>
+          <p class="text-sm text-muted">
+            A <code class="font-mono text-xs">.skillspector-baseline.yaml</code> file: findings it accepts are
+            suppressed and don’t count towards the score. Download one from a scan’s result page.
+          </p>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              ref="baselineInput"
+              type="file"
+              accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
+              class="sr-only"
+              aria-label="Baseline file"
+              :disabled="submitting"
+              @change="pickBaseline"
             >
-              {{ baselineError }}
-            </p>
+            <UButton
+              :label="baseline ? 'Replace file' : 'Choose a file'"
+              icon="i-lucide-file-check"
+              size="sm"
+              color="neutral"
+              variant="outline"
+              class="rounded-xs"
+              :disabled="submitting"
+              @click="baselineInput?.click()"
+            />
+            <template v-if="baseline">
+              <span class="font-mono text-xs text-highlighted">{{ baseline.name }}</span>
+              <UButton
+                icon="i-lucide-x"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                aria-label="Remove the baseline"
+                :disabled="submitting"
+                @click="baseline = null"
+              />
+            </template>
           </div>
-
-          <div
-            v-if="maxReferenceDepth"
-            class="flex flex-col gap-2"
+          <p
+            v-if="baselineError"
+            class="text-sm text-critical-ink"
           >
-            <USwitch
-              v-model="followReferences"
-              label="Follow external references"
-              description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
-              :disabled="submitting"
-            />
-            <USelect
-              v-if="followReferences && maxReferenceDepth > 1"
-              v-model="referenceDepth"
-              :items="referenceDepthOptions"
-              aria-label="How deep to follow references"
-              class="w-full sm:max-w-xs"
-              :disabled="submitting"
-            />
-          </div>
+            {{ baselineError }}
+          </p>
         </div>
-      </template>
-    </UCollapsible>
+
+        <div
+          v-if="maxReferenceDepth"
+          class="flex flex-col gap-2"
+        >
+          <USwitch
+            v-model="followReferences"
+            label="Follow external references"
+            description="Also scan the Git repositories and raw files the skill links to, and mark what's found there. Slower."
+            :disabled="submitting"
+          />
+          <USelect
+            v-if="followReferences && maxReferenceDepth > 1"
+            v-model="referenceDepth"
+            :items="referenceDepthOptions"
+            aria-label="How deep to follow references"
+            class="w-full sm:max-w-xs"
+            :disabled="submitting"
+          />
+        </div>
+      </div>
+    </div>
 
     <UAlert
       v-if="errorMessage"
@@ -875,25 +869,17 @@ async function submit() {
       :description="errorMessage"
     />
 
-    <div class="flex flex-wrap items-center gap-2 px-1 pb-1 text-sm text-muted">
-      <template v-if="!target.trim() && !file">
-        <span>Try an example:</span>
-        <UButton
-          v-for="example in EXAMPLES"
-          :key="example.target"
-          :icon="example.icon"
-          :label="example.label"
-          size="sm"
-          color="neutral"
-          variant="outline"
-          class="rounded-xs"
-          :disabled="submitting"
-          @click="useExample(example)"
-        />
-      </template>
-      <span v-else>
-        {{ durationHint }} You can leave the result page and come back from the history.
-      </span>
+    <div
+      v-if="target.trim() || file"
+      class="text-sm text-muted"
+    >
+      <p v-if="isMcpServer">
+        Checks its MCP Registry entry: pinned packages, a source repository, an active status and
+        HTTPS endpoints. Nothing is installed or run.
+      </p>
+      <p v-else>
+        {{ durationHint }} You can leave the page meanwhile: the result is saved to your history.
+      </p>
     </div>
   </form>
 </template>

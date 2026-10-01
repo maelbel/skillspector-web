@@ -13,7 +13,8 @@ const online = computed(() => health.value && health.value.status !== 'down')
     v-else
     class="flex flex-col gap-16 pt-8 pb-12 sm:pt-10 lg:gap-24 lg:pt-12"
   >
-    <div class="grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
+    <!-- Side by side, the recent scans end where the form does. -->
+    <div class="grid items-start gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-end lg:gap-16">
       <section class="flex flex-col gap-8">
         <div class="flex flex-col items-start gap-5">
           <p
@@ -49,7 +50,7 @@ const online = computed(() => health.value && health.value.status !== 'down')
         <ScanForm />
       </section>
 
-      <RecentScans class="lg:mt-14" />
+      <RecentScans />
     </div>
 
     <ScanCoverage />
