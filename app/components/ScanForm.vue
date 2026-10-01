@@ -172,18 +172,12 @@ const durationHint = computed(() => useLlm.value
   : 'A scan usually takes about a minute.'
 )
 
-const depthOptions = computed(() => [
-  {
-    value: 'static',
-    label: 'Static analysis',
-    description: '20+ analyzers. Nothing leaves this server.'
-  },
-  {
-    value: 'ai',
-    label: 'Static + AI review',
-    description: `Adds a semantic read of intent. Slower, and the skill’s content is sent to ${PROVIDER_RECIPIENTS[provider.value]}.`
-  }
-])
+const depthOptions = [
+  { value: 'static', label: 'Static analysis' },
+  { value: 'ai', label: 'Static + AI review' }
+]
+const DEPTH_HELP = 'Static analysis: 20+ analyzers, and nothing leaves this server. '
+  + 'Static + AI review: adds a semantic read of the skill’s intent. Slower, and its content is sent to the AI provider.'
 
 // The Claude key saved to the user's account (app/claude_key.py on the API), used unless they
 // choose to paste a different one for this scan.
@@ -386,18 +380,33 @@ async function submit() {
 
     <URadioGroup
       v-model="depth"
-      legend="Scan depth"
       variant="card"
+      orientation="horizontal"
       :items="depthOptions"
       :disabled="submitting"
       :ui="{
-        legend: 'mb-2.5 font-semibold text-highlighted',
-        fieldset: 'grid gap-3 sm:grid-cols-2',
-        item: 'rounded-xs border-default p-4 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
-        label: 'font-semibold text-highlighted',
-        description: 'mt-1 leading-snug'
+        legend: 'mb-2 flex items-center gap-1.5 font-semibold text-highlighted',
+        fieldset: 'flex flex-wrap gap-2',
+        item: 'rounded-xs border-default px-3 py-2 has-data-[state=checked]:border-brand has-data-[state=checked]:bg-nv-50 dark:has-data-[state=checked]:bg-nv-950/70',
+        label: 'font-medium text-highlighted'
       }"
-    />
+    >
+      <template #legend>
+        Scan depth
+        <UTooltip
+          :text="DEPTH_HELP"
+          :content="{ side: 'top' }"
+          :ui="{ content: 'max-w-xs h-auto whitespace-normal py-1.5' }"
+        >
+          <UIcon
+            name="i-lucide-info"
+            class="size-4 text-muted"
+            tabindex="0"
+            :aria-label="DEPTH_HELP"
+          />
+        </UTooltip>
+      </template>
+    </URadioGroup>
 
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -411,6 +420,9 @@ async function submit() {
         v-if="useLlm"
         class="flex flex-col gap-3 rounded-xs bg-muted p-4 ring ring-default"
       >
+        <p class="text-sm text-muted">
+          Adds a semantic read of the skill’s intent. Slower, and the skill’s content is sent to {{ PROVIDER_RECIPIENTS[provider] }}.
+        </p>
         <UFormField label="Provider">
           <USelect
             id="scan-provider"
