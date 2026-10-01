@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app import main
+from app import main, sandbox_snapshot
 from app.core.config import Settings
 from app.core.mode import Mode, ModeConfigError, check_mode
 from app.secrets_box import generate_key
@@ -82,8 +82,9 @@ def test_health_reports_the_mode(monkeypatch):
     assert response.json()["mode"] == "self_hosted"
 
 
-def test_hosted_requires_a_sandbox_snapshot():
-    with pytest.raises(ModeConfigError, match="SANDBOX_SNAPSHOT_ID"):
+def test_hosted_requires_a_sandbox_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setattr(sandbox_snapshot, "RECORD", tmp_path / "missing.py")
+    with pytest.raises(ModeConfigError, match="sandbox snapshot"):
         check_mode(_settings(Mode.HOSTED, "postgresql://db/skillspector"))
 
 

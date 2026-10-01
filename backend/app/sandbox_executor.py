@@ -19,6 +19,7 @@ from app import scan_logs
 from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_runner import PREFIX
+from app.sandbox_snapshot import snapshot_id_for
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +121,12 @@ async def _destroy(box: Any) -> None:
 
 class SandboxExecutor:
     def __init__(self, settings: Settings, create_sandbox: Callable[..., Any] | None = None) -> None:
-        if not settings.sandbox_snapshot_id:
-            raise ValueError("SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID is required to run scans in a sandbox")
+        snapshot_id = snapshot_id_for(settings)
+        if not snapshot_id:
+            raise ValueError(
+                "No sandbox snapshot: build one with python -m app.sandbox_snapshot, or set SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID"
+            )
+        self._snapshot_id = snapshot_id
         self._settings = settings
         if create_sandbox is None:
             from vercel.sandbox import create_sandbox
@@ -141,7 +146,7 @@ class SandboxExecutor:
             # destroy=False: the SDK's own cleanup also deletes snapshots no other sandbox uses,
             # which can be the one every scan boots from. The sandbox is destroyed below instead.
             async with self._create_sandbox(
-                source=SnapshotSource(snapshot_id=settings.sandbox_snapshot_id),
+                source=SnapshotSource(snapshot_id=self._snapshot_id),
                 resources=SandboxResources(vcpus=settings.sandbox_vcpus),
                 # A little headroom over the scan itself for boot and upload.
                 execution_time_limit=limit + 60,

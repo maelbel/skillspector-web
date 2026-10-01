@@ -93,6 +93,7 @@ backend/app/
   scanner.py              the skillspector pipeline runner
   sandbox_executor.py     runs a scan in a Vercel Sandbox (with sandbox_runner.py inside)
   sandbox_snapshot.py     builds the snapshot sandboxed scans boot from
+  sandbox_snapshot_record.py  the snapshot's ID and the pin it was built from (written by CI)
   quotas.py               per-user scan quotas and the pause switch
   rate_limit.py           sliding-window rate limits
   retention.py            deletes scans past the retention period

@@ -1,0 +1,65 @@
+name: Sandbox snapshot
+
+# Hosted scans boot from a sandbox snapshot with skillspector preinstalled. When a pull request
+# changes the skillspector pin, this builds a snapshot for it and commits its ID to
+# backend/app/sandbox_snapshot_record.py on the branch, so every deployment boots from the snapshot
+# that matches its own pin. Rerun it by hand (Actions → Sandbox snapshot → Run workflow) on main or a
+# branch to rebuild a missing snapshot.
+
+on:
+  pull_request:
+    paths:
+      - backend/pyproject.toml
+      - backend/app/sandbox_snapshot.py
+      - backend/app/sandbox_snapshot_record.py
+  # A safety net for pin changes that reached main without a snapshot (from a fork, say).
+  push:
+    branches: [main]
+    paths:
+      - backend/pyproject.toml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never two builds for the same branch at once: the second would commit over the first.
+concurrency:
+  group: sandbox-snapshot-${{ github.head_ref || github.ref_name }}
+
+jobs:
+  snapshot:
+    # Pull requests from forks get no secrets, and can't be pushed to.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The branch itself, not the pull request's merge commit, so the record can be pushed to it.
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: astral-sh/setup-uv@v3
+      - name: Check the Vercel credentials
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_TEAM_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Set the VERCEL_TOKEN secret and the VERCEL_TEAM_ID and VERCEL_PROJECT_ID variables (see docs/VERCEL.md)"
+            exit 1
+          fi
+      # Only builds when the recorded snapshot isn't for the current pin. A failed build exits
+      # non-zero and leaves the record untouched.
+      - run: uv run --no-project --with "vercel-sandbox>=0.7" python -m app.sandbox_snapshot --if-stale
+      - name: Commit the new snapshot ID
+        run: |
+          if git diff --quiet -- app/sandbox_snapshot_record.py; then
+            echo "The recorded snapshot already matches the pin"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: record the sandbox snapshot for the skillspector pin" -- app/sandbox_snapshot_record.py
+          git push

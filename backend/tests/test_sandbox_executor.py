@@ -8,7 +8,7 @@ import anyio
 import pytest
 from vercel.sandbox import SandboxTimeoutError
 
-from app import db, scan_logs, scanner
+from app import db, sandbox_snapshot, scan_logs, scanner
 from app.core.config import Settings
 from app.core.mode import Mode
 from app.sandbox_executor import (
@@ -170,7 +170,8 @@ def test_the_sandbox_is_locked_down(memory_logs, skill_dir, sandboxes):
 
     options = created[0].options
     assert options["persistent"] is False
-    assert options["source"].snapshot_id == "snap_test"
+    # The snapshot recorded for the pin, not the setting.
+    assert options["source"].snapshot_id == sandbox_snapshot.recorded_snapshot()["snapshot_id"]
     assert options["resources"].vcpus == 1
     policy = options["network_policy"]
     assert set(dict(policy.allow)) == set(SCAN_HOSTS)
@@ -319,9 +320,11 @@ def test_a_version_mismatch_is_logged(memory_logs, tmp_path, monkeypatch):
     assert any("runs skillspector 0.0.1" in line for line in scan_logs.get_logs("s"))
 
 
-def test_the_executor_needs_a_snapshot():
-    with pytest.raises(ValueError, match="SANDBOX_SNAPSHOT_ID"):
+def test_the_executor_needs_a_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setattr(sandbox_snapshot, "RECORD", tmp_path / "missing.py")
+    with pytest.raises(ValueError, match="No sandbox snapshot"):
         SandboxExecutor(Settings(_env_file=None))
+
 
 
 @pytest.mark.parametrize(
