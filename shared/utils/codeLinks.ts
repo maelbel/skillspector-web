@@ -52,9 +52,11 @@ function sourceRoot(target: string): { base: string, line: (n: number) => string
     return { base: `https://bitbucket.org/${owner}/${repo.replace(/\.git$/i, '')}/src/HEAD`, line: n => `#lines-${n}` }
   }
   if (url.hostname === 'huggingface.co') {
-    const kindAt = s.findIndex(segment => segment === 'resolve' || segment === 'blob')
+    const kindAt = s.findIndex(segment => segment === 'resolve' || segment === 'blob' || segment === 'tree')
     if (kindAt >= 2 && s[kindAt + 1]) {
-      return { base: `https://huggingface.co/${join(...s.slice(0, kindAt))}/blob/${join(s[kindAt + 1], ...s.slice(kindAt + 2, -1))}`, line: githubLine }
+      // A /tree/ target is a folder, the root itself; the others are one file, in theirs.
+      const folder = s[kindAt] === 'tree' ? s.slice(kindAt + 2) : s.slice(kindAt + 2, -1)
+      return { base: `https://huggingface.co/${join(...s.slice(0, kindAt))}/blob/${join(s[kindAt + 1], ...folder)}`, line: githubLine }
     }
     const repoEnd = s[0] === 'spaces' || s[0] === 'datasets' ? 3 : 2
     if (s.length === repoEnd) return { base: `https://huggingface.co/${s.join('/')}/blob/main`, line: githubLine }

@@ -32,8 +32,8 @@ or deploy to Vercel.
 ## Features
 
 **Scanning**
-- **Paste a link, get a verdict.** Scan a repository or a single skill file on GitHub, GitLab,
-  Bitbucket or Hugging Face. You get a 0–100 risk score, a severity, and one of three
+- **Paste a link, get a verdict.** Scan a repository, one folder in it, or a single skill file on
+  GitHub, GitLab, Bitbucket or Hugging Face. You get a 0–100 risk score, a severity, and one of three
   recommendations: *Safe to install*, *Review before installing* or *Do not install*.
 - **20+ static analyzers.** Prompt injection, data exfiltration, dangerous code, supply chain and
   MCP tool poisoning: skillspector's full pipeline, run as a library rather than a CLI wrapper.
@@ -209,8 +209,9 @@ a vulnerability, see [SECURITY.md](./SECURITY.md).
 
 ## Limitations
 
-- Only links can be scanned: there's no file upload. Folder (`/tree/`) links aren't supported, so
-  link the repository or a skill file instead.
+- Only links can be scanned: there's no file upload. Folder (`/tree/`) links work on GitHub, GitLab
+  and Hugging Face, not on Bitbucket. From a Hugging Face folder, large files stored with LFS (such
+  as model weights) aren't scanned.
 - Self-hosted:
   - Scans run inside the API process, so a restart fails the scans in progress, and the API
     can't run as more than one replica.

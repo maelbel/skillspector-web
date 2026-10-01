@@ -14,6 +14,9 @@ describe('codeLink', () => {
     ['https://bitbucket.org/acme/skill', 'SKILL.md', 4, undefined, 'https://bitbucket.org/acme/skill/src/HEAD/SKILL.md#lines-4'],
     ['https://huggingface.co/acme/skill', 'SKILL.md', 1, undefined, 'https://huggingface.co/acme/skill/blob/main/SKILL.md#L1'],
     ['https://huggingface.co/spaces/acme/app/resolve/main/SKILL.md', 'SKILL.md', 9, undefined, 'https://huggingface.co/spaces/acme/app/blob/main/SKILL.md#L9'],
+    ['https://gitlab.com/group/proj/-/tree/main/skills/pdf', 'scripts/fill.py', 3, undefined, 'https://gitlab.com/group/proj/-/blob/main/skills/pdf/scripts/fill.py#L3'],
+    ['https://huggingface.co/spaces/acme/app/tree/main/skills/pdf', 'SKILL.md', 9, undefined, 'https://huggingface.co/spaces/acme/app/blob/main/skills/pdf/SKILL.md#L9'],
+    ['https://huggingface.co/spaces/acme/app/tree/main/skills', 'SKILL.md', 2, 'pdf', 'https://huggingface.co/spaces/acme/app/blob/main/skills/pdf/SKILL.md#L2'],
     ['https://github.com/acme/skills', 'docs/my file.md', null, undefined, 'https://github.com/acme/skills/blob/HEAD/docs/my%20file.md']
   ])('%s + %s:%s', (target, file, line, skillPath, expected) => {
     expect(codeLink(target, file, line, skillPath)).toBe(expected)
