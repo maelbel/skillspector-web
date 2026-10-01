@@ -41,3 +41,33 @@ export async function backendFetch<T>(event: H3Event, path: string, options: Bac
     throw createError({ statusCode, statusMessage: errorMessage(data, fallbackMessage) })
   }
 }
+
+/**
+ * Pass one of the API's downloads (a report export) through to the browser, with its type and
+ * file name, as backendFetch would call it.
+ */
+export async function backendDownload(event: H3Event, path: string, query: Record<string, string>, fallbackMessage: string) {
+  const { apiBase } = useRuntimeConfig()
+  const token = getSessionToken(event)
+  try {
+    const response = await $fetch.raw<ArrayBuffer>(path, {
+      baseURL: apiBase,
+      query,
+      responseType: 'arrayBuffer',
+      headers: {
+        'X-Forwarded-For': getClientIp(event),
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+    for (const name of ['content-type', 'content-disposition']) {
+      const value = response.headers.get(name)
+      if (value) setResponseHeader(event, name, value)
+    }
+    return Buffer.from(response._data ?? new ArrayBuffer(0))
+  } catch (error) {
+    const { response, data } = (error ?? {}) as { response?: { status?: number }, data?: unknown }
+    // An arrayBuffer error body: decode it for the API's message.
+    const body = data instanceof ArrayBuffer ? JSON.parse(new TextDecoder().decode(data) || 'null') : data
+    throw createError({ statusCode: response?.status ?? 502, statusMessage: errorMessage(body, fallbackMessage) })
+  }
+}

@@ -212,6 +212,8 @@ export interface ScanStatus {
   rescan: boolean
   // What changed since the target's previous scan; null for its first.
   comparison: ScanComparison | null
+  // The read-only link's token (/shared/<token>), when the result is shared; only its owner sees it.
+  share_token: string | null
 }
 
 export interface ScanComparison {

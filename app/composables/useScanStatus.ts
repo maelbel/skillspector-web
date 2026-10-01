@@ -2,9 +2,10 @@ import type { ScanStatus } from '~~/shared/types/scan'
 
 const POLL_INTERVAL_MS = 2000
 
-export function useScanStatus(id: string) {
-  const { data: status, error, refresh } = useFetch<ScanStatus>(`/api/scan/${id}`, {
-    key: `scan-${id}`
+/** A scan's status and result from url (/api/scan/<id>, or /api/shared/<token>), polled until done. */
+export function useScanStatus(url: string) {
+  const { data: status, error, refresh } = useFetch<ScanStatus>(url, {
+    key: url
   })
 
   let timer: ReturnType<typeof setTimeout> | undefined

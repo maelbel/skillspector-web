@@ -13,7 +13,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (!accounts.value || user.value) return navigateTo(typeof to.query.redirect === 'string' ? to.query.redirect : '/')
     return
   }
-  if (accounts.value && !user.value && !PUBLIC_PATHS.has(to.path)) {
+  // A shared result is for anyone with its link.
+  if (accounts.value && !user.value && !PUBLIC_PATHS.has(to.path) && !to.path.startsWith('/shared/')) {
     return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
   if (to.path.startsWith('/admin') && !isAdmin.value) return navigateTo('/')

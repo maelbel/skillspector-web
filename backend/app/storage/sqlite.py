@@ -221,6 +221,15 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS scans_target_created_at ON scans (target, created_at)",
         ],
     ),
+    (
+        15,
+        [
+            # The read-only link a scan's owner shared its result with (app/api/routes/shared.py),
+            # until they revoke it. NULL when it isn't shared.
+            "ALTER TABLE scans ADD COLUMN share_token TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS scans_share_token ON scans (share_token)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -361,6 +370,16 @@ class SQLiteStore:
     def previous_scan(self, *, target: str, owner_id: str | None, before: float, with_ai_review: bool) -> ScanRow | None:
         query, params = previous_scan_query("?", target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
         row = self._conn.execute(query, params).fetchone()
+        return _to_row(row) if row is not None else None
+
+    @_locked
+    def set_share_token(self, scan_id: str, token: str | None) -> None:
+        self._conn.execute("UPDATE scans SET share_token = ? WHERE id = ?", (token, scan_id))
+        self._conn.commit()
+
+    @_locked
+    def get_shared_scan(self, token: str) -> ScanRow | None:
+        row = self._conn.execute("SELECT * FROM scans WHERE share_token = ?", (token,)).fetchone()
         return _to_row(row) if row is not None else None
 
     @_locked

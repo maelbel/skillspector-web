@@ -17,7 +17,9 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'settings.signup_changed': { verb: 'turned sign-up', icon: 'i-lucide-door-open' },
   'settings.scans_paused': { verb: 'paused new scans', icon: 'i-lucide-circle-pause' },
   'settings.scans_resumed': { verb: 'resumed scans', icon: 'i-lucide-circle-play' },
-  'settings.quotas_changed': { verb: 'changed scan quotas', icon: 'i-lucide-gauge' }
+  'settings.quotas_changed': { verb: 'changed scan quotas', icon: 'i-lucide-gauge' },
+  'scan.shared': { verb: 'shared the result of a scan of', icon: 'i-lucide-link' },
+  'scan.unshared': { verb: 'revoked the shared link to a scan of', icon: 'i-lucide-unlink' }
 }
 
 export interface ActivityLine {

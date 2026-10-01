@@ -116,6 +116,15 @@ def previous_scan(*, target: str, owner_id: str | None, before: float, with_ai_r
     return _store_or_raise().previous_scan(target=target, owner_id=owner_id, before=before, with_ai_review=with_ai_review)
 
 
+def set_share_token(scan_id: str, token: str | None) -> None:
+    """Share the scan's result at this token, or stop sharing it (None)."""
+    _store_or_raise().set_share_token(scan_id, token)
+
+
+def get_shared_scan(token: str) -> ScanRow | None:
+    return _store_or_raise().get_shared_scan(token)
+
+
 def append_log_line(scan_id: str, line: str, *, keep: int) -> None:
     _store_or_raise().append_log_line(scan_id, line, keep=keep)
 
