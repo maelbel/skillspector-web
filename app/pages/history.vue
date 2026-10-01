@@ -48,20 +48,30 @@ function ariaSort(column: HistorySort): 'ascending' | 'descending' | 'none' {
 
 function sortIcon(column: HistorySort) {
   if (column !== sort.value) return 'i-lucide-chevrons-up-down'
+  if (reloading.value) return 'i-lucide-loader-circle'
   return order.value === 'asc' ? 'i-lucide-arrow-up' : 'i-lucide-arrow-down'
 }
 
 const { data, status, error, refresh, hasMore, loadMore } = useScanHistory(targetFilter, sort, order)
 
 // A new sort, or another target's timeline, keeps the rows shown until the new ones arrive: dimmed,
-// with a loading badge. "Load more" shows its own.
+// under a progress bar, with a spinner in the sorted column's header. Only once it takes a moment,
+// so a quick answer doesn't flash. "Load more" shows its own.
+const RELOAD_DELAY_MS = 200
 const reloading = ref(false)
+let reloadTimer: ReturnType<typeof setTimeout> | undefined
 watch([sort, order, targetFilter], () => {
-  reloading.value = true
+  clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => {
+    if (status.value === 'pending') reloading.value = true
+  }, RELOAD_DELAY_MS)
 })
 watch(status, (value) => {
-  if (value !== 'pending') reloading.value = false
+  if (value === 'pending') return
+  clearTimeout(reloadTimer)
+  reloading.value = false
 })
+onUnmounted(() => clearTimeout(reloadTimer))
 const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
 
 const retentionLabel = computed(() => {
@@ -210,15 +220,53 @@ async function confirmDelete() {
 
     <div
       v-else-if="status === 'pending' && !data"
-      class="surface flex items-center gap-3 px-5 py-4"
+      class="surface overflow-hidden"
+      aria-busy="true"
     >
-      <UIcon
-        name="i-lucide-loader-circle"
-        class="size-5 animate-spin text-primary"
-      />
-      <p class="text-sm text-muted">
+      <p class="sr-only">
         Loading scans…
       </p>
+      <!-- The table as it will be, so nothing moves once the scans arrive. -->
+      <table
+        class="w-full table-fixed text-sm"
+        aria-hidden="true"
+      >
+        <thead>
+          <tr class="eyebrow border-b border-default text-left text-muted">
+            <th
+              v-for="column in SORTED_COLUMNS"
+              :key="column.key"
+              :class="column.class"
+              class="font-medium"
+            >
+              {{ SORTS[column.key].label }}
+            </th>
+            <th class="w-24 sm:w-28" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in 5"
+            :key="row"
+            class="border-b border-muted last:border-b-0"
+          >
+            <td class="px-4 py-4 sm:px-5">
+              <USkeleton class="mb-2 h-3.5 w-40 max-w-full" />
+              <USkeleton class="h-3 w-24 max-w-full" />
+            </td>
+            <td class="px-4 py-4 sm:px-5">
+              <USkeleton class="h-7 w-24" />
+            </td>
+            <td class="px-5 py-4 max-md:hidden">
+              <USkeleton class="h-1.5 w-24" />
+            </td>
+            <td class="px-5 py-4 max-sm:hidden">
+              <USkeleton class="h-3 w-20" />
+            </td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <div
@@ -283,15 +331,10 @@ async function confirmDelete() {
       >
         <div
           v-if="reloading"
-          class="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center"
+          class="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-brand/15"
+          aria-hidden="true"
         >
-          <span class="flex items-center gap-2 rounded-xs bg-default px-3 py-1.5 text-sm text-muted shadow-sm ring ring-default">
-            <UIcon
-              name="i-lucide-loader-circle"
-              class="size-4 animate-spin text-primary"
-            />
-            Loading scans…
-          </span>
+          <div class="h-full w-1/3 animate-sweep bg-brand motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-60" />
         </div>
         <p
           class="sr-only"
@@ -299,10 +342,7 @@ async function confirmDelete() {
         >
           {{ reloading ? 'Loading scans' : '' }}
         </p>
-        <table
-          class="w-full table-fixed text-sm transition-opacity"
-          :class="{ 'opacity-50': reloading }"
-        >
+        <table class="w-full table-fixed text-sm">
           <thead>
             <tr class="eyebrow border-b border-default text-left text-muted">
               <th
@@ -322,7 +362,7 @@ async function confirmDelete() {
                   <UIcon
                     :name="sortIcon(column.key)"
                     class="size-3.5 shrink-0"
-                    :class="column.key === sort ? '' : 'opacity-40 group-hover:opacity-100'"
+                    :class="column.key !== sort ? 'opacity-40 group-hover:opacity-100' : reloading ? 'animate-spin text-primary' : ''"
                     aria-hidden="true"
                   />
                 </button>
@@ -335,7 +375,10 @@ async function confirmDelete() {
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            class="transition-opacity"
+            :class="{ 'opacity-50': reloading }"
+          >
             <tr
               v-for="scan in visibleScans"
               :key="scan.id"
