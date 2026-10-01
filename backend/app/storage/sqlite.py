@@ -14,6 +14,7 @@ from app.storage.base import (
     ScanRow,
     previous_scan_query,
     scan_filter,
+    scan_order,
     summary_columns,
 )
 
@@ -230,6 +231,18 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE UNIQUE INDEX IF NOT EXISTS scans_share_token ON scans (share_token)",
         ],
     ),
+    (
+        16,
+        [
+            # The history's sorts (GET /scan?sort=…): everyone's scans for admins, one user's for
+            # the others. Targets already have one (scans_target_created_at).
+            "CREATE INDEX IF NOT EXISTS scans_created_at ON scans (created_at)",
+            "CREATE INDEX IF NOT EXISTS scans_risk_score ON scans (risk_score)",
+            "CREATE INDEX IF NOT EXISTS scans_status ON scans (status)",
+            "CREATE INDEX IF NOT EXISTS scans_owner_created_at ON scans (owner_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS scans_owner_risk_score ON scans (owner_id, risk_score)",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -414,11 +427,18 @@ class SQLiteStore:
 
     @_locked
     def list_scans(
-        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+        self,
+        limit: int,
+        offset: int,
+        *,
+        owner_id: str | None = None,
+        target: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> tuple[list[ScanRow], int]:
         where, params = scan_filter("?", owner_id=owner_id, target=target)
         rows = self._conn.execute(
-            f"SELECT {SUMMARY_COLUMNS} FROM scans {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"SELECT {SUMMARY_COLUMNS} FROM scans {where} {scan_order(sort, order)} LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ).fetchall()
         total = self._conn.execute(f"SELECT COUNT(*) FROM scans {where}", params).fetchone()[0]

@@ -12,6 +12,7 @@ from app.storage.base import (
     ScanRow,
     previous_scan_query,
     scan_filter,
+    scan_order,
     summary_columns,
 )
 
@@ -232,6 +233,18 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE UNIQUE INDEX IF NOT EXISTS scans_share_token ON scans (share_token)",
         ],
     ),
+    (
+        16,
+        [
+            # The history's sorts (GET /scan?sort=…): everyone's scans for admins, one user's for
+            # the others. Targets already have one (scans_target_created_at).
+            "CREATE INDEX IF NOT EXISTS scans_created_at ON scans (created_at)",
+            "CREATE INDEX IF NOT EXISTS scans_risk_score ON scans (risk_score)",
+            "CREATE INDEX IF NOT EXISTS scans_status ON scans (status)",
+            "CREATE INDEX IF NOT EXISTS scans_owner_created_at ON scans (owner_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS scans_owner_risk_score ON scans (owner_id, risk_score)",
+        ],
+    ),
 ]
 
 
@@ -393,12 +406,19 @@ class PostgresStore:
         self._execute("UPDATE app_settings SET scan_retention_days = %s WHERE id = 1", (value,))
 
     def list_scans(
-        self, limit: int, offset: int, *, owner_id: str | None = None, target: str | None = None
+        self,
+        limit: int,
+        offset: int,
+        *,
+        owner_id: str | None = None,
+        target: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> tuple[list[ScanRow], int]:
         where, params = scan_filter("%s", owner_id=owner_id, target=target)
         with self._pool.connection() as conn:
             rows = conn.execute(
-                f"SELECT {SUMMARY_COLUMNS} FROM scans {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                f"SELECT {SUMMARY_COLUMNS} FROM scans {where} {scan_order(sort, order)} LIMIT %s OFFSET %s",
                 (*params, limit, offset),
             ).fetchall()
             total = conn.execute(f"SELECT COUNT(*) AS total FROM scans {where}", params).fetchone()["total"]

@@ -420,9 +420,13 @@ async def read_scan_history(
     offset: int = Query(default=0, ge=0),
     # Only this target's scans: its timeline.
     target: str | None = Query(default=None, max_length=2048),
+    # Over the whole history, so paging stays right; newest first by default.
+    sort: Literal["created_at", "target", "risk_score", "verdict", "status"] = Query(default="created_at"),
+    order: Literal["asc", "desc"] = Query(default="desc"),
 ) -> ScanHistoryResponse:
     # Admins see every scan, including ones from before accounts existed; users only their own.
-    rows, total = list_jobs(limit, offset, owner_id=None if viewer.is_admin else viewer.user_id, target=target)
+    owner_id = None if viewer.is_admin else viewer.user_id
+    rows, total = list_jobs(limit, offset, owner_id=owner_id, target=target, sort=sort, order=order)
     rescans = _Rescans(viewer)
     items = [
         ScanSummaryResponse(
