@@ -1,14 +1,31 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.mode import Mode
 
+# The YARA rule files skillspector loads from a rules directory (skillspector/nodes/analyzers/static_yara.py).
+YARA_RULE_SUFFIXES = (".yar", ".yara", ".yar.b64", ".yara.b64")
 
-class Settings(BaseSettings):
-    """Runtime config for the scan API. All values overridable via env vars."""
+
+def yara_rule_files(directory: Path) -> list[Path]:
+    """The rule files under directory, symlinks skipped as skillspector does, in a stable order."""
+    return sorted(
+        path
+        for path in directory.rglob("*")
+        if path.name.endswith(YARA_RULE_SUFFIXES) and path.is_file() and not path.is_symlink()
+    )
+
+
+class AnalysisSettings(BaseSettings):
+    """skillspector's own analysis settings, applied to every scan (app/analysis_settings.py).
+
+    Separate from Settings so they can be read before skillspector is imported: it reads some of
+    them only then. Unset leaves skillspector's own default.
+    """
 
     # .env.local is what `pnpm setup` writes; it overrides .env when both exist.
     # extra="ignore": settings files written by older versions (e.g. ADMIN_TOKEN) still load.
@@ -19,6 +36,46 @@ class Settings(BaseSettings):
         extra="ignore",
         env_ignore_empty=True,
     )
+
+    # A directory of extra YARA rules, loaded alongside skillspector's own.
+    yara_rules_dir: Path | None = None
+    # The language AI review writes its explanations in, e.g. French.
+    output_language: str | None = None
+    # Passed to the AI provider as is: which values work depends on the provider and model.
+    reasoning_effort: str | None = None
+    temperature: float | None = Field(default=None, ge=0, le=1)
+    max_llm_concurrency: int | None = Field(default=None, ge=1)
+    osv_timeout_seconds: float | None = Field(default=None, gt=0)
+    # skillspector's deadline for a whole scan, after which it reports what it inspected so far.
+    max_workflow_seconds: float | None = Field(default=None, gt=0)
+    max_static_analysis_seconds_per_artifact: float | None = Field(default=None, gt=0)
+
+    @field_validator("output_language")
+    @classmethod
+    def _language_skillspector_accepts(cls, value: str | None) -> str | None:
+        """skillspector silently ignores a language it won't put in a prompt; refuse it instead."""
+        if value is None:
+            return None
+        language = value.strip()
+        if not language or len(language) > 64 or not all(c.isalnum() or c in " -_" for c in language):
+            raise ValueError("output_language must be a language name: up to 64 letters, digits, spaces, - or _")
+        return language
+
+    @field_validator("yara_rules_dir")
+    @classmethod
+    def _rules_dir_holds_rules(cls, value: Path | None) -> Path | None:
+        """Checked once at startup: skillspector would only log a missing directory, on every scan."""
+        if value is None:
+            return None
+        if not value.is_dir():
+            raise ValueError(f"yara_rules_dir {value} is not a directory")
+        if not yara_rule_files(value):
+            raise ValueError(f"yara_rules_dir {value} holds no {', '.join(YARA_RULE_SUFFIXES)} file")
+        return value.resolve()
+
+
+class Settings(AnalysisSettings):
+    """Runtime config for the scan API. All values overridable via env vars."""
 
     # Which deployment this is; see app/core/mode.py.
     mode: Mode = Mode.SELF_HOSTED

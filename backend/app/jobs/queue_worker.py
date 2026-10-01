@@ -11,6 +11,11 @@ import time
 
 from vercel.queue import Message, subscribe
 
+from app.analysis_settings import apply_to_process
+
+# The operator's skillspector settings, before skillspector reads them on import (app.scanner).
+apply_to_process()
+
 from app import claude_key, db, scan_logs, scanner
 from app.jobs.vercel_queues import SCAN_TOPIC
 from app.scanner import Job, JobStatus, LLMConfig

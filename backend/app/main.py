@@ -11,6 +11,11 @@ if not _known_working:
     os.environ["SKILLSPECTOR_PROVIDER"] = "anthropic"
     os.environ["ANTHROPIC_API_KEY"] = "sk-placeholder-unlocks-llm-analyzer-wiring"
 
+# The operator's skillspector settings, before skillspector reads them on import.
+from app.analysis_settings import apply_to_process
+
+apply_to_process()
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request

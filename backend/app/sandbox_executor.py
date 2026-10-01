@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from app import scan_logs
-from app.core.config import Settings
+from app.analysis_settings import skillspector_env
+from app.core.config import Settings, yara_rule_files
 from app.core.mode import Mode
 from app.sandbox_runner import PREFIX
 from app.sandbox_snapshot import snapshot_id_for
@@ -32,6 +33,7 @@ ExecutorKind = Literal["local", "sandbox"]
 RUNNER_SOURCE = (Path(__file__).parent / "sandbox_runner.py").read_text()
 RUNNER_PATH = "/vercel/sandbox/sandbox_runner.py"
 BASELINE_PATH = "/vercel/sandbox/baseline.yaml"
+YARA_RULES_PATH = "/vercel/sandbox/yara_rules"
 
 # Where skillspector fetches targets from (see describeScanTarget in shared/utils/scan.ts),
 # including the hosts GitHub and Hugging Face redirect downloads to. TLS only: the allow-list
@@ -102,9 +104,12 @@ def workflow_deadline(limit: float) -> float:
     return max(limit - REPORT_HEADROOM_SECONDS, limit / 2)
 
 
-def _scan_env(llm: LLMConfig | None, limit: float) -> dict[str, str]:
+def _scan_env(settings: Settings, llm: LLMConfig | None) -> dict[str, str]:
     """skillspector's settings inside the VM; for AI review, the provider's but never the key."""
-    env = {"SKILLSPECTOR_MAX_WORKFLOW_SECONDS": f"{workflow_deadline(limit):g}"}
+    deadline = workflow_deadline(settings.sandbox_timeout_seconds)
+    if settings.max_workflow_seconds is not None:
+        deadline = min(deadline, settings.max_workflow_seconds)
+    env = skillspector_env(settings) | {"SKILLSPECTOR_MAX_WORKFLOW_SECONDS": f"{deadline:g}"}
     if llm is not None:
         env |= {"SKILLSPECTOR_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": BROKERED_KEY_PLACEHOLDER}
         if llm.model:
@@ -130,6 +135,13 @@ class SandboxExecutor:
             )
         self._snapshot_id = snapshot_id
         self._settings = settings
+        # Uploaded to every scan's VM, so the snapshot needs no rebuild when they change. Flattened
+        # into one folder, where skillspector loads every rule file.
+        rules_dir = settings.yara_rules_dir
+        self._yara_rules = {
+            path.relative_to(rules_dir).as_posix().replace("/", "__"): path.read_bytes()
+            for path in (yara_rule_files(rules_dir) if rules_dir else [])
+        }
         if create_sandbox is None:
             from vercel.sandbox import create_sandbox
         self._create_sandbox = create_sandbox
@@ -162,14 +174,20 @@ class SandboxExecutor:
                 execution_time_limit=limit + 60,
                 persistent=False,
                 network_policy=scan_network_policy(llm.api_key if llm else None),
-                env=_scan_env(llm, limit),
+                env=_scan_env(settings, llm),
                 tags={"app": "skillspector-web", "scan": job_id},
                 destroy=False,
             ) as box:
                 await box.fs.write_text(RUNNER_PATH, RUNNER_SOURCE)
                 if baseline is not None:
                     await box.fs.write_text(BASELINE_PATH, baseline)
+                if self._yara_rules:
+                    await box.fs.mkdir(YARA_RULES_PATH)
+                    for name, rules in self._yara_rules.items():
+                        await box.fs.write_bytes(f"{YARA_RULES_PATH}/{name}", rules)
                 args = [RUNNER_PATH, target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
+                if self._yara_rules:
+                    args += ["--yara-rules-dir", YARA_RULES_PATH]
                 transitive = transitive_options(settings, transitive_depth)
                 if transitive:
                     args += ["--transitive-depth", str(transitive["depth"])]
