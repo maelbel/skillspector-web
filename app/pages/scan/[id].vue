@@ -37,6 +37,8 @@ const aiReviewAlert = computed(() => {
       }
 })
 
+const gaps = computed(() => status.value?.result ? inspectionGaps(status.value.result) : null)
+
 const scanAgainLink = computed(() => status.value ? `/?target=${encodeURIComponent(status.value.target)}` : '/')
 
 useSeoMeta({
@@ -294,7 +296,12 @@ const errorMessage = computed(() => {
         variant="subtle"
         icon="i-lucide-alert-triangle"
         title="Analysis was incomplete"
-        description="One or more analyzers didn't finish, so the findings below may be partial."
+        :description="gaps ? 'Part of the analysis didn\'t finish: see what wasn\'t inspected below.' : 'One or more analyzers didn\'t finish, so the findings below may be partial.'"
+      />
+
+      <InspectionGaps
+        v-if="gaps"
+        :gaps="gaps"
       />
 
       <div

@@ -54,6 +54,30 @@ export interface ReportMetadata {
   }
 }
 
+// One gap in skillspector's inspection ledger: a file, or part of one, it couldn't fully check.
+export interface LedgerException {
+  outcome: string
+  phase: string
+  reason_code: string
+  message?: string
+  path?: string | null
+  start_line?: number | null
+  end_line?: number | null
+  fatal?: boolean
+  analyzers?: string[]
+}
+
+export interface AnalysisCompleteness {
+  status: 'complete' | 'partial' | 'failed' | string
+  is_complete: boolean
+  execution_successful: boolean
+  total_components?: number
+  fully_inspected_files?: number
+  partially_inspected_files?: number
+  entirely_uninspected_files?: number
+  ledger_exceptions?: LedgerException[]
+}
+
 export interface ScanReport {
   skill: {
     name: string
@@ -69,8 +93,9 @@ export interface ScanReport {
   issues: Finding[]
   suppressed_count: number
   execution_successful: boolean
-  // Missing from reports stored before skillspector added it.
+  // Missing from reports stored before skillspector added them.
   metadata?: ReportMetadata
+  analysis_completeness?: AnalysisCompleteness
 }
 
 export interface ScanStatus {
