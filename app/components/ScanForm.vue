@@ -113,6 +113,7 @@ function useExample(example: typeof EXAMPLES[number]) {
 
 const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
   repository: { icon: 'i-lucide-git-branch', label: 'repository' },
+  folder: { icon: 'i-lucide-folder', label: 'folder' },
   file: { icon: 'i-lucide-file-text', label: 'single file' },
   archive: { icon: 'i-lucide-file-archive', label: 'archive' },
   mcp: { icon: 'i-lucide-server', label: 'MCP server' }
@@ -397,7 +398,7 @@ async function submit() {
           <span class="truncate font-mono text-xs text-highlighted">{{ targetInfo.title }}</span>
         </span>
         <span v-else-if="!target.trim()">
-          A repository or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face, or an MCP server’s name in the MCP Registry.
+          A repository, a folder in one, or a single SKILL.md file on GitHub, GitLab, Bitbucket or Hugging Face, or an MCP server’s name in the MCP Registry.
         </span>
       </template>
     </UFormField>

@@ -38,6 +38,9 @@ describe('describeScanTarget', () => {
     ['https://raw.githubusercontent.com/acme/skills/main/pdf/SKILL.md', 'file', 'GitHub', 'acme/skills/pdf/SKILL.md'],
     ['https://github.com/acme/skills/archive/refs/heads/main.zip', 'archive', 'GitHub', 'acme/skills'],
     ['https://huggingface.co/acme/skill/resolve/main/skill.zip', 'archive', 'Hugging Face', 'https://huggingface.co/acme/skill/resolve/main/skill.zip'],
+    ['https://github.com/anthropics/skills/tree/main/skills/pdf', 'folder', 'GitHub', 'anthropics/skills/skills/pdf'],
+    ['https://gitlab.com/group/sub/proj/-/tree/main/skills/pdf', 'folder', 'GitLab', 'group/sub/proj/skills/pdf'],
+    ['https://huggingface.co/spaces/acme/demo/tree/main/skills/pdf', 'folder', 'Hugging Face', 'spaces/acme/demo/skills/pdf'],
     ['io.github.acme/weather', 'mcp', 'MCP Registry', 'io.github.acme/weather'],
     [ENTRY, 'mcp', 'MCP Registry', 'io.github.acme/weather'],
     ['https://registry.modelcontextprotocol.io/v0.1/servers/io.github.acme%2Fweather/versions/1.0.0', 'mcp', 'MCP Registry', 'io.github.acme/weather@1.0.0']
@@ -49,7 +52,6 @@ describe('describeScanTarget', () => {
     ['github.com/acme/skills', 'full URL'],
     ['http://github.com/acme/skills', 'https://'],
     ['https://example.com/skill.zip', 'GitHub, GitLab, Bitbucket or Hugging Face'],
-    ['https://github.com/acme/skills/tree/main/pdf', 'Folder links'],
     ['https://github.com/acme', 'Link to a repository'],
     // A GitHub owner/repo isn't an MCP server's name: those have a reverse-DNS namespace.
     ['acme/skills', 'MCP server’s name'],

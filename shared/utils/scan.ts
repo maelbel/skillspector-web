@@ -63,6 +63,18 @@ export function parseScanTarget(target: string): { title: string, isGithub: bool
     return { title: path ? `${owner}/${repo}/${path}` : `${owner}/${repo}`, isGithub: true }
   }
 
+  // Folder links elsewhere read like GitHub's: the repository, then the folder, without the ref.
+  if (url.hostname === 'gitlab.com') {
+    const marker = segments.indexOf('-')
+    if (marker >= 2 && segments[marker + 1] === 'tree') {
+      return { title: [...segments.slice(0, marker), ...segments.slice(marker + 3)].map(decodeURIComponent).join('/'), isGithub: false }
+    }
+  }
+  if (url.hostname === 'huggingface.co') {
+    const at = segments.indexOf('tree')
+    if (at >= 2) return { title: [...segments.slice(0, at), ...segments.slice(at + 2)].map(decodeURIComponent).join('/'), isGithub: false }
+  }
+
   return { title: target, isGithub: false }
 }
 
@@ -75,7 +87,7 @@ export function splitScanTitle(target: string): { name: string, source?: string 
   return { name: parts.slice(-2).join('/'), source: parts.slice(0, 2).join('/') }
 }
 
-export type ScanTargetKind = 'repository' | 'file' | 'archive' | 'mcp'
+export type ScanTargetKind = 'repository' | 'folder' | 'file' | 'archive' | 'mcp'
 
 export type ScanTargetInfo
   = | { ok: true, kind: ScanTargetKind, host: string, title: string }
@@ -83,7 +95,8 @@ export type ScanTargetInfo
 
 // Mirrors skillspector's input_handler: only these hosts are fetched, only over https, and on
 // Git hosts anything that isn't a /blob/, /raw/ or /archive/ link (or a .md/.py/.sh file) is
-// `git clone`d as-is — which is why folder (/tree/) links fail.
+// `git clone`d as-is. Folder (/tree/) links are cloned at their ref and only the folder scanned:
+// skillspector does GitHub's, the API GitLab's and Hugging Face's (backend/app/sandbox_runner.py).
 const GIT_HOSTS: Record<string, string> = {
   'github.com': 'GitHub',
   'gitlab.com': 'GitLab',
@@ -130,11 +143,11 @@ export function describeScanTarget(target: string): ScanTargetInfo | null {
     ? 'archive'
     : 'file'
 
+  if (path.includes('/tree/') && url.hostname !== 'bitbucket.org') {
+    return { ok: true, kind: 'folder', host: hostName, title }
+  }
   if (url.hostname in DOWNLOAD_HOSTS) {
     return { ok: true, kind, host: hostName, title }
-  }
-  if (path.includes('/tree/')) {
-    return { ok: false, problem: 'Folder links can’t be scanned — link the repository itself, or a SKILL.md file inside it' }
   }
   if (['/blob/', '/raw/', '/archive/'].some(part => path.includes(part)) || DIRECT_FILE_SUFFIXES.some(suffix => path.endsWith(suffix))) {
     return { ok: true, kind, host: hostName, title }

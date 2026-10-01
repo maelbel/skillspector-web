@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,7 +35,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 PREFIX = "@@skillspector-web@@ "
 
@@ -386,6 +387,126 @@ def scan_mcp_entry(url: str, *, on_step: Callable[[str], None], on_log: Callable
     }
 
 
+# Folder links. skillspector clones a GitHub /tree/<ref>/<folder> link itself and scans the folder;
+# GitLab's /-/tree/ and Hugging Face's /tree/ links are fetched here instead, within skillspector's
+# own ingest limits, and the copy is scanned.
+_HF_REPO_KINDS = {"spaces": "spaces", "datasets": "datasets"}
+
+
+def _safe_segments(segments: list[str]) -> list[str]:
+    if any(part in {"", ".", ".."} or "/" in part or "\\" in part for part in segments):
+        raise RuntimeError("The folder link must stay within the repository")
+    return segments
+
+
+def _gitlab_folder(handler: Any, target: str) -> Path | None:
+    """Clone a gitlab.com /-/tree/<ref>/<folder> link at its ref, as skillspector does GitHub's."""
+    parts = urlsplit(target)
+    segments = [unquote(part) for part in parts.path.split("/") if part]
+    if parts.hostname != "gitlab.com" or "-" not in segments:
+        return None
+    marker = segments.index("-")
+    if marker < 2 or segments[marker + 1 : marker + 2] != ["tree"] or len(segments) < marker + 3:
+        return None
+    repository_url = f"https://gitlab.com/{'/'.join(segments[:marker])}.git"
+    rest = _safe_segments(segments[marker + 2 :])
+    # skillspector's own: the longest branch or tag the link starts with is the ref, as refs may
+    # hold slashes; and its clone, bounded by its ingest limits.
+    try:
+        ref, folder = handler._resolve_tree_ref(repository_url, rest)
+    except ValueError as exc:
+        raise RuntimeError(f"{'/'.join(rest)} doesn't start with a branch or tag of {repository_url}") from exc
+    clone = handler._clone_git(repository_url, branch=ref).resolve()
+    # Scanned as a plain folder, Git's own files would be scanned too.
+    shutil.rmtree(clone / ".git", ignore_errors=True)
+    path = (clone / PurePosixPath(*folder)).resolve()
+    path.relative_to(clone)
+    if not path.is_dir() or path.is_symlink():
+        raise RuntimeError(f"{'/'.join(folder)} isn't a folder at {ref}")
+    return path
+
+
+def _huggingface_folder(handler: Any, target: str, on_log: Callable[[str], None]) -> Path | None:
+    """Download a huggingface.co /tree/<ref>/<folder> link's files, listed by the Hub's API.
+
+    Files stored with LFS (model weights and the like) are left out: they aren't a skill's code,
+    and they're served from other hosts. Each file comes from /raw/, which serves it directly.
+    """
+    import httpx
+    from skillspector.input_handler import (
+        INGEST_MAX_BYTES,
+        INGEST_MAX_SECONDS,
+        INGEST_MAX_TREE_ENTRIES,
+    )
+
+    parts = urlsplit(target)
+    raw = [part for part in parts.path.split("/") if part]
+    if parts.hostname != "huggingface.co":
+        return None
+    kind = _HF_REPO_KINDS.get(raw[0], "models") if raw else "models"
+    repo_end = 3 if kind != "models" else 2
+    if len(raw) <= repo_end + 1 or raw[repo_end] != "tree":
+        return None
+    repo = "/".join(raw[:repo_end])  # As linked, with spaces/ or datasets/ in front.
+    api_repo = "/".join(raw[1:repo_end] if kind != "models" else raw[:repo_end])
+    # A ref with slashes (refs/pr/1) is linked encoded, so it's one segment.
+    ref = unquote(raw[repo_end + 1])
+    folder = _safe_segments([unquote(part) for part in raw[repo_end + 2 :]])
+    deadline = time.monotonic() + INGEST_MAX_SECONDS
+
+    def get(url: str, **options: Any) -> httpx.Response:
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"Fetching the folder took longer than {INGEST_MAX_SECONDS:g} seconds")
+        try:
+            return httpx.get(url, timeout=30, follow_redirects=False, **options)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Couldn't reach Hugging Face: {exc}") from exc
+
+    folder_path = "".join(f"/{quote(part, safe='')}" for part in folder)
+    listing = get(f"https://huggingface.co/api/{kind}/{api_repo}/tree/{quote(ref, safe='')}{folder_path}", params={"recursive": "true"})
+    if listing.status_code == 404:
+        raise RuntimeError(f"{'/'.join(folder) or 'The folder'} isn't in {repo} at {ref}")
+    if listing.status_code != 200:
+        raise RuntimeError(f"Hugging Face answered {listing.status_code} listing the folder")
+    # The Hub pages long listings; one this long is past the limit anyway.
+    if listing.headers.get("link"):
+        raise RuntimeError(f"The folder holds more than {INGEST_MAX_TREE_ENTRIES} entries")
+    files = [entry for entry in listing.json() if entry.get("type") == "file"]
+    skipped = [entry for entry in files if entry.get("lfs")]
+    files = [entry for entry in files if not entry.get("lfs")]
+    if len(files) > INGEST_MAX_TREE_ENTRIES:
+        raise RuntimeError(f"The folder holds more than {INGEST_MAX_TREE_ENTRIES} files")
+    if sum(int(entry.get("size") or 0) for entry in files) > INGEST_MAX_BYTES:
+        raise RuntimeError(f"The folder is larger than {INGEST_MAX_BYTES // (1024 * 1024)} MB")
+    if skipped:
+        on_log(f"Skipped {len(skipped)} large file{'s' if len(skipped) != 1 else ''} stored with LFS")
+
+    root = handler._get_temp_dir() / "folder"
+    root.mkdir()
+    prefix = "/".join(folder)
+    total = 0
+    for entry in files:
+        path = str(entry["path"])
+        relative = _safe_segments(path.removeprefix(prefix).strip("/").split("/")) if prefix else _safe_segments(path.split("/"))
+        response = get(f"https://huggingface.co/{repo}/raw/{quote(ref, safe='')}/{quote(path)}")
+        if response.status_code != 200:
+            raise RuntimeError(f"Hugging Face answered {response.status_code} for {path}")
+        total += len(response.content)
+        if total > INGEST_MAX_BYTES:
+            raise RuntimeError(f"The folder is larger than {INGEST_MAX_BYTES // (1024 * 1024)} MB")
+        destination = root.joinpath(*relative)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(response.content)
+    if not files:
+        raise RuntimeError(f"{'/'.join(folder) or 'The folder'} holds no files to scan")
+    return root
+
+
+def fetch_folder(handler: Any, target: str, on_log: Callable[[str], None]) -> Path | None:
+    """A local copy of a GitLab or Hugging Face folder link, to scan in its place; None for any other target."""
+    return _gitlab_folder(handler, target) or _huggingface_folder(handler, target, on_log)
+
+
 def run_scan(
     target: str,
     *,
@@ -442,22 +563,25 @@ def run_scan(
     skills: list[Path] = []
     root: Path | None = None
     handler = None
-    if _may_hold_several_skills(target):
-        from skillspector.input_handler import InputHandler
-
-        handler = InputHandler()
-        try:
-            root, _kind = handler.resolve(target)
-            skills = find_skills(root) if root.is_dir() else []
-        except Exception:  # noqa: BLE001
-            # The scan itself reports a target it can't fetch, as before.
-            root, skills = None, []
+    copy: Path | None = None
     try:
+        if _may_hold_several_skills(target):
+            from skillspector.input_handler import InputHandler
+
+            handler = InputHandler()
+            copy = fetch_folder(handler, target, on_log)
+            try:
+                root = copy or handler.resolve(target)[0]
+                skills = find_skills(root) if root.is_dir() else []
+            except Exception:  # noqa: BLE001
+                # The scan itself reports a target it can't fetch, as before.
+                root, skills = None, []
         if len(skills) < 2:
             # Following references, skillspector's CLI charges the target's own download to the
             # traversal's 10 MB budget, which one repository clone can use up: scan the copy
-            # fetched above instead, so the budget goes to what the skill references.
-            return scan_one(str(root) if transitive and root is not None else target, on_step)
+            # fetched above instead, so the budget goes to what the skill references. A folder
+            # fetched here can only be scanned from its copy.
+            return scan_one(str(root) if root is not None and (transitive or copy) else target, on_step)
         if len(skills) > MAX_SKILLS:
             raise RuntimeError(f"This repository holds more than {MAX_SKILLS} skills: scan them one folder at a time")
         return _scan_each(root, skills, scan_one, on_step, on_log, started, deadline_seconds)
