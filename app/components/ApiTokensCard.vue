@@ -21,6 +21,7 @@ const creating = ref(false)
 const revoking = ref<string | null>(null)
 const errorMessage = ref('')
 const created = ref<CreatedApiToken | null>(null)
+const formOpen = ref(false)
 const copied = ref(false)
 const copyFailed = ref(false)
 const tokenEl = useTemplateRef<HTMLElement>('tokenEl')
@@ -36,6 +37,7 @@ async function create() {
       body: { name: name.value.trim(), expiresInDays: expiresInDays.value || null }
     })
     name.value = ''
+    formOpen.value = false
     await refresh()
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Couldn’t create the token')
@@ -164,15 +166,25 @@ const expired = (token: ApiToken) => token.expires_at !== null && token.expires_
         </li>
       </ul>
       <p
-        v-else-if="tokens && admin"
+        v-else-if="tokens"
         class="text-sm text-muted"
       >
-        No API tokens.
+        No API tokens{{ admin ? '' : ' yet' }}.
       </p>
 
+      <UButton
+        v-if="!admin && !formOpen"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-plus"
+        class="self-start"
+        @click="formOpen = true; created = null"
+      >
+        New token
+      </UButton>
       <form
-        v-if="!admin"
-        class="flex flex-wrap items-end gap-3"
+        v-else-if="!admin"
+        class="flex flex-wrap items-end gap-3 rounded-xs bg-muted p-4 ring ring-default"
         @submit.prevent="create"
       >
         <UFormField
@@ -184,6 +196,7 @@ const expired = (token: ApiToken) => token.expires_at !== null && token.expires_
             v-model="name"
             placeholder="e.g. GitHub Actions"
             maxlength="80"
+            autofocus
             class="w-full"
           />
         </UFormField>
@@ -203,6 +216,13 @@ const expired = (token: ApiToken) => token.expires_at !== null && token.expires_
           :disabled="!name.trim()"
         >
           Create token
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="ghost"
+          @click="formOpen = false; name = ''"
+        >
+          Cancel
         </UButton>
       </form>
 
