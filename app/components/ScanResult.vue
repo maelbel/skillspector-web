@@ -679,12 +679,13 @@ const errorMessage = computed(() => {
         :unscanned="status.result?.unscanned_skills ?? []"
       />
 
-      <!-- Baselines are for whoever runs the scans: not on a shared result. -->
+      <!-- A shared result still says which findings a baseline accepted, and why, but downloading
+           one is for whoever runs the scans. -->
       <BaselinePanel
-        v-if="scanId && (report.suppressed?.length || report.generated_baseline && !selectedSkill)"
-        :scan-id="scanId"
+        v-if="report.suppressed?.length || report.generated_baseline && !selectedSkill && !shared"
+        :scan-id="scanId ?? ''"
         :report="report"
-        :downloadable="!selectedSkill"
+        :downloadable="!selectedSkill && !shared"
         :active-count="skills && !selectedSkill ? skillFindings : report.issues.length"
       />
     </template>
