@@ -117,9 +117,12 @@ const fileCounts = computed(() =>
 )
 
 // Filters hold what's hidden, so a new value (or a fresh scan) is shown by default.
+const ruleCounts = computed(() =>
+  [...countBy(issue => issue.id)].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([value, count]) => ({ value, count })))
 const hiddenSeverities = ref(new Set<string>())
 const hiddenCategories = ref(new Set<string>())
 const hiddenFiles = ref(new Set<string>())
+const hiddenRules = ref(new Set<string>())
 const filtersOpen = ref(false)
 
 function toggle(set: Ref<Set<string>>, value: string) {
@@ -136,21 +139,24 @@ function clearFilters() {
   hiddenSeverities.value = new Set()
   hiddenCategories.value = new Set()
   hiddenFiles.value = new Set()
+  hiddenRules.value = new Set()
 }
 
 const activeFilterCount = computed(() =>
-  hiddenSeverities.value.size + hiddenCategories.value.size + hiddenFiles.value.size)
+  hiddenSeverities.value.size + hiddenCategories.value.size + hiddenFiles.value.size + hiddenRules.value.size)
 
 const filteredIssues = computed(() => sortedIssues.value.filter(issue =>
   !hiddenSeverities.value.has(issue.severity)
   && !(issue.category && hiddenCategories.value.has(issue.category))
   && !hiddenFiles.value.has(issue.location.file)
+  && !hiddenRules.value.has(issue.id)
 ))
 
 const filterGroups = computed(() => [
   { legend: 'Severity', hidden: hiddenSeverities, items: severityCounts.value, mono: false },
   { legend: 'Category', hidden: hiddenCategories, items: categoryCounts.value, mono: true },
-  { legend: 'File', hidden: hiddenFiles, items: fileCounts.value, mono: true }
+  { legend: 'File', hidden: hiddenFiles, items: fileCounts.value, mono: true },
+  { legend: 'Rule', hidden: hiddenRules, items: ruleCounts.value, mono: true }
 ].filter(group => group.items.length > 1 || group.hidden.value.size > 0))
 
 // Sorted by severity, findings sit under one heading per level; other sorts are one flat list.
@@ -496,6 +502,8 @@ const errorMessage = computed(() => {
               :key="findingKey(issue)"
               :finding="issue"
               :expanded="isExpanded(issue)"
+              :target="status?.target"
+              :skill-path="selectedSkill?.path"
               @toggle="toggleExpanded(issue)"
             />
           </template>
