@@ -52,6 +52,16 @@ function sortIcon(column: HistorySort) {
 }
 
 const { data, status, error, refresh, hasMore, loadMore } = useScanHistory(targetFilter, sort, order)
+
+// A new sort, or another target's timeline, keeps the rows shown until the new ones arrive: dimmed,
+// with a loading badge. "Load more" shows its own.
+const reloading = ref(false)
+watch([sort, order, targetFilter], () => {
+  reloading.value = true
+})
+watch(status, (value) => {
+  if (value !== 'pending') reloading.value = false
+})
 const { data: settingsData } = await useFetch<SettingsResponse>('/api/settings')
 
 const retentionLabel = computed(() => {
@@ -267,8 +277,32 @@ async function confirmDelete() {
         />
       </div>
 
-      <div class="surface overflow-hidden">
-        <table class="w-full table-fixed text-sm">
+      <div
+        class="surface relative overflow-hidden"
+        :aria-busy="reloading"
+      >
+        <div
+          v-if="reloading"
+          class="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center"
+        >
+          <span class="flex items-center gap-2 rounded-xs bg-default px-3 py-1.5 text-sm text-muted shadow-sm ring ring-default">
+            <UIcon
+              name="i-lucide-loader-circle"
+              class="size-4 animate-spin text-primary"
+            />
+            Loading scans…
+          </span>
+        </div>
+        <p
+          class="sr-only"
+          aria-live="polite"
+        >
+          {{ reloading ? 'Loading scans' : '' }}
+        </p>
+        <table
+          class="w-full table-fixed text-sm transition-opacity"
+          :class="{ 'opacity-50': reloading }"
+        >
           <thead>
             <tr class="eyebrow border-b border-default text-left text-muted">
               <th
