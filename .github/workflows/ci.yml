@@ -80,7 +80,7 @@ jobs:
           test -d $out/services/api/functions/fastapi.func
           # Scans boot from the snapshot recorded here, read at runtime (app/sandbox_snapshot.py). The
           # function lists its source files in filePathMap rather than copying them.
-          jq -e '.filePathMap | keys | map(select(test("^(\\./)?app/sandbox_"))) | debug | any(endswith("app/sandbox_snapshot_record.py"))' \
+          jq -e '.filePathMap | keys | map(select(test("^(\\./)?app/sandbox_"))) | any(endswith("app/sandbox_snapshot_record.py"))' \
             $out/services/api/functions/fastapi.func/.vc-config.json
           # The scan subscriber: a function triggered by the `scans` topic.
           jq -e -s 'map(.experimentalTriggers // [] | .[] | select(.topic == "scans")) | length > 0' \
