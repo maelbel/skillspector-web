@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Finding, ScanReport } from '../shared/types/scan'
-import { aiReviewCallSummary, aiReviewModels, findingKey, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
+import { aiReviewCallSummary, aiReviewModels, findingKey, formatTokenUsage, formatTokens, findingLocation, findingTitle, formatDuration, groupCompletedStages, scanDurationSeconds } from '../shared/utils/report'
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -122,5 +122,21 @@ describe('aiReviewCallSummary', () => {
 
   it('is null when skillspector made no call', () => {
     expect(aiReviewCallSummary(report({ llm_requested: true, llm_available: false, meta_analysis_applied: false }))).toBeNull()
+  })
+})
+
+describe('formatTokens', () => {
+  it('shortens large counts to three significant digits', () => {
+    expect([950, 1000, 48_210, 125_000, 1_250_000].map(formatTokens)).toEqual(['950', '1k', '48.2k', '125k', '1.25M'])
+  })
+})
+
+describe('formatTokenUsage', () => {
+  it('lists input with its cached part, then output', () => {
+    expect(formatTokenUsage({ input: 48_210, output: 3_400, cached: 12_100 })).toBe('48.2k input (12.1k cached) · 3.4k output')
+  })
+
+  it('leaves out counters the provider didn\'t report', () => {
+    expect(formatTokenUsage({ input: 500, output: null, cached: null })).toBe('500 input')
   })
 })

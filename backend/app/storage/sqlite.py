@@ -172,6 +172,17 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN ai_review TEXT",
         ],
     ),
+    (
+        10,
+        [
+            # Tokens the scan's AI review used, as the provider reported them (app/ai_usage.py).
+            # NULL for static scans, for counters a provider didn't report, and for scans
+            # finished before these columns existed.
+            "ALTER TABLE scans ADD COLUMN ai_input_tokens INTEGER",
+            "ALTER TABLE scans ADD COLUMN ai_output_tokens INTEGER",
+            "ALTER TABLE scans ADD COLUMN ai_cached_tokens INTEGER",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -256,7 +267,8 @@ class SQLiteStore:
             """
             UPDATE scans
             SET status = ?, finished_at = ?, result = ?, error = ?,
-                risk_score = ?, severity = ?, recommendation = ?, ai_review = ?
+                risk_score = ?, severity = ?, recommendation = ?, ai_review = ?,
+                ai_input_tokens = ?, ai_output_tokens = ?, ai_cached_tokens = ?
             WHERE id = ?
             """,
             (
@@ -284,6 +296,19 @@ class SQLiteStore:
         where, params = (" AND owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
         query = f"SELECT COUNT(*) FROM scans WHERE status IN ('pending', 'running'){where}"
         return self._conn.execute(query, params).fetchone()[0]
+
+    @_locked
+    def ai_token_totals(self, *, since: float, owner_id: str | None = None) -> dict[str, int]:
+        where, params = (" AND owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
+        row = self._conn.execute(
+            f"""
+            SELECT COUNT(ai_input_tokens) AS scans, COALESCE(SUM(ai_input_tokens), 0) AS input_tokens,
+                   COALESCE(SUM(ai_output_tokens), 0) AS output_tokens, COALESCE(SUM(ai_cached_tokens), 0) AS cached_tokens
+            FROM scans WHERE created_at >= ?{where}
+            """,
+            (since, *params),
+        ).fetchone()
+        return dict(row)
 
     @_locked
     def get_scan(self, id: str) -> ScanRow | None:

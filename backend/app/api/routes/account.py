@@ -1,7 +1,9 @@
+import time
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app import claude_key, quotas
+from app import claude_key, db, quotas
 from app.auth import AuthError
 from app.auth.deps import CurrentViewer
 
@@ -19,6 +21,25 @@ class ConnectClaudeRequest(BaseModel):
     api_key: str
 
 
+# How far back the account page adds up AI tokens.
+AI_USAGE_DAYS = 30
+
+
+class AIUsage(BaseModel):
+    """AI tokens over the last AI_USAGE_DAYS days, from scans still in history."""
+
+    days: int
+    scans: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+
+
+def ai_usage(owner_id: str | None) -> AIUsage:
+    totals = db.ai_token_totals(since=time.time() - AI_USAGE_DAYS * 86400, owner_id=owner_id)
+    return AIUsage(days=AI_USAGE_DAYS, **totals)
+
+
 class UsageResponse(BaseModel):
     scans_paused: bool
     # False for admins, and without accounts: no quota applies to them.
@@ -28,6 +49,8 @@ class UsageResponse(BaseModel):
     daily_scan_quota: int | None
     active_scans: int
     concurrent_scan_quota: int | None
+    # Everyone's, without accounts.
+    ai_usage: AIUsage
 
 
 def _signed_in_user(viewer) -> dict:
@@ -66,4 +89,5 @@ def read_usage(viewer: CurrentViewer) -> UsageResponse:
         daily_scan_quota=usage.limits.daily,
         active_scans=usage.active_scans,
         concurrent_scan_quota=usage.limits.concurrent,
+        ai_usage=ai_usage(viewer.user_id),
     )

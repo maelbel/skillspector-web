@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from app.ai_review import ai_review_status
+from app.ai_usage import token_totals
 
 # A scan as a plain dict keyed by column name, with `result` already decoded from JSON.
 ScanRow = dict[str, Any]
@@ -42,6 +43,11 @@ class ScanStore(Protocol):
 
     def count_active_scans(self, *, owner_id: str | None = None) -> int:
         """Scans pending or running; with owner_id, only that user's."""
+        ...
+
+    def ai_token_totals(self, *, since: float, owner_id: str | None = None) -> dict[str, int]:
+        """AI tokens of scans created since then, still in history; with owner_id, only that user's.
+        Keys: scans (with AI usage recorded), input_tokens, output_tokens, cached_tokens."""
         ...
 
     def get_scan(self, id: str) -> ScanRow | None: ...
@@ -161,10 +167,10 @@ class ScanStore(Protocol):
 
 
 
-def summary_columns(result: dict[str, Any] | None) -> tuple[Any, Any, Any, Any]:
-    """The summary columns denormalised from a report, so history can list scans without it."""
+def summary_columns(result: dict[str, Any] | None) -> tuple[Any, ...]:
+    """The summary columns denormalised from a report, so history and usage don't need to load it."""
     risk = (result or {}).get("risk_assessment") or {}
-    return risk.get("score"), risk.get("severity"), risk.get("recommendation"), ai_review_status(result)
+    return risk.get("score"), risk.get("severity"), risk.get("recommendation"), ai_review_status(result), *token_totals(result)
 
     def count_rate_limit_hits(self, key: str, *, window_seconds: float, now: float) -> int:
         """Hits recorded for key within the window."""

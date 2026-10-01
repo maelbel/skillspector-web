@@ -76,6 +76,11 @@ def count_active_scans(*, owner_id: str | None = None) -> int:
     return _store_or_raise().count_active_scans(owner_id=owner_id)
 
 
+def ai_token_totals(*, since: float, owner_id: str | None = None) -> dict[str, int]:
+    """AI tokens of scans created since then that are still in history; with owner_id, only that user's."""
+    return _store_or_raise().ai_token_totals(since=since, owner_id=owner_id)
+
+
 def get_scan(id: str) -> ScanRow | None:
     return _store_or_raise().get_scan(id)
 

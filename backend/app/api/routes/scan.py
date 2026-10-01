@@ -5,6 +5,7 @@ from pydantic import BaseModel, field_validator
 
 from app import claude_key, db, quotas, rate_limit
 from app.ai_review import AIReview, ai_review_status
+from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer
 from app.auth.deps import CurrentViewer
 from app.core.config import get_settings
@@ -60,6 +61,18 @@ class ScanQueuedResponse(BaseModel):
     status: JobStatus
 
 
+class AITokens(BaseModel):
+    """Tokens a scan's AI review used; None for counters the provider didn't report."""
+
+    input: int | None
+    output: int | None
+    cached: int | None
+
+
+def _ai_tokens(totals: TokenTotals) -> AITokens | None:
+    return AITokens(**totals._asdict()) if any(value is not None for value in totals) else None
+
+
 class ScanStatusResponse(BaseModel):
     id: str
     target: str
@@ -69,6 +82,7 @@ class ScanStatusResponse(BaseModel):
     result: dict | None
     error: str | None
     ai_review: AIReview | None
+    ai_tokens: AITokens | None
     completed_steps: int
     total_steps: int
 
@@ -108,6 +122,7 @@ def _to_response(job: Job) -> ScanStatusResponse:
         result=job.result,
         error=job.error,
         ai_review=ai_review_status(job.result),
+        ai_tokens=_ai_tokens(token_totals(job.result)),
         completed_steps=completed_steps,
         total_steps=TOTAL_GRAPH_STEPS,
     )

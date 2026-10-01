@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -250,5 +252,26 @@ def test_usage_shows_what_the_user_has_left(client):
         "daily_scan_quota": 5,
         "active_scans": 1,
         "concurrent_scan_quota": 2,
+        "ai_usage": {"days": 30, "scans": 0, "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0},
     }
     assert client.get("/account/usage", headers=_bearer(admin)).json()["quotas_apply"] is False
+
+
+def _ai_report(prompt: int, completion: int, cached: int) -> dict:
+    record = {"node": "semantic_security_discovery", "prompt_tokens": prompt, "completion_tokens": completion, "cached_tokens": cached}
+    return {"risk_assessment": {}, "metadata": {"llm_requested": True, "inference_usage": [record]}}
+
+
+def test_usage_adds_up_the_users_ai_tokens(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    alice_id = db.get_user_by_email("alice@example.com")["id"]
+    now = time.time()
+    # a1 is older than 30 days, and "other" isn't Alice's.
+    for scan_id, owner, created_at in (("a1", alice_id, now - 31 * 86400), ("a2", alice_id, now), ("other", "someone-else", now)):
+        db.insert_scan(id=scan_id, target="t", status="running", created_at=created_at, provider="anthropic", owner_id=owner)
+        db.update_scan(id=scan_id, status="done", finished_at=created_at, result=_ai_report(1000, 100, 400), error=None)
+
+    usage = client.get("/account/usage", headers=_bearer(alice)).json()["ai_usage"]
+
+    assert usage == {"days": 30, "scans": 1, "input_tokens": 1000, "output_tokens": 100, "cached_tokens": 400}
