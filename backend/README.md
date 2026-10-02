@@ -249,6 +249,7 @@ Configuration options are listed in the [configuration reference](../docs/CONFIG
 uv sync
 uv run uvicorn app.main:app --reload   # http://localhost:8000, docs at /docs
 uv run pytest                          # add TEST_DATABASE_URL=postgresql://… to also test Postgres
+uv run pytest --random-order           # as CI runs it; --random-order-seed=<seed> replays an order
 uv run ruff check .
 ```
 
