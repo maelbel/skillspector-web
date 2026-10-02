@@ -1,9 +1,12 @@
 """Scan quotas, and the switch that pauses new scans.
 
 Signed-in users other than admins get a number of scans per rolling 24 hours, and a number that
-may be pending or running at once. The defaults come from the settings: no limits self-hosted,
-HOSTED_DAILY_QUOTA and HOSTED_CONCURRENT_QUOTA when hosted. Admins change them, and pause new scans
-for everyone, from the backoffice, without a redeploy.
+may be pending or running at once. Each limit is, in order: the user's own (set on their page in
+the backoffice), the server's (set in the backoffice's settings), the environment's
+(DAILY_SCAN_QUOTA, CONCURRENT_SCAN_QUOTA), then the mode's default: no limits self-hosted,
+HOSTED_DAILY_QUOTA and HOSTED_CONCURRENT_QUOTA when hosted. In the database 0 means no limit, and a
+user's NULL follows the server. Admins change them, and pause new scans for everyone, without a
+redeploy.
 
 Daily scans are counted in the database (`rate_limit_hits`) whatever the rate-limit store, so the
 count survives restarts and is shared by every instance, and deleting a scan doesn't give it back.
@@ -13,7 +16,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
 
@@ -38,21 +41,28 @@ class ScanLimits:
     concurrent: int | None
 
 
-def _limit(stored: int | None, configured: int | None, hosted_default: int) -> int | None:
-    if stored is None:
-        stored = configured
-    if stored is None:
-        stored = hosted_default if get_settings().mode is Mode.HOSTED else 0
-    return stored or None
+def _limit(*levels: int | None, hosted_default: int) -> int | None:
+    """The first level that's set, most specific first; then the mode's default."""
+    for level in levels:
+        if level is not None:
+            return level or None
+    return (hosted_default if get_settings().mode is Mode.HOSTED else 0) or None
 
 
-def current() -> ScanLimits:
+def current(user: dict[str, Any] | None = None) -> ScanLimits:
+    """The limits for this user (with their own quotas, if they have any), or the server's."""
     settings = get_settings()
     stored = db.get_scan_limits()
+    user = user or {}
     return ScanLimits(
         paused=bool(stored["scans_paused"]),
-        daily=_limit(stored["daily_scan_quota"], settings.daily_scan_quota, HOSTED_DAILY_QUOTA),
-        concurrent=_limit(stored["concurrent_scan_quota"], settings.concurrent_scan_quota, HOSTED_CONCURRENT_QUOTA),
+        daily=_limit(user.get("daily_scan_quota"), stored["daily_scan_quota"], settings.daily_scan_quota, hosted_default=HOSTED_DAILY_QUOTA),
+        concurrent=_limit(
+            user.get("concurrent_scan_quota"),
+            stored["concurrent_scan_quota"],
+            settings.concurrent_scan_quota,
+            hosted_default=HOSTED_CONCURRENT_QUOTA,
+        ),
     )
 
 
@@ -69,6 +79,10 @@ def applies_to(viewer: Viewer) -> bool:
     return viewer.user_id is not None and not viewer.is_admin
 
 
+def scans_today(user_id: str) -> int:
+    return db.count_rate_limit_hits(_daily_key(user_id), window_seconds=_DAY_SECONDS, now=time.time())
+
+
 def _daily_key(user_id: str) -> str:
     return f"quota:day:{user_id}"
 
@@ -82,13 +96,13 @@ class Usage:
 
 
 def usage(viewer: Viewer) -> Usage:
-    limits = current()
+    limits = current(viewer.user)
     if not applies_to(viewer):
         return Usage(limits=limits, applies=False, scans_today=0, active_scans=0)
     return Usage(
         limits=limits,
         applies=True,
-        scans_today=db.count_rate_limit_hits(_daily_key(viewer.user_id), window_seconds=_DAY_SECONDS, now=time.time()),
+        scans_today=scans_today(viewer.user_id),
         active_scans=db.count_active_scans(owner_id=viewer.user_id),
     )
 

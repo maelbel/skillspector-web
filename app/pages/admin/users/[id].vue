@@ -298,6 +298,12 @@ async function deleteUser() {
         </template>
       </section>
 
+      <UserQuotasCard
+        :user-id="user.id"
+        :quotas="data.quotas"
+        @saved="refresh()"
+      />
+
       <div class="grid gap-6 xl:grid-cols-2">
         <section
           aria-labelledby="scans-heading"

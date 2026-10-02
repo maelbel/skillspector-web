@@ -296,6 +296,15 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS scans_finished_at ON scans (finished_at)",
         ],
     ),
+    (
+        20,
+        [
+            # A user's own scan quotas (app/quotas.py), set from the backoffice: NULL follows the
+            # server's, 0 is no limit.
+            "ALTER TABLE users ADD COLUMN daily_scan_quota INTEGER",
+            "ALTER TABLE users ADD COLUMN concurrent_scan_quota INTEGER",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -581,7 +590,8 @@ class SQLiteStore:
     def list_users(self, *, query: str | None = None) -> list[dict[str, Any]]:
         where, params = ("WHERE users.email LIKE ?", (f"%{query.lower()}%",)) if query else ("", ())
         rows = self._conn.execute(f"""
-            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at, COALESCE(counts.scans, 0) AS scan_count
+            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                   users.daily_scan_quota, users.concurrent_scan_quota, COALESCE(counts.scans, 0) AS scan_count
             FROM users
             LEFT JOIN (SELECT owner_id, COUNT(*) AS scans FROM scans GROUP BY owner_id) AS counts
                 ON counts.owner_id = users.id
@@ -623,6 +633,7 @@ class SQLiteStore:
         row = self._conn.execute(
             """
             SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                   users.daily_scan_quota, users.concurrent_scan_quota,
                    api_tokens.id AS token_id, api_tokens.name AS token_name, api_tokens.scopes AS token_scopes,
                    api_tokens.last_used_at AS token_last_used_at
             FROM api_tokens JOIN users ON users.id = api_tokens.user_id
@@ -661,7 +672,8 @@ class SQLiteStore:
     def get_session_user(self, token_hash: str, *, now: float) -> dict[str, Any] | None:
         row = self._conn.execute(
             """
-            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at
+            SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                   users.daily_scan_quota, users.concurrent_scan_quota
             FROM sessions JOIN users ON users.id = sessions.user_id
             WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND users.status = 'active'
             """,
@@ -721,6 +733,14 @@ class SQLiteStore:
         self._conn.execute(
             "UPDATE users SET role = COALESCE(?, role), status = COALESCE(?, status) WHERE id = ?",
             (role, status, user_id),
+        )
+        self._conn.commit()
+
+    @_locked
+    def set_user_quotas(self, user_id: str, *, daily_scan_quota: int | None, concurrent_scan_quota: int | None) -> None:
+        self._conn.execute(
+            "UPDATE users SET daily_scan_quota = ?, concurrent_scan_quota = ? WHERE id = ?",
+            (daily_scan_quota, concurrent_scan_quota, user_id),
         )
         self._conn.commit()
 

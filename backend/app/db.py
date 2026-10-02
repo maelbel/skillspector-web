@@ -259,6 +259,11 @@ def update_user(user_id: str, *, role: str | None = None, status: str | None = N
     _store_or_raise().update_user(user_id, role=role, status=status)
 
 
+def set_user_quotas(user_id: str, *, daily_scan_quota: int | None, concurrent_scan_quota: int | None) -> None:
+    """A user's own quotas: None follows the server's, 0 is no limit."""
+    _store_or_raise().set_user_quotas(user_id, daily_scan_quota=daily_scan_quota, concurrent_scan_quota=concurrent_scan_quota)
+
+
 def record_login(user_id: str, at: float) -> None:
     _store_or_raise().record_login(user_id, at)
 

@@ -298,6 +298,15 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS scans_finished_at ON scans (finished_at)",
         ],
     ),
+    (
+        20,
+        [
+            # A user's own scan quotas (app/quotas.py), set from the backoffice: NULL follows the
+            # server's, 0 is no limit.
+            "ALTER TABLE users ADD COLUMN daily_scan_quota INTEGER",
+            "ALTER TABLE users ADD COLUMN concurrent_scan_quota INTEGER",
+        ],
+    ),
 ]
 
 
@@ -553,6 +562,7 @@ class PostgresStore:
             return conn.execute(
                 f"""
                 SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                       users.daily_scan_quota, users.concurrent_scan_quota,
                        COALESCE(counts.scans, 0) AS scan_count
                 FROM users
                 LEFT JOIN (SELECT owner_id, COUNT(*) AS scans FROM scans GROUP BY owner_id) AS counts
@@ -592,6 +602,7 @@ class PostgresStore:
             return conn.execute(
                 """
                 SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                       users.daily_scan_quota, users.concurrent_scan_quota,
                        api_tokens.id AS token_id, api_tokens.name AS token_name, api_tokens.scopes AS token_scopes,
                        api_tokens.last_used_at AS token_last_used_at
                 FROM api_tokens JOIN users ON users.id = api_tokens.user_id
@@ -623,7 +634,8 @@ class PostgresStore:
         with self._pool.connection() as conn:
             return conn.execute(
                 """
-                SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at
+                SELECT users.id, users.email, users.role, users.status, users.created_at, users.last_login_at,
+                       users.daily_scan_quota, users.concurrent_scan_quota
                 FROM sessions JOIN users ON users.id = sessions.user_id
                 WHERE sessions.token_hash = %s AND sessions.expires_at > %s AND users.status = 'active'
                 """,
@@ -670,6 +682,12 @@ class PostgresStore:
         self._execute(
             "UPDATE users SET role = COALESCE(%s, role), status = COALESCE(%s, status) WHERE id = %s",
             (role, status, user_id),
+        )
+
+    def set_user_quotas(self, user_id: str, *, daily_scan_quota: int | None, concurrent_scan_quota: int | None) -> None:
+        self._execute(
+            "UPDATE users SET daily_scan_quota = %s, concurrent_scan_quota = %s WHERE id = %s",
+            (daily_scan_quota, concurrent_scan_quota, user_id),
         )
 
     def record_login(self, user_id: str, at: float) -> None:
