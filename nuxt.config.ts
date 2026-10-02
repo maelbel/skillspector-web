@@ -41,6 +41,9 @@ export default defineNuxtConfig({
     trustProxy: false,
     public: {
       botid: botId,
+      // This server's public address, e.g. https://skillspector.example.com, for the link preview
+      // image's absolute URL (useSiteUrl). Unset, it's the address each page was requested at.
+      siteUrl: '',
       // Whether this build sends Web Analytics and Speed Insights, for the privacy policy to say so.
       analytics,
       speedInsights,
@@ -76,6 +79,11 @@ export default defineNuxtConfig({
         updatedAt: ''
       }
     }
+  },
+
+  routeRules: {
+    // The link preview image (app.config.ts): cached a year, so it's renamed when it changes.
+    '/og-image.png': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } }
   },
 
   compatibilityDate: '2026-09-03',
