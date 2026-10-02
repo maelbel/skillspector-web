@@ -11,6 +11,7 @@ from app.storage.base import (
     SUMMARY_COLUMNS,
     ScanRow,
     badge_scan_query,
+    insert_scan_query,
     last_monitor_event_query,
     list_monitor_events_query,
     monitor_queries,
@@ -373,12 +374,23 @@ class PostgresStore:
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
-    ) -> None:
-        self._execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload),
-        )
+        max_active: int | None = None,
+    ) -> bool:
+        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)
+        if max_active is None or owner_id is None:
+            self._execute(insert_scan_query("%s", max_active=None), values)
+            return True
+        with self._pool.connection() as conn, conn.transaction():
+            # One count and insert at a time per user: under READ COMMITTED, two at once would both
+            # count before either inserts.
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"active-scans:{owner_id}",))
+            active = conn.execute(
+                "SELECT COUNT(*) AS active FROM scans WHERE owner_id = %s AND status IN ('pending', 'running')", (owner_id,)
+            ).fetchone()["active"]
+            if active >= max_active:
+                return False
+            conn.execute(insert_scan_query("%s", max_active=None), values)
+        return True
 
     def update_scan(
         self,

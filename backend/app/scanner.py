@@ -109,9 +109,12 @@ def create_job(
     transitive_depth: int | None = None,
     upload: str | None = None,
     job_id: str | None = None,
+    max_active: int | None = None,
 ) -> Job:
+    """Record a pending scan; with max_active, only while the owner has fewer in progress (else
+    ActiveScansFullError), checked and recorded at once."""
     job = Job(id=job_id or uuid.uuid4().hex, target=target, llm=llm, baseline=baseline, transitive_depth=transitive_depth, upload=upload)
-    db.insert_scan(
+    inserted = db.insert_scan(
         id=job.id,
         target=job.target,
         status=job.status,
@@ -122,8 +125,19 @@ def create_job(
         baseline=baseline,
         transitive_depth=transitive_depth,
         upload=upload,
+        max_active=max_active,
     )
+    if not inserted:
+        raise ActiveScansFullError(max_active or 0)
     return job
+
+
+class ActiveScansFullError(Exception):
+    """The owner already has max_active scans in progress."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(limit)
+        self.limit = limit
 
 
 def get_job(job_id: str) -> Job | None:

@@ -13,6 +13,7 @@ from app.storage.base import (
     SUMMARY_COLUMNS,
     ScanRow,
     badge_scan_query,
+    insert_scan_query,
     last_monitor_event_query,
     list_monitor_events_query,
     monitor_queries,
@@ -379,13 +380,17 @@ class SQLiteStore:
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
-    ) -> None:
-        self._conn.execute(
-            "INSERT INTO scans (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload),
+        max_active: int | None = None,
+    ) -> bool:
+        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)
+        limited = max_active is not None and owner_id is not None
+        # One statement: SQLite runs it whole, whichever connection or process sends another.
+        cursor = self._conn.execute(
+            insert_scan_query("?", max_active=max_active if limited else None),
+            (*values, owner_id, max_active) if limited else values,
         )
         self._conn.commit()
+        return cursor.rowcount == 1
 
     @_locked
     def update_scan(

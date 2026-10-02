@@ -35,6 +35,7 @@ from app.sandbox_runner import baseline_state, is_mcp_entry
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
+    ActiveScansFullError,
     Job,
     JobStatus,
     LLMConfig,
@@ -357,17 +358,27 @@ async def _queue_scan(
         except uploads.UploadRejectedError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
+        # Recorded only while the user has room for one more in progress: the check and the insert
+        # are one step, so simultaneous requests can't overshoot.
+        try:
+            job = create_job(
+                target,
+                llm,
+                owner_id=viewer.user_id,
+                baseline=req.baseline,
+                transitive_depth=req.transitive_depth,
+                upload=upload,
+                job_id=job_id,
+                max_active=quotas.active_limit(viewer, limits),
+            )
+        except ActiveScansFullError as exc:
+            quotas.refuse_active(exc.limit)
         # Last, so a scan refused for any other reason doesn't count towards today's quota.
-        quotas.enforce(viewer, limits)
-        job = create_job(
-            target,
-            llm,
-            owner_id=viewer.user_id,
-            baseline=req.baseline,
-            transitive_depth=req.transitive_depth,
-            upload=upload,
-            job_id=job_id,
-        )
+        try:
+            quotas.count_today(viewer, limits)
+        except BaseException:
+            db.delete_scan(job.id)
+            raise
     except BaseException:
         await uploads.delete(upload)
         raise

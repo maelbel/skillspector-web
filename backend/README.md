@@ -223,8 +223,9 @@ The recommendation is `SAFE`, `CAUTION` or `DO_NOT_INSTALL`, so a CI job can fai
     doesn't count.
   - Daily scans are counted in `rate_limit_hits` whatever the rate-limit store, so the count
     survives restarts and deleting a scan doesn't give it back. The in-progress limit counts the
-    user's pending and running scans. It isn't locked, so two requests sent at the same instant can
-    both pass it; the per-minute rate limit bounds that.
+    user's pending and running scans, checked as the scan is inserted, in one step: a conditional
+    insert on SQLite, a per-user advisory lock on Postgres. So simultaneous requests queue exactly the
+    limit, and a request refused there doesn't count towards the day's.
   - Each limit is, in order: the user's own (`users.daily_scan_quota`, `concurrent_scan_quota`,
     set with `PUT /admin/users/{id}/quotas`), the server's in `app_settings` once an admin saves
     them (`PUT /settings`), `DAILY_SCAN_QUOTA` and `CONCURRENT_SCAN_QUOTA`, then the mode's

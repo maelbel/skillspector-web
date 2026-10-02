@@ -401,3 +401,57 @@ def test_only_admins_set_overrides_and_admins_have_no_quota(client):
     assert _set_quotas(client, admin, "nobody", 1, 1).status_code == 404
     admin_quotas = client.get(f"/admin/users/{_user_id(client, admin)}", headers=_bearer(admin)).json()["quotas"]
     assert admin_quotas["applies"] is False
+
+
+# Simultaneous submissions
+
+
+def test_simultaneous_inserts_take_exactly_the_free_slots(temp_db):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    limit, attempts = 3, 12
+    start = threading.Barrier(attempts)
+
+    def insert(index: int) -> bool:
+        start.wait()
+        return db.insert_scan(
+            id=f"scan{index}", target="https://example.com/s", status="pending", created_at=time.time(), provider=None,
+            owner_id="alice", max_active=limit,
+        )
+
+    with ThreadPoolExecutor(attempts) as pool:
+        inserted = list(pool.map(insert, range(attempts)))
+
+    assert inserted.count(True) == limit
+    assert db.count_active_scans(owner_id="alice") == limit
+    # Someone else's scans don't take alice's slots.
+    assert db.insert_scan(id="bob1", target="https://example.com/s", status="pending", created_at=time.time(), provider=None, owner_id="bob", max_active=limit)
+
+
+def test_simultaneous_submissions_queue_exactly_the_in_progress_quota(client, fake_runner):
+    from concurrent.futures import ThreadPoolExecutor
+
+    admin = _admin(client)
+    alice = _user(client, admin)
+    _limits(client, admin, daily_scan_quota=50, concurrent_scan_quota=3)
+
+    with ThreadPoolExecutor(8) as pool:
+        codes = list(pool.map(lambda _: client.post("/scan", json=SCAN, headers=_bearer(alice)).status_code, range(8)))
+
+    assert sorted(codes) == [200] * 3 + [429] * 5
+    assert len(fake_runner.submitted) == 3
+    # The refused ones never counted towards today's quota.
+    usage = client.get("/account/usage", headers=_bearer(alice)).json()
+    assert (usage["active_scans"], usage["scans_today"]) == (3, 3)
+
+
+def test_a_scan_refused_by_the_daily_quota_isnt_left_in_progress(client, fake_runner):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    _limits(client, admin, daily_scan_quota=1, concurrent_scan_quota=5)
+
+    assert client.post("/scan", json=SCAN, headers=_bearer(alice)).status_code == 200
+    assert client.post("/scan", json=SCAN, headers=_bearer(alice)).status_code == 429
+
+    assert client.get("/account/usage", headers=_bearer(alice)).json()["active_scans"] == 1
