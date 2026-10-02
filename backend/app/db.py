@@ -113,6 +113,12 @@ def delete_scan(id: str) -> bool:
     return _store_or_raise().delete_scan(id)
 
 
+def prune_account_records(*, audit_cutoff: float, now: float) -> int:
+    """Delete activity entries older than audit_cutoff and expired password reset links; how many
+    activity entries went."""
+    return _store_or_raise().prune_account_records(audit_cutoff=audit_cutoff, now=now)
+
+
 def delete_scans_older_than(cutoff: float) -> int:
     return _store_or_raise().delete_scans_older_than(cutoff)
 
@@ -207,7 +213,7 @@ def count_users() -> int:
     return _store_or_raise().count_users()
 
 
-def delete_user(id: str) -> bool:
+def delete_user(id: str) -> list[str] | None:
     return _store_or_raise().delete_user(id)
 
 

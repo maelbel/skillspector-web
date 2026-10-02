@@ -76,6 +76,39 @@ or silently ignore stops the API from starting instead.
 | `NUXT_PUBLIC_SPEED_INSIGHTS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Speed Insights](https://vercel.com/docs/speed-insights), Core Web Vitals from real visits. Read at build time only, like `NUXT_PUBLIC_ANALYTICS`. |
 | `NUXT_ALLOWED_HOST` | *unset* | Public hostname allowed by the development server (`nuxt dev`) only. |
 
+## Legal pages
+
+A legal notice (`/legal`), privacy policy (`/privacy`) and terms of use (`/terms`), in English and
+French (`?lang=fr`), linked from every page's footer and from sign-up. They exist only once
+`NUXT_PUBLIC_LEGAL_OPERATOR_NAME` and `NUXT_PUBLIC_LEGAL_CONTACT_EMAIL` are set: until then they're
+not found and nothing links to them. Set on the web app, read at runtime. The rest is optional, and
+left out of the pages when unset.
+
+What the privacy policy says about this server follows its settings: how long scans, sessions and the
+activity log are kept (from the API's `/health`), whether it's hosted (sandbox, Blob store), and
+whether BotID, Web Analytics and Speed Insights are on. Review the pages before publishing them: they
+describe what this software does, and you remain responsible for them as the operator.
+
+| Variable | Description |
+|---|---|
+| `NUXT_PUBLIC_LEGAL_OPERATOR_NAME` | Who runs the server: a person's name, or a company's. Also the data controller in the privacy policy. |
+| `NUXT_PUBLIC_LEGAL_CONTACT_EMAIL` | Where users write about their data, the terms, or a vulnerability. |
+| `NUXT_PUBLIC_LEGAL_OPERATOR_DETAILS` | A company's legal form, registration (RCS, SIREN) and share capital, or VAT number. |
+| `NUXT_PUBLIC_LEGAL_OPERATOR_ADDRESS` | The operator's postal address. |
+| `NUXT_PUBLIC_LEGAL_PUBLICATION_DIRECTOR` | Who is responsible for the site's content (in France, the *directeur de la publication*). |
+| `NUXT_PUBLIC_LEGAL_HOST_NAME`, `_HOST_ADDRESS`, `_HOST_CONTACT` | Who hosts the server, e.g. `Vercel Inc.`, `440 N Barranca Avenue #4133, Covina, CA 91723, United States`, and its phone number or contact page. |
+| `NUXT_PUBLIC_LEGAL_DATABASE_PROVIDER` | Who stores the database, when that's not the host, e.g. `Neon`. |
+| `NUXT_PUBLIC_LEGAL_EMAIL_PROVIDER` | Who sends password reset emails, e.g. `Mailgun`. |
+| `NUXT_PUBLIC_LEGAL_SUPERVISORY_AUTHORITY`, `_SUPERVISORY_AUTHORITY_FR` | The data protection authority users can complain to, e.g. `the CNIL (https://www.cnil.fr)`, and in French (the English one when unset). Unset, the policy points to the authority of the user's country. |
+| `NUXT_PUBLIC_LEGAL_GOVERNING_LAW`, `_GOVERNING_LAW_FR` | The law and courts that apply to the terms, e.g. `French law and the courts of Paris`, and in French, e.g. `le droit français et les tribunaux de Paris`. |
+| `NUXT_PUBLIC_LEGAL_UPDATED_AT` | When the pages last changed, shown on each (`YYYY-MM-DD`). |
+
+Users delete their own account from the Account page, with their password: their scans and reports,
+shared links and badges, Claude key, API tokens and GitHub connection go at once (the token is revoked
+at GitHub), and the activity log keeps its entries without their email. An admin deleting a user
+does the same. The activity log itself is kept 365 days, and expired password reset links are
+deleted, whatever the scan retention.
+
 ## Private GitHub repositories
 
 Users can connect their GitHub account from the Account page, then scan private repositories they

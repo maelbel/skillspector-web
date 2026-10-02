@@ -2,6 +2,7 @@
 const { session, onSessionChange } = useAuth()
 const redirect = useAuthRedirect()
 const { track } = useAnalytics()
+const { enabled: legalPages } = useLegal()
 
 useSeoMeta({ title: 'Create an account — Skillspector Web' })
 
@@ -96,6 +97,25 @@ async function submit() {
         icon="i-lucide-circle-alert"
         :title="errorMessage"
       />
+
+      <p
+        v-if="legalPages"
+        class="text-sm text-muted"
+      >
+        By creating an account, you accept the
+        <ULink
+          to="/terms"
+          target="_blank"
+          class="font-medium text-highlighted underline underline-offset-2"
+        >terms of use</ULink>.
+        The
+        <ULink
+          to="/privacy"
+          target="_blank"
+          class="font-medium text-highlighted underline underline-offset-2"
+        >privacy policy</ULink>
+        says what’s kept about you, and how to have it deleted.
+      </p>
 
       <UButton
         type="submit"

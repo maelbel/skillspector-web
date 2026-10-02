@@ -7,7 +7,8 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'user.suspended': { verb: 'suspended', icon: 'i-lucide-user-x' },
   'user.quotas_changed': { verb: 'changed the scan quotas of', icon: 'i-lucide-gauge' },
   'user.reactivated': { verb: 'reactivated', icon: 'i-lucide-user-check' },
-  'user.deleted': { verb: 'deleted', icon: 'i-lucide-trash-2' },
+  'user.deleted': { verb: 'deleted an account', icon: 'i-lucide-trash-2' },
+  'account.deleted': { verb: 'deleted their account', icon: 'i-lucide-trash-2' },
   'password.reset_link_created': { verb: 'created a password reset link for', icon: 'i-lucide-link' },
   'password.reset_email_sent': { verb: 'emailed a password reset link to', icon: 'i-lucide-mail' },
   'password.reset': { verb: 'reset the password of', icon: 'i-lucide-key-round' },
@@ -41,7 +42,9 @@ export interface ActivityLine {
 
 export function describeActivity(entry: ActivityEntry): ActivityLine {
   const known = VERBS[entry.action] ?? { verb: entry.action, icon: 'i-lucide-dot' }
-  const actor = entry.actor_email ?? 'Someone'
+  // A deleted account's entries keep only its id (backend/app/accounts.py).
+  const actor = entry.actor_email ?? (entry.actor_id ? 'A deleted account' : 'Someone')
+  const target = entry.target_email ?? (entry.target_id ? 'a deleted account' : null)
   const self = entry.actor_id !== null && entry.actor_id === entry.target_id
   if (self && entry.action === 'account.created') {
     return { icon: known.icon, actor, verb: entry.detail === 'signed up' ? 'signed up' : 'created the first admin account', target: null, detail: null }
@@ -66,8 +69,12 @@ export function describeActivity(entry: ActivityEntry): ActivityLine {
     const verb = { 'token.created': 'created an API token', 'token.used': 'used an API token', 'token.revoked': 'revoked an API token' }[entry.action]
     return { icon: known.icon, actor, verb: verb ?? known.verb, target: null, detail: entry.detail }
   }
+  // Whose account it was isn't kept.
+  if (entry.action === 'account.deleted' || entry.action === 'user.deleted') {
+    return { icon: known.icon, actor: entry.action === 'account.deleted' ? 'Someone' : actor, verb: known.verb, target: null, detail: null }
+  }
   if (entry.action === 'settings.signup_changed') {
     return { icon: known.icon, actor, verb: `${known.verb} ${entry.detail ?? ''}`.trim(), target: null, detail: null }
   }
-  return { icon: known.icon, actor, verb: known.verb, target: entry.target_email, detail: entry.detail }
+  return { icon: known.icon, actor, verb: known.verb, target, detail: entry.detail }
 }

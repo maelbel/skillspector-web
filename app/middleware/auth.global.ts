@@ -1,5 +1,6 @@
-// Pages a signed-out visitor may open when accounts are on. `/` shows the landing page to them.
-const PUBLIC_PATHS = new Set(['/', '/login', '/signup', '/forgot-password', '/reset-password'])
+// Pages a signed-out visitor may open when accounts are on. `/` shows the landing page to them, and
+// the legal pages are for anyone deciding whether to sign up.
+const PUBLIC_PATHS = new Set(['/', '/login', '/signup', '/forgot-password', '/reset-password', '/legal', '/privacy', '/terms'])
 // Pages meant only for signed-out visitors: signed-in users go back to where they were heading.
 const SIGNED_OUT_ONLY = new Set(['/login', '/signup', '/forgot-password'])
 

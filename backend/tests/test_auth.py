@@ -259,6 +259,54 @@ def test_the_last_admin_cannot_be_removed(client):
     assert client.delete(f"/admin/users/{first_id}", headers=_bearer(admin)).status_code == 409  # Self.
 
 
+# Deleting an account
+
+
+def test_a_user_deletes_their_account_and_everything_of_theirs(client):
+    admin = _setup_admin(client)
+    alice = _add_user(client, admin, "alice@example.com")
+    alice_id = client.get("/auth/session", headers=_bearer(alice)).json()["user"]["id"]
+    scan_id = _scan(client, alice)
+    client.post(f"/scan/{scan_id}/share", headers=_bearer(alice))
+    reset_token, _ = auth.issue_password_reset(alice_id)
+    kept = _scan(client, admin)
+
+    assert client.request("DELETE", "/account", json={"password": "wrong password!"}, headers=_bearer(alice)).status_code == 403
+    assert client.request("DELETE", "/account", json={"password": PASSWORD}, headers=_bearer(alice)).status_code == 204
+
+    assert db.get_user(alice_id) is None
+    assert db.get_scan(scan_id) is None and db.get_scan(kept) is not None
+    assert client.get("/scan", headers=_bearer(alice)).status_code == 401
+    with pytest.raises(auth.AuthError):
+        auth.reset_password(reset_token, "a new password")
+    entries = db.list_audit(100, 0)[0]
+    mentioning = [e for e in entries if alice_id in (e["actor_id"], e["target_id"])]
+    assert mentioning and all(e["actor_email"] != "alice@example.com" and e["target_email"] is None for e in mentioning)
+    assert all("alice" not in str(e.get("detail")) for e in mentioning)
+    assert entries[0]["action"] == "account.deleted" and entries[0]["actor_id"] is None
+
+
+def test_the_last_admin_cant_delete_their_account(client):
+    admin = _setup_admin(client)
+
+    refused = client.request("DELETE", "/account", json={"password": PASSWORD}, headers=_bearer(admin))
+
+    assert refused.status_code == 409 and "admin" in refused.json()["detail"]
+
+
+def test_old_activity_and_expired_reset_links_are_pruned(client):
+    admin = _setup_admin(client)
+    old = time.time() - 400 * 86400
+    db.add_audit(created_at=old, actor_id=None, actor_email=None, action="settings.scans_paused", target_id=None, target_email=None, detail=None)
+
+    from app import retention
+
+    retention.sweep_once()
+
+    actions = [e["action"] for e in client.get("/admin/activity", headers=_bearer(admin)).json()["items"]]
+    assert "settings.scans_paused" not in actions and "account.created" in actions
+
+
 # Sign-up
 
 

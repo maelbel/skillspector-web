@@ -304,15 +304,3 @@ def set_user_quotas(actor: dict[str, Any], user_id: str, *, daily: int | None, c
         db.set_user_quotas(user_id, daily_scan_quota=daily, concurrent_scan_quota=concurrent)
         audit(actor, "user.quotas_changed", user, "; ".join(changes))
     return db.get_user(user_id)
-
-
-def delete_user(actor: dict[str, Any], user_id: str) -> None:
-    user = db.get_user(user_id)
-    if user is None:
-        raise AuthError("user not found", 404)
-    if user_id == actor["id"]:
-        raise AuthError("You can't delete your own account", 409)
-    if user["role"] == "admin" and user["status"] == "active" and db.count_active_admins() <= 1:
-        raise AuthError("Keep at least one active admin", 409)
-    db.delete_user(user_id)
-    audit(actor, "user.deleted", user, "their scans stay, visible to admins")

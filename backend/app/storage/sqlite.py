@@ -533,6 +533,13 @@ class SQLiteStore:
         return cursor.rowcount > 0
 
     @_locked
+    def prune_account_records(self, *, audit_cutoff: float, now: float) -> int:
+        deleted = self._conn.execute("DELETE FROM audit_log WHERE created_at < ?", (audit_cutoff,)).rowcount
+        self._conn.execute("DELETE FROM password_resets WHERE expires_at < ?", (now,))
+        self._conn.commit()
+        return deleted
+
+    @_locked
     def delete_scans_older_than(self, cutoff: float) -> int:
         # Pending/running scans are still owned by a live job; deleting them would lose the result.
         cursor = self._conn.execute(
@@ -661,14 +668,21 @@ class SQLiteStore:
         return self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
     @_locked
-    def delete_user(self, id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM users WHERE id = ?", (id,))
-        self._conn.execute("DELETE FROM sessions WHERE user_id = ?", (id,))
-        self._conn.execute("DELETE FROM llm_credentials WHERE user_id = ?", (id,))
-        self._conn.execute("DELETE FROM api_tokens WHERE user_id = ?", (id,))
-        self._conn.execute("DELETE FROM repo_connections WHERE user_id = ?", (id,))
+    def delete_user(self, id: str) -> list[str] | None:
+        if self._conn.execute("SELECT 1 FROM users WHERE id = ?", (id,)).fetchone() is None:
+            return None
+        uploads = [row["upload"] for row in self._conn.execute("SELECT upload FROM scans WHERE owner_id = ? AND upload IS NOT NULL", (id,))]
+        self._conn.execute("DELETE FROM scan_log_lines WHERE scan_id IN (SELECT id FROM scans WHERE owner_id = ?)", (id,))
+        self._conn.execute("DELETE FROM scan_secrets WHERE scan_id IN (SELECT id FROM scans WHERE owner_id = ?)", (id,))
+        self._conn.execute("DELETE FROM scans WHERE owner_id = ?", (id,))
+        # Fixed names, never input.
+        for table in ("sessions", "password_resets", "llm_credentials", "api_tokens", "repo_connections"):
+            self._conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (id,))
+        self._conn.execute("UPDATE audit_log SET actor_email = NULL, detail = NULL WHERE actor_id = ?", (id,))
+        self._conn.execute("UPDATE audit_log SET target_email = NULL, detail = NULL WHERE target_id = ?", (id,))
+        self._conn.execute("DELETE FROM users WHERE id = ?", (id,))
         self._conn.commit()
-        return cursor.rowcount > 0
+        return uploads
 
     @_locked
     def set_repo_connection(self, *, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None:

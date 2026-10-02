@@ -40,7 +40,41 @@ export default defineNuxtConfig({
     apiBase: process.env.NUXT_API_BASE || 'http://localhost:8000',
     trustProxy: false,
     public: {
-      botid: botId
+      botid: botId,
+      // Whether this build sends Web Analytics and Speed Insights, for the privacy policy to say so.
+      analytics,
+      speedInsights,
+      // The operator behind this server, for the legal notice, privacy policy and terms (app/pages/
+      // legal.vue, privacy.vue, terms.vue). Set at runtime as NUXT_PUBLIC_LEGAL_<FIELD>, e.g.
+      // NUXT_PUBLIC_LEGAL_OPERATOR_NAME. The pages exist only once a name and a contact email are set.
+      legal: {
+        // Who runs the server: a person's name, or a company's.
+        operatorName: '',
+        // A company's legal form, registration (RCS, SIREN) and share capital, or VAT number.
+        operatorDetails: '',
+        operatorAddress: '',
+        contactEmail: '',
+        // Who is responsible for the site's content (France: directeur de la publication).
+        publicationDirector: '',
+        // Who hosts it, e.g. Vercel Inc., 440 N Barranca Avenue #4133, Covina, CA 91723, United States.
+        hostName: '',
+        hostAddress: '',
+        // Its phone number or contact page.
+        hostContact: '',
+        // Who stores the database and sends emails, when that's not the host, e.g. Neon, Mailgun.
+        databaseProvider: '',
+        emailProvider: '',
+        // The data protection authority users can complain to, e.g. the CNIL (https://www.cnil.fr),
+        // and the same in French for the French pages (the English one when unset).
+        supervisoryAuthority: '',
+        supervisoryAuthorityFr: '',
+        // The law and courts that apply to the terms, e.g. French law and the courts of Paris; and in
+        // French, e.g. le droit français et les tribunaux de Paris.
+        governingLaw: '',
+        governingLawFr: '',
+        // When the pages were last changed, shown on each (YYYY-MM-DD).
+        updatedAt: ''
+      }
     }
   },
 

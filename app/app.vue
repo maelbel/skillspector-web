@@ -14,6 +14,12 @@ useSeoMeta({
 })
 
 const { accounts, user, isAdmin, signOut } = useAuth()
+const { enabled: legalPages } = useLegal()
+const legalLinks = [
+  { to: '/legal', label: 'Legal notice' },
+  { to: '/privacy', label: 'Privacy policy' },
+  { to: '/terms', label: 'Terms of use' }
+]
 const colorMode = useColorMode()
 
 // With accounts on, signed-out visitors only see the sign-in page, and only admins see Admin.
@@ -140,6 +146,20 @@ const accountMenu = computed(() => [
         <p class="text-xs text-graphite-500">
           An independent web UI for skillspector. Not affiliated with or endorsed by NVIDIA.
         </p>
+        <nav
+          v-if="legalPages"
+          aria-label="Legal"
+          class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs"
+        >
+          <ULink
+            v-for="link in legalLinks"
+            :key="link.to"
+            :to="link.to"
+            class="text-graphite-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            {{ link.label }}
+          </ULink>
+        </nav>
       </UContainer>
     </footer>
   </UApp>
