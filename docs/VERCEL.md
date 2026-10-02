@@ -150,6 +150,7 @@ Every service in the project sees the same variables. Scope each one as shown:
 | `CRON_SECRET` | Each | A random string (`openssl rand -hex 32`). Vercel Cron sends it to the retention sweep, and the API refuses to start in hosted mode without it. |
 | `NUXT_TRUST_PROXY` | All | `true`. Vercel sets `X-Forwarded-For` to the client's address, and rate limits count by it. |
 | `NUXT_PUBLIC_BOTID` | All | `true` turns on [BotID](https://vercel.com/docs/botid) for scan submissions. It's read at build time, so redeploy after changing it. |
+| `NUXT_PUBLIC_ANALYTICS` | Production | `true` builds in [Web Analytics](https://vercel.com/docs/analytics): page views and three events (see [What Web Analytics records](./SECURITY_MODEL.md#web-analytics)). Also turn Web Analytics on in the project's **Analytics** tab. Read at build time, so redeploy after changing it. Leaving it off for previews keeps their visits out of the numbers. |
 | `ENABLE_EXPERIMENTAL_COREPACK` | All | `1`, so the build uses the pnpm version pinned in `package.json`. |
 | `SKILLSPECTOR_WEB_SMTP_HOST`<br>`SKILLSPECTOR_WEB_SMTP_PORT`<br>`SKILLSPECTOR_WEB_SMTP_USERNAME`<br>`SKILLSPECTOR_WEB_SMTP_PASSWORD`<br>`SKILLSPECTOR_WEB_MAIL_FROM`<br>`SKILLSPECTOR_WEB_PUBLIC_URL` | Production | Optional: password reset emails. `PUBLIC_URL` is the production domain. Previews go without them, so they never email real users links to production. |
 

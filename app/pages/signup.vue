@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const { session, onSessionChange } = useAuth()
 const redirect = useAuthRedirect()
+const { track } = useAnalytics()
 
 useSeoMeta({ title: 'Create an account — Skillspector Web' })
 
@@ -17,6 +18,7 @@ async function submit() {
   errorMessage.value = ''
   try {
     await $fetch('/api/auth/signup', { method: 'POST', body: { email: email.value.trim(), password: password.value } })
+    track('Sign Up')
     await onSessionChange()
     await navigateTo(redirect.value)
   } catch (err) {

@@ -343,6 +343,8 @@ async function submitUpload(picked: File, options: Record<string, unknown>): Pro
   return await $fetch<{ id: string }>('/api/scan/upload', { method: 'POST', body: form })
 }
 
+const { track } = useAnalytics()
+
 async function submit() {
   targetTouched.value = true
   if (!canSubmit.value) return
@@ -372,6 +374,7 @@ async function submit() {
       ? await submitUpload(file.value, options)
       : await $fetch<{ id: string }>('/api/scan', { method: 'POST', body: { target: target.value.trim(), ...options } })
     savePrefs()
+    track('Scan Started', { source: file.value ? 'upload' : isMcpServer.value ? 'mcp' : 'link', ai_review: !!llm })
     await navigateTo(`/scan/${id}`)
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Failed to start scan')

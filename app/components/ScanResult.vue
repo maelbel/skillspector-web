@@ -12,6 +12,15 @@ const { status, error } = useScanStatus(props.apiBase)
 
 const isWorking = computed(() => status.value?.status === 'pending' || status.value?.status === 'running')
 
+// Once per visit to a finished scan of one's own: a shared result isn't counted.
+const { track } = useAnalytics()
+const viewTracked = ref(false)
+watch(() => status.value?.status, (state) => {
+  if (shared.value || viewTracked.value || (state !== 'done' && state !== 'error')) return
+  viewTracked.value = true
+  track('Scan Viewed', { status: state, verdict: status.value?.result?.risk_assessment?.recommendation ?? null })
+}, { immediate: true })
+
 const { lines: logLines } = useScanLogs(props.scanId ?? null, isWorking)
 const showLogs = ref(false)
 
