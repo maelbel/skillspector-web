@@ -124,6 +124,12 @@ class Settings(AnalysisSettings):
     mail_from: str | None = None
     # This app's public address, e.g. https://skillspector.example.com, for links in emails.
     public_url: str | None = None
+    # Private GitHub repositories (app/repo_connections.py): the GitHub App users connect, by its
+    # OAuth client ID and secret, and its slug (github.com/apps/<slug>) for choosing repositories.
+    # Needs accounts, SECRET_KEY and PUBLIC_URL (the callback is built from it).
+    github_app_client_id: str | None = None
+    github_app_client_secret: str | None = None
+    github_app_slug: str | None = None
     # Alerts (app/monitoring.py): a webhook to POST them to (Slack, Discord, or any JSON endpoint),
     # and addresses to email them to (comma-separated, needs email set up). Neither: no alerts, but
     # the backoffice's health panel and the structured logs still show the same events.

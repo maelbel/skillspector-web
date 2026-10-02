@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
-from app import db, monitoring, scan_logs, uploads
+from app import db, monitoring, repo_connections, scan_logs, uploads
 from app.core.config import get_settings
 from app.sandbox_executor import SandboxExecutor, SandboxUnavailableError, executor_kind
 from app.sandbox_runner import run_scan
@@ -84,6 +84,10 @@ class Job:
     transitive_depth: int | None = None
     # Where an uploaded file is held (app/uploads.py); its name is the target's.
     upload: str | None = None
+    # Who started it, and whether it reads a private repository with their connection
+    # (app/repo_connections.py): its token is fetched for them when it runs.
+    owner_id: str | None = None
+    private_source: bool = False
     status: JobStatus = JobStatus.PENDING
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -110,10 +114,20 @@ def create_job(
     upload: str | None = None,
     job_id: str | None = None,
     max_active: int | None = None,
+    private_source: bool = False,
 ) -> Job:
     """Record a pending scan; with max_active, only while the owner has fewer in progress (else
     ActiveScansFullError), checked and recorded at once."""
-    job = Job(id=job_id or uuid.uuid4().hex, target=target, llm=llm, baseline=baseline, transitive_depth=transitive_depth, upload=upload)
+    job = Job(
+        id=job_id or uuid.uuid4().hex,
+        target=target,
+        llm=llm,
+        baseline=baseline,
+        transitive_depth=transitive_depth,
+        upload=upload,
+        owner_id=owner_id,
+        private_source=private_source,
+    )
     inserted = db.insert_scan(
         id=job.id,
         target=job.target,
@@ -125,6 +139,7 @@ def create_job(
         baseline=baseline,
         transitive_depth=transitive_depth,
         upload=upload,
+        private_source=private_source,
         max_active=max_active,
     )
     if not inserted:
@@ -189,10 +204,21 @@ async def run_job(job: Job) -> None:
     monitoring.log_event("scan_started", scan_id=job.id, ai_review=job.llm is not None)
     sandbox_failed = False
     try:
+        # A private repository's token is its owner's, fetched now: never carried with the scan.
+        token = await asyncio.to_thread(repo_connections.require_token, job.owner_id) if job.private_source else None
         if executor_kind(get_settings()) == "sandbox":
             job.result = await _sandbox_executor().run(
-                job.id, job.target, llm=job.llm, baseline=job.baseline, transitive_depth=job.transitive_depth, upload=job.upload
+                job.id,
+                job.target,
+                llm=job.llm,
+                baseline=job.baseline,
+                transitive_depth=job.transitive_depth,
+                upload=job.upload,
+                host_headers=repo_connections.firewall_headers(token) if token else None,
             )
+        elif token is not None:
+            async with repo_connections.local_copy(job.target, token) as path:
+                job.result = await _run_locally(job, path)
         elif job.upload is not None:
             async with uploads.local_copy(job.upload, job.target.removeprefix(uploads.TARGET_PREFIX)) as path:
                 job.result = await _run_locally(job, path)

@@ -23,6 +23,10 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/auth/reset` | accounts | Set a new password with `{ token, password }` from a reset link; ends the user's other sessions and signs in. |
 | `POST` | `/auth/password` | signed in | Change your password with `{ current_password, new_password }`; your other sessions end. |
 | `POST` | `/auth/logout` | — | End the bearer token's session. |
+| `GET` | `/account/connections` | signed in | `{ github: { available, manage_url, connection } }`: the user's GitHub connection, `{ account_name, connected_at }`, never a token. |
+| `GET` | `/account/connections/github/start` | signed in | `{ url }`: GitHub's page to authorize the app, with a state only this user can redeem for 10 minutes. |
+| `POST` | `/account/connections/github/callback` | signed in | Redeem GitHub's callback, `{ code, state }`: the tokens are stored encrypted. The web app's `/api/account/connections/github/callback` calls it. |
+| `DELETE` | `/account/connections/github` | signed in | Disconnect: the tokens are deleted, and revoked at GitHub. |
 | `GET` · `POST` | `/account/tokens` | signed in | Your API tokens (never the tokens themselves), or create one with `{ name, expires_in_days }` (`null`: never expires): the response holds the token, this once. See [API tokens](#api-tokens). |
 | `DELETE` | `/account/tokens/{id}` | signed in | Revoke one of your API tokens. |
 | `GET` · `PUT` · `DELETE` | `/account/claude` | signed in | Your saved Claude key: status `{ provider, hint, updated_at }` (never the key), connect or replace with `{ api_key }` (checked with Anthropic first), or disconnect. Needs accounts and `SECRET_KEY`. |
@@ -47,9 +51,9 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `GET` | `/scan/{id}/export` | token | The finished report as a download: `?format=json` (skillspector's report) or `?format=sarif` (SARIF 2.1.0). |
 | `POST` | `/scan/{id}/rescan` | token · rate-limited | Scan the target again as this scan did. |
 | `GET` | `/scan/{id}/logs` | token | Captured log lines for a scan (in memory, or in the database with `LOG_STORE=database`). |
-| `POST` · `DELETE` | `/scan/{id}/share` | signed in | Share the result at a read-only link (`{ token }`, for `/shared/{token}`), or revoke it. |
+| `POST` · `DELETE` | `/scan/{id}/share` | signed in | Share the result at a read-only link (`{ token }`, for `/shared/{token}`), or revoke it. A private repository's scan needs `{ confirm_private: true }` (else `409`). |
 | `DELETE` | `/scan/{id}` | signed in | Delete a scan. `204` on success. |
-| `POST` · `DELETE` | `/scan/{id}/badge` | signed in | Put the shared result on its target's status badge, or take it off. Refused for an unshared result (`409`), an upload or a scan with a baseline (`422`). Revoking the link takes it off too. |
+| `POST` · `DELETE` | `/scan/{id}/badge` | signed in | Put the shared result on its target's status badge, or take it off. Refused for an unshared result (`409`), an upload or a scan with a baseline (`422`), and for a private repository's scan without `{ confirm_private: true }` (`409`). Revoking the link takes it off too. |
 | `GET` | `/badge` | — | `?target=`: the latest scan of the target on its badge, `{ recommendation, risk_score, scanned_at, share_token }`, all `null` when there's none. The web app renders it as an SVG at `/badge`. |
 | `GET` | `/shared/{token}` | — | A shared result, read-only; also `/skills/{index}` and `/export`. |
 | `POST` | `/internal/events` | `CRON_SECRET` | The web app reports scan submissions BotID refused, `{ kind: "bot_refused", count }`, for monitoring. Hosted only. |

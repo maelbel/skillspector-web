@@ -3,7 +3,7 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import claude_key, db, quotas
+from app import claude_key, db, quotas, repo_connections
 from app.auth import AuthError, api_tokens
 from app.auth.deps import CurrentViewer
 
@@ -145,3 +145,72 @@ def revoke_token(token_id: str, viewer: CurrentViewer) -> None:
         api_tokens.revoke(owner, owner, token_id)
     except AuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+# Code host connections, to scan private repositories (app/repo_connections.py).
+
+
+class RepoConnection(BaseModel):
+    provider: str
+    account_name: str
+    connected_at: float
+
+
+class GitHubConnectionStatus(BaseModel):
+    # False until the server has a GitHub App set up (and accounts, SECRET_KEY, PUBLIC_URL).
+    available: bool
+    # Where to choose which repositories the app may read.
+    manage_url: str | None
+    connection: RepoConnection | None
+
+
+class ConnectionsResponse(BaseModel):
+    github: GitHubConnectionStatus
+
+
+class StartConnectionResponse(BaseModel):
+    url: str
+
+
+class CompleteConnectionRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=512)
+    state: str = Field(min_length=1, max_length=4096)
+
+
+def _connecting_user(viewer) -> dict:
+    if viewer.user is None or not repo_connections.available():
+        raise HTTPException(status_code=404, detail="Connecting GitHub isn't available on this server")
+    return viewer.user
+
+
+@router.get("/connections", response_model=ConnectionsResponse)
+def read_connections(viewer: CurrentViewer) -> ConnectionsResponse:
+    connections = {row["provider"]: row for row in repo_connections.status(viewer.user["id"])} if viewer.user else {}
+    github = connections.get(repo_connections.GITHUB)
+    return ConnectionsResponse(
+        github=GitHubConnectionStatus(
+            available=repo_connections.available(),
+            manage_url=repo_connections.manage_url(),
+            connection=RepoConnection(**github) if github else None,
+        )
+    )
+
+
+@router.get("/connections/github/start", response_model=StartConnectionResponse)
+def start_github_connection(viewer: CurrentViewer) -> StartConnectionResponse:
+    """GitHub's page to authorize the app; it sends the browser back to the callback."""
+    return StartConnectionResponse(url=repo_connections.start_url(_connecting_user(viewer)["id"]))
+
+
+@router.post("/connections/github/callback", response_model=RepoConnection)
+def complete_github_connection(req: CompleteConnectionRequest, viewer: CurrentViewer) -> RepoConnection:
+    try:
+        return RepoConnection(**repo_connections.complete(_connecting_user(viewer), code=req.code, state=req.state))
+    except repo_connections.ConnectionFailedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/connections/github", status_code=204)
+def disconnect_github(viewer: CurrentViewer) -> None:
+    """Delete the GitHub tokens: private repositories can't be scanned until connecting again."""
+    repo_connections.disconnect(_connecting_user(viewer))

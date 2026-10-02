@@ -76,6 +76,26 @@ isn't protected:
   - In a hosted sandbox the key doesn't even enter the VM: the sandbox firewall adds it to requests
     to `api.anthropic.com`.
   - Hosted servers offer Claude only, with no shared Claude login and no custom base URLs.
+- **Private GitHub repositories.** A user can connect GitHub (Account → GitHub), through the
+  server's GitHub App, to scan their private repositories ([setup](./CONFIGURATION.md#private-github-repositories)).
+  - The app's only permission is reading repository contents, in the repositories the user chose.
+    Its tokens are the user's own: they read only what both the user and the app's installation
+    can, so no one reaches another user's repositories, even with the same link.
+  - The tokens, and their refresh token, are encrypted with `SECRET_KEY`, bound to the user, and
+    never shown, logged or sent in a response, the activity log, a queue message or a scan's
+    request. They're refreshed when they expire; disconnecting deletes them here and revokes them
+    at GitHub, and so does deleting the account. Connecting and disconnecting are in the activity
+    log.
+  - When a scan is queued, a GitHub link is checked with its owner's token: a public repository is
+    scanned as before, without it. A private one is marked as such, and the token is fetched from
+    the scan's owner only when it runs. Hosted, the sandbox firewall adds it to requests to
+    `github.com` and `raw.githubusercontent.com`, and it never enters the VM. Self-hosted, the API
+    clones the repository itself with the token in the clone's own environment, never on its
+    command line, in a file or in the API's environment, and scans the copy, deleted afterwards.
+  - A private repository's scan is its owner's: it isn't shared or put on a badge unless they
+    confirm, and only they open its report, logs and downloads. An admin sees that it exists, and
+    may delete it or revoke its link.
+  - The host allowlist, size limits and private-address rules stay in force.
 - **Abuse limits.** Scans are limited per signed-in user, and per client IP across every account
   signed in from it; sign-in, sign-up and password reset attempts per client IP. A refused request
   gets a `429` saying when to try again.

@@ -73,3 +73,10 @@ export async function backendDownload(event: H3Event, path: string, query: Recor
     throw createError({ statusCode: response?.status ?? 502, statusMessage: errorMessage(body, fallbackMessage) })
   }
 }
+
+/** Whether the request confirms a private repository's scan may be made public
+ * (`{ confirm_private: true }`); an empty body confirms nothing. */
+export async function confirmedPrivate(event: H3Event): Promise<boolean> {
+  const body = await readBody<{ confirm_private?: unknown } | undefined>(event).catch(() => undefined)
+  return body?.confirm_private === true
+}

@@ -64,6 +64,8 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
             baseline=scan.get("baseline"),
             transitive_depth=scan.get("transitive_depth"),
             upload=scan.get("upload"),
+            owner_id=scan.get("owner_id"),
+            private_source=bool(scan.get("private_source")),
         )
         # run_job deletes the upload once it's scanned.
         await scanner.run_job(job)

@@ -316,6 +316,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
         ],
     ),
+    (
+        22,
+        [
+            # A user's connected code host accounts (app/repo_connections.py), to scan their private
+            # repositories: one per provider, its tokens encrypted with SECRET_KEY.
+            """
+            CREATE TABLE repo_connections (
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                account_name TEXT NOT NULL,
+                encrypted_token TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL,
+                PRIMARY KEY (user_id, provider)
+            )
+            """,
+            # The scan reads a private repository, with its owner's connection: its result stays
+            # theirs (no share link or badge unless they confirm, and only they open it).
+            "ALTER TABLE scans ADD COLUMN private_source BOOLEAN NOT NULL DEFAULT FALSE",
+        ],
+    ),
 ]
 
 
@@ -374,9 +395,10 @@ class PostgresStore:
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
+        private_source: bool = False,
         max_active: int | None = None,
     ) -> bool:
-        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)
+        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload, private_source)
         if max_active is None or owner_id is None:
             self._execute(insert_scan_query("%s", max_active=None), values)
             return True
@@ -612,7 +634,30 @@ class PostgresStore:
             conn.execute("DELETE FROM sessions WHERE user_id = %s", (id,))
             conn.execute("DELETE FROM llm_credentials WHERE user_id = %s", (id,))
             conn.execute("DELETE FROM api_tokens WHERE user_id = %s", (id,))
+            conn.execute("DELETE FROM repo_connections WHERE user_id = %s", (id,))
         return deleted > 0
+
+    def set_repo_connection(self, *, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None:
+        self._execute(
+            """
+            INSERT INTO repo_connections (user_id, provider, account_name, encrypted_token, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, provider) DO UPDATE SET
+                account_name = excluded.account_name, encrypted_token = excluded.encrypted_token, updated_at = excluded.updated_at
+            """,
+            (user_id, provider, account_name, encrypted_token, now, now),
+        )
+
+    def get_repo_connection(self, user_id: str, provider: str) -> dict[str, Any] | None:
+        with self._pool.connection() as conn:
+            return conn.execute("SELECT * FROM repo_connections WHERE user_id = %s AND provider = %s", (user_id, provider)).fetchone()
+
+    def list_repo_connections(self, user_id: str) -> list[dict[str, Any]]:
+        with self._pool.connection() as conn:
+            return list(conn.execute("SELECT * FROM repo_connections WHERE user_id = %s ORDER BY provider", (user_id,)).fetchall())
+
+    def delete_repo_connection(self, user_id: str, provider: str) -> bool:
+        return self._execute("DELETE FROM repo_connections WHERE user_id = %s AND provider = %s", (user_id, provider)) > 0
 
     def create_api_token(self, *, id: str, user_id: str, name: str, token_hash: str, prefix: str, scopes: str, created_at: float, expires_at: float | None) -> None:
         self._execute(

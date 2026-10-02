@@ -97,7 +97,7 @@ def list_monitor_events_query(placeholder: str, kinds: tuple[str, ...]) -> tuple
     )
 
 
-INSERT_SCAN_COLUMNS = "id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload"
+INSERT_SCAN_COLUMNS = "id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload, private_source"
 
 
 def insert_scan_query(placeholder: str, *, max_active: int | None) -> str:
@@ -130,6 +130,7 @@ class ScanStore(Protocol):
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
+        private_source: bool = False,
         # With an owner: insert only while they have fewer pending or running scans than this,
         # checked and inserted as one step. False when they didn't have room.
         max_active: int | None = None,
@@ -222,6 +223,16 @@ class ScanStore(Protocol):
     def count_users(self) -> int: ...
 
     def delete_user(self, id: str) -> bool: ...
+
+    # Connected code host accounts, their tokens encrypted by the caller (app/repo_connections.py).
+
+    def set_repo_connection(self, *, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None: ...
+
+    def get_repo_connection(self, user_id: str, provider: str) -> dict[str, Any] | None: ...
+
+    def list_repo_connections(self, user_id: str) -> list[dict[str, Any]]: ...
+
+    def delete_repo_connection(self, user_id: str, provider: str) -> bool: ...
 
     def create_api_token(
         self, *, id: str, user_id: str, name: str, token_hash: str, prefix: str, scopes: str, created_at: float, expires_at: float | None

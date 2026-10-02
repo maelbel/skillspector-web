@@ -216,6 +216,8 @@ export interface ScanStatus {
   share_token: string | null
   // Whether the shared result is on its target's public status badge (/badge?target=…).
   badge: boolean
+  // Whether it read a private repository with its owner's connection; only they open it.
+  private_source: boolean
 }
 
 export interface ScanComparison {

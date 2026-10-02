@@ -337,6 +337,25 @@ def test_ai_review_brokers_the_key_at_the_firewall(memory_logs, skill_dir, sandb
     assert box.commands[0][1][-1] == "--llm"
 
 
+def test_a_private_repositorys_token_is_added_at_the_firewall_never_in_the_vm(memory_logs, skill_dir, sandboxes):
+    from app.repo_connections import firewall_headers
+
+    created, create_sandbox = sandboxes
+    token = "ghu_privatesecrettoken0123456789"
+    executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
+
+    anyio.run(lambda: executor.run("s", str(skill_dir), llm=None, host_headers=firewall_headers(token)))
+
+    box = created[0]
+    policy = dict(box.options["network_policy"].allow)
+    rule = next(iter(policy["github.com"]))
+    assert dict(next(iter(rule.transform)).headers)["Authorization"].startswith("Basic ")
+    # Nowhere the VM can read it: its environment, its files, its commands.
+    assert token not in json.dumps(box.options["env"])
+    assert all(token not in content for content in box.fs.files.values())
+    assert all(token not in " ".join(args) for _, args, _ in box.commands)
+
+
 def test_static_scans_never_reach_anthropic(memory_logs, skill_dir, sandboxes):
     created, create_sandbox = sandboxes
 
@@ -455,7 +474,7 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None, upload=None):
+        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None, upload=None, host_headers=None):
             calls.append((job_id, target, llm, baseline))
             return {"risk_assessment": {"score": 1}, "issues": []}
 
