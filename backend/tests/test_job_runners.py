@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import anyio
 import pytest
 from vercel.queue.embedded import embedded_queue_service
 
-from app import db, scanner
-from app.core.config import Settings
+from app import db, scanner, uploads
+from app.core.config import Settings, get_settings
 from app.core.mode import Mode
 from app.jobs import JobRejectedError, queue_worker, runner_kind
 from app.jobs.in_process import InProcessRunner
@@ -90,12 +91,129 @@ def test_in_process_runner_is_full_at_max_queued_scans(monkeypatch):
     assert not runner.is_full()
 
 
-def test_in_process_runner_fails_scans_left_over_from_a_previous_process(temp_db):
-    _pending_job("left")
+async def _restart() -> InProcessRunner:
+    """A new process starting, and running what it picked up to an end."""
+    runner = InProcessRunner()
+    runner.on_startup()
+    await asyncio.gather(*runner._tasks)
+    return runner
 
-    InProcessRunner().on_startup()
 
-    assert db.get_scan("left")["status"] == "error"
+def _ai_job(id: str, llm: LLMConfig | None) -> Job:
+    job = Job(id=id, target=f"https://example.com/{id}", llm=llm)
+    db.insert_scan(id=job.id, target=job.target, status=job.status, created_at=job.created_at, provider=llm.provider if llm else None)
+    return job
+
+
+def test_a_restart_runs_the_scans_a_previous_process_left_unfinished(temp_db, fake_graph):
+    _pending_job("waiting")
+    _pending_job("midway")
+    db.update_scan(id="midway", status="running", finished_at=None, result=None, error=None)
+    db.start_attempt("midway")
+
+    anyio.run(_restart)
+
+    assert {db.get_scan(id)["status"] for id in ("waiting", "midway")} == {"done"}
+    assert sorted(fake_graph) == ["https://example.com/midway", "https://example.com/waiting"]
+    assert db.get_scan("midway")["attempts"] == 2
+
+
+def test_a_scan_that_never_finishes_stops_after_a_few_attempts(temp_db, fake_graph):
+    from app.jobs import in_process
+
+    _pending_job("stuck")
+    db.update_scan(id="stuck", status="running", finished_at=None, result=None, error=None)
+    for _ in range(in_process.MAX_ATTEMPTS):
+        db.start_attempt("stuck")
+
+    anyio.run(_restart)
+
+    scan = db.get_scan("stuck")
+    assert scan["status"] == "error"
+    assert scan["error"] == f"The scan didn't finish after {in_process.MAX_ATTEMPTS} attempts: the API stopped during each one"
+    assert fake_graph == []
+
+
+def test_a_scan_cancelled_by_a_shutdown_waits_to_run_again(temp_db, monkeypatch):
+    import threading
+
+    release = threading.Event()
+
+    def slow(*args, **kwargs):
+        release.wait(5)
+        return REPORT
+
+    monkeypatch.setattr(scanner, "_invoke_graph", slow)
+    upload = uploads.save_local("cut", "skill.zip", b"zip")
+    job = _pending_job("cut")
+    job.upload = upload
+
+    async def shutdown_midway():
+        runner = InProcessRunner()
+        await runner.submit(job)
+        await asyncio.sleep(0.2)
+        for task in runner._tasks:
+            task.cancel()
+        await asyncio.gather(*runner._tasks, return_exceptions=True)
+
+    anyio.run(shutdown_midway)
+    release.set()
+
+    scan = db.get_scan("cut")
+    assert (scan["status"], scan["finished_at"], scan["error"]) == ("pending", None, None)
+    assert Path(upload).exists()
+
+
+def test_an_ai_scans_one_off_key_is_kept_to_run_it_again(temp_db, fake_graph, monkeypatch):
+    from app import secrets_box
+    from app.jobs import in_process
+
+    monkeypatch.setattr(get_settings(), "secret_key", secrets_box.generate_key())
+    llm = LLMConfig(provider="openai_compatible", api_key="sk-one-off-key-1234567890", base_url="https://llm.example.com/v1")
+    job = _ai_job("ai", llm)
+
+    async def held_then_restarted():
+        runner = InProcessRunner()
+        monkeypatch.setattr(runner, "_start", lambda job: None)  # The process stops before it runs.
+        await runner.submit(job)
+
+    anyio.run(held_then_restarted)
+
+    resumed = in_process._job_for(db.get_scan("ai"))
+    assert (resumed.llm.api_key, resumed.llm.base_url) == (llm.api_key, llm.base_url)
+
+
+def test_without_a_secret_key_only_one_off_key_scans_fail_on_restart(temp_db, fake_graph, monkeypatch):
+    monkeypatch.setattr(get_settings(), "secret_key", None)
+    _ai_job("keyed", LLMConfig(provider="openai", api_key="sk-one-off-key-1234567890"))
+    _ai_job("local", LLMConfig(provider="ollama"))
+    _pending_job("static")
+
+    anyio.run(_restart)
+
+    keyed = db.get_scan("keyed")
+    assert keyed["status"] == "error" and "SKILLSPECTOR_WEB_SECRET_KEY" in keyed["error"]
+    assert (db.get_scan("local")["status"], db.get_scan("static")["status"]) == ("done", "done")
+
+
+def test_a_restart_keeps_only_the_uploads_of_scans_it_runs_again(temp_db, fake_graph):
+    kept = Path(uploads.save_local("again", "skill.zip", b"zip"))
+    orphan = Path(uploads.save_local("gone", "skill.zip", b"zip"))
+    job = Job(id="again", target="upload:skill.zip", llm=None, upload=str(kept))
+    db.insert_scan(id=job.id, target=job.target, status=job.status, created_at=job.created_at, provider=None, upload=job.upload)
+
+    async def at_startup():
+        runner = InProcessRunner()
+        runner.on_startup()
+        # Before the resumed scan runs: its upload is still there, the orphan is gone.
+        assert kept.exists() and not orphan.exists()
+        await asyncio.gather(*runner._tasks)
+
+    anyio.run(at_startup)
+
+    assert db.get_scan("again")["status"] == "done"
+    # Deleted once scanned, as always.
+    assert not kept.exists()
 
 
 # Vercel Queues runner

@@ -132,9 +132,20 @@ def save_local(scan_id: str, name: str, data: bytes) -> str:
     return str(path)
 
 
-def clear_local() -> None:
-    """Delete every local upload: on startup, when no scan can be running."""
-    shutil.rmtree(_local_root(), ignore_errors=True)
+def clear_local(keep: set[str] | frozenset[str] = frozenset()) -> None:
+    """Delete the local uploads of every scan but these: on startup, when no scan is running, those
+    of the scans that will be run again."""
+    root = _local_root()
+    if not keep:
+        shutil.rmtree(root, ignore_errors=True)
+        return
+    for entry in root.glob("*") if root.is_dir() else ():
+        if entry.name in keep:
+            continue
+        if entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink(missing_ok=True)
 
 
 # Blob store.

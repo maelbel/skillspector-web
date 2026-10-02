@@ -162,12 +162,15 @@ def delete_job(job_id: str) -> bool:
 async def run_job(job: Job) -> None:
     """Run one scan to completion and record the outcome. Every job runner ends up here.
 
-    Never raises for a failed scan: the error is stored on the scan instead.
+    Never raises for a failed scan: the error is stored on the scan instead. Cancelled (the API is
+    stopping), it puts the scan back to pending, its upload kept, to be run again
+    (app/jobs/in_process.py), and lets the cancellation through.
     """
-    # A scan can be run again (a queue redelivery after its instance died); start its log afresh.
+    # A scan can be run again (a queue redelivery, or a restart mid-scan); start its log afresh.
     scan_logs.forget(job.id)
     job.status = JobStatus.RUNNING
     db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
+    db.start_attempt(job.id)
     started = time.time()
     monitoring.log_event("scan_started", scan_id=job.id, ai_review=job.llm is not None)
     sandbox_failed = False
@@ -182,23 +185,27 @@ async def run_job(job: Job) -> None:
         else:
             job.result = await _run_locally(job, job.target)
         job.status = JobStatus.DONE
+    except asyncio.CancelledError:
+        job.status = JobStatus.PENDING
+        db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
+        monitoring.log_event("scan_interrupted", scan_id=job.id)
+        raise
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)
         job.status = JobStatus.ERROR
         sandbox_failed = isinstance(exc, SandboxUnavailableError)
-    finally:
-        # Never kept once scanned, whatever the outcome.
-        await uploads.delete(job.upload)
-        job.finished_at = time.time()
-        job.llm = None
-        db.update_scan(
-            id=job.id,
-            status=job.status,
-            finished_at=job.finished_at,
-            result=job.result,
-            error=job.error,
-        )
-        await _report(job, duration=job.finished_at - started, sandbox_failed=sandbox_failed)
+    # Never kept once scanned, whatever the outcome.
+    await uploads.delete(job.upload)
+    job.finished_at = time.time()
+    job.llm = None
+    db.update_scan(
+        id=job.id,
+        status=job.status,
+        finished_at=job.finished_at,
+        result=job.result,
+        error=job.error,
+    )
+    await _report(job, duration=job.finished_at - started, sandbox_failed=sandbox_failed)
 
 
 async def _report(job: Job, *, duration: float, sandbox_failed: bool) -> None:
