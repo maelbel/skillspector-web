@@ -1,32 +1,46 @@
 <script setup lang="ts">
-// Share a result as a read-only link (backend/app/api/routes/shared.py), or revoke it.
-const props = defineProps<{ scanId: string }>()
+// Share a result as a read-only link (backend/app/api/routes/shared.py), or revoke it; and once
+// shared, put it on its target's public status badge (backend/app/api/routes/badge.py).
+const props = defineProps<{ scanId: string, target: string }>()
 const open = defineModel<boolean>('open', { default: false })
 const token = defineModel<string | null>('token', { default: null })
+const badge = defineModel<boolean>('badge', { default: false })
 
-const busy = ref<'create' | 'revoke' | null>(null)
+type Action = 'create' | 'revoke' | 'badge'
+const FAILURES: Record<Action, string> = {
+  create: 'Couldn’t create the link',
+  revoke: 'Couldn’t revoke the link',
+  badge: 'Couldn’t change the badge'
+}
+
+const busy = ref<Action | null>(null)
 const errorMessage = ref('')
-const copied = ref(false)
+const copied = ref<'link' | 'badge' | null>(null)
 const copyFailed = ref(false)
 const linkEl = useTemplateRef<HTMLElement>('linkEl')
+const badgeEl = useTemplateRef<HTMLElement>('badgeEl')
 
 const origin = useRequestURL().origin
 const link = computed(() => token.value ? `${origin}/shared/${token.value}` : '')
+// An upload has no link for a README to name.
+const badgeAvailable = computed(() => !!props.target && !isUploadTarget(props.target))
+const snippet = computed(() => badgeMarkdown(origin, props.target))
+const badgeImage = computed(() => `/badge?target=${encodeURIComponent(props.target)}&v=${badge.value ? 1 : 0}`)
 
-async function run(action: 'create' | 'revoke', call: () => Promise<void>) {
+async function run(action: Action, call: () => Promise<void>) {
   busy.value = action
   errorMessage.value = ''
   try {
     await call()
   } catch (err) {
-    errorMessage.value = apiErrorMessage(err, action === 'create' ? 'Couldn’t create the link' : 'Couldn’t revoke the link')
+    errorMessage.value = apiErrorMessage(err, FAILURES[action])
   } finally {
     busy.value = null
   }
 }
 
 function createLink() {
-  copied.value = false
+  copied.value = null
   return run('create', async () => {
     token.value = (await $fetch<{ token: string }>(`/api/scan/${props.scanId}/share`, { method: 'POST' })).token
   })
@@ -36,18 +50,28 @@ function revokeLink() {
   return run('revoke', async () => {
     await $fetch(`/api/scan/${props.scanId}/share`, { method: 'DELETE' })
     token.value = null
+    // Revoking the link takes the result off the badge too.
+    badge.value = false
   })
 }
 
-async function copyLink() {
+function setBadge(on: boolean) {
+  return run('badge', async () => {
+    await $fetch(`/api/scan/${props.scanId}/badge`, { method: on ? 'POST' : 'DELETE' })
+    badge.value = on
+  })
+}
+
+async function copy(what: 'link' | 'badge') {
   try {
-    await navigator.clipboard.writeText(link.value)
-    copied.value = true
+    await navigator.clipboard.writeText(what === 'link' ? link.value : snippet.value)
+    copied.value = what
     copyFailed.value = false
   } catch {
-    // No clipboard access (e.g. plain HTTP): select the link so it can be copied by hand.
+    // No clipboard access (e.g. plain HTTP): select the text so it can be copied by hand.
     copyFailed.value = true
-    if (linkEl.value) window.getSelection()?.selectAllChildren(linkEl.value)
+    const el = what === 'link' ? linkEl.value : badgeEl.value
+    if (el) window.getSelection()?.selectAllChildren(el)
   }
 }
 </script>
@@ -67,13 +91,13 @@ async function copyLink() {
               class="min-w-0 flex-1 truncate px-1 font-mono text-xs text-highlighted"
             >{{ link }}</code>
             <UButton
-              :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+              :icon="copied === 'link' ? 'i-lucide-check' : 'i-lucide-copy'"
               color="neutral"
               variant="outline"
               size="sm"
-              @click="copyLink"
+              @click="copy('link')"
             >
-              {{ copied ? 'Copied' : 'Copy' }}
+              {{ copied === 'link' ? 'Copied' : 'Copy' }}
             </UButton>
           </div>
           <p
@@ -85,6 +109,44 @@ async function copyLink() {
           <p class="text-sm text-muted">
             Revoking it makes the link stop working at once. Sharing again gives a new one.
           </p>
+
+          <div
+            v-if="badgeAvailable"
+            class="flex flex-col gap-3 border-t border-default pt-4"
+          >
+            <USwitch
+              :model-value="badge"
+              :loading="busy === 'badge'"
+              label="Show on the skill’s status badge"
+              description="A badge for its README, with the verdict and date of the latest scan of this link put on it. Anyone can see it."
+              @update:model-value="setBadge"
+            />
+            <template v-if="badge">
+              <img
+                :src="badgeImage"
+                alt="The status badge"
+                class="h-5 self-start"
+              >
+              <div class="flex items-center gap-2 rounded-xs bg-muted p-2 ring ring-default">
+                <code
+                  ref="badgeEl"
+                  class="min-w-0 flex-1 truncate px-1 font-mono text-xs text-highlighted"
+                >{{ snippet }}</code>
+                <UButton
+                  :icon="copied === 'badge' ? 'i-lucide-check' : 'i-lucide-copy'"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  @click="copy('badge')"
+                >
+                  {{ copied === 'badge' ? 'Copied' : 'Copy Markdown' }}
+                </UButton>
+              </div>
+              <p class="text-sm text-muted">
+                Paste it in the skill’s README. Badges are cached for up to 5 minutes.
+              </p>
+            </template>
+          </div>
         </template>
         <p
           v-else

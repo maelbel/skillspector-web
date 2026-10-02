@@ -81,6 +81,7 @@ flowchart LR
 ```text
 app/                      Vue UI: pages, components, composables, client utils
 server/api/               Nitro proxy routes, one per backend endpoint
+server/routes/            public routes outside /api: the status badge (/badge)
 server/utils/             proxy helpers: backend calls, sessions, client IP, BotID
 shared/                   types and URL helpers shared by the UI and the proxy
 backend/app/

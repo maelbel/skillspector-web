@@ -45,6 +45,8 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `GET` | `/scan/{id}/logs` | token | Captured log lines for a scan (in memory, or in the database with `LOG_STORE=database`). |
 | `POST` · `DELETE` | `/scan/{id}/share` | signed in | Share the result at a read-only link (`{ token }`, for `/shared/{token}`), or revoke it. |
 | `DELETE` | `/scan/{id}` | signed in | Delete a scan. `204` on success. |
+| `POST` · `DELETE` | `/scan/{id}/badge` | signed in | Put the shared result on its target's status badge, or take it off. Refused for an unshared result (`409`), an upload or a scan with a baseline (`422`). Revoking the link takes it off too. |
+| `GET` | `/badge` | — | `?target=`: the latest scan of the target on its badge, `{ recommendation, risk_score, scanned_at, share_token }`, all `null` when there's none. The web app renders it as an SVG at `/badge`. |
 | `GET` | `/shared/{token}` | — | A shared result, read-only; also `/skills/{index}` and `/export`. |
 | `GET` | `/settings` | — | `{ scan_retention_days }` (`null` = keep forever). |
 | `PUT` | `/settings` | admin | Update retention; runs a sweep immediately. |

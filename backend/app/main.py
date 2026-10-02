@@ -32,6 +32,7 @@ from app.api.routes import (
     admin,
     auth,
     backoffice,
+    badge,
     internal,
     scan,
     shared,
@@ -93,6 +94,7 @@ app.include_router(users.router)
 app.include_router(backoffice.router)
 app.include_router(scan.router)
 app.include_router(shared.router)
+app.include_router(badge.router)
 app.include_router(admin.router)
 app.include_router(settings_routes.router)
 app.include_router(internal.router)

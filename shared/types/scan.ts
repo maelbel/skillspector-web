@@ -214,6 +214,8 @@ export interface ScanStatus {
   comparison: ScanComparison | null
   // The read-only link's token (/shared/<token>), when the result is shared; only its owner sees it.
   share_token: string | null
+  // Whether the shared result is on its target's public status badge (/badge?target=…).
+  badge: boolean
 }
 
 export interface ScanComparison {

@@ -10,6 +10,7 @@ from psycopg_pool import ConnectionPool
 from app.storage.base import (
     SUMMARY_COLUMNS,
     ScanRow,
+    badge_scan_query,
     previous_scan_query,
     scan_filter,
     scan_order,
@@ -266,6 +267,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "CREATE INDEX idx_api_tokens_user ON api_tokens (user_id)",
         ],
     ),
+    (
+        18,
+        [
+            # Whether a shared scan's owner put it on its target's status badge
+            # (app/api/routes/badge.py). Only a shared scan can be; revoking the link takes it off.
+            "ALTER TABLE scans ADD COLUMN badge BOOLEAN NOT NULL DEFAULT FALSE",
+        ],
+    ),
 ]
 
 
@@ -394,11 +403,20 @@ class PostgresStore:
 
     def set_share_token(self, scan_id: str, token: str | None) -> None:
         with self._pool.connection() as conn:
-            conn.execute("UPDATE scans SET share_token = %s WHERE id = %s", (token, scan_id))
+            # An unshared scan is off its badge too.
+            conn.execute("UPDATE scans SET share_token = %s, badge = badge AND %s WHERE id = %s", (token, token is not None, scan_id))
 
     def get_shared_scan(self, token: str) -> ScanRow | None:
         with self._pool.connection() as conn:
             return conn.execute("SELECT * FROM scans WHERE share_token = %s", (token,)).fetchone()
+
+    def set_badge(self, scan_id: str, on: bool) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("UPDATE scans SET badge = %s WHERE id = %s", (on, scan_id))
+
+    def badge_scan(self, target: str) -> ScanRow | None:
+        with self._pool.connection() as conn:
+            return conn.execute(badge_scan_query("%s"), (target,)).fetchone()
 
     def delete_scan(self, id: str) -> bool:
         with self._pool.connection() as conn, conn.transaction():

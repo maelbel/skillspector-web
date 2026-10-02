@@ -56,6 +56,15 @@ def previous_scan_query(
     return query, (target, before, *((owner_id,) if owner_id is not None else ()))
 
 
+def badge_scan_query(placeholder: str) -> str:
+    """The latest scan of a target its owner put on the target's badge: shared, finished, and
+    without a baseline."""
+    return (
+        f"SELECT * FROM scans WHERE target = {placeholder} AND badge AND share_token IS NOT NULL"
+        " AND status = 'done' AND baseline IS NULL ORDER BY created_at DESC LIMIT 1"
+    )
+
+
 class ScanStore(Protocol):
     """Where scans and app settings live. SQLite by default; Postgres when a database URL is set."""
 
@@ -112,6 +121,10 @@ class ScanStore(Protocol):
     def set_share_token(self, scan_id: str, token: str | None) -> None: ...
 
     def get_shared_scan(self, token: str) -> ScanRow | None: ...
+
+    def set_badge(self, scan_id: str, on: bool) -> None: ...
+
+    def badge_scan(self, target: str) -> ScanRow | None: ...
 
     def list_scans(
         self,

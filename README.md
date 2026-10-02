@@ -41,6 +41,8 @@ or deploy to Vercel.
 - **Export and share.** Download a report as skillspector's JSON or as SARIF for GitHub code
   scanning and other SARIF tools, or share a read-only link to a result that works without signing
   in, until you revoke it.
+- **Show a badge.** Put a shared result on its skill's status badge, and paste the Markdown in the
+  README: it shows the verdict and date of the latest scan put on it, and links to that result.
 - **Or upload it.** Drop a `.zip` of a skill, or its `SKILL.md`, on the scan form to scan one you
   haven't published. The file is kept only until it's scanned.
 - **Check pull requests.** A [GitHub Action](./docs/GITHUB_ACTION.md) scans the skills a pull

@@ -160,6 +160,8 @@ class ScanStatusResponse(BaseModel):
     comparison: dict | None = None
     # The token of the read-only link the result is shared at (/shared/{token}), if it is.
     share_token: str | None = None
+    # Whether the shared result is on its target's status badge (app/api/routes/badge.py).
+    badge: bool = False
 
 
 class ScanSummaryResponse(BaseModel):
@@ -477,6 +479,7 @@ async def read_scan(job_id: str, viewer: ScanViewer) -> ScanStatusResponse:
     response = _to_response(job)
     response.rescan = _Rescans(viewer).allowed(scan)
     response.share_token = scan.get("share_token")
+    response.badge = bool(scan.get("badge"))
     compared = rescan.comparison_for(scan)
     if compared is not None:
         response.comparison, before = compared
@@ -555,6 +558,36 @@ def unshare_scan(job_id: str, viewer: CurrentViewer) -> None:
     if scan.get("share_token"):
         db.set_share_token(job_id, None)
         audit(viewer.user, "scan.unshared", detail=scan["target"])
+
+
+@router.post("/{job_id}/badge", status_code=204)
+def add_to_badge(job_id: str, viewer: CurrentViewer) -> None:
+    """Show the shared result on its target's public status badge (/badge?target=…): the badge
+    shows the latest scan of the target put on it, by anyone."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    if not scan.get("share_token"):
+        raise HTTPException(status_code=409, detail="Share the result first: the badge links to it")
+    if uploads.is_upload_target(scan["target"]):
+        raise HTTPException(status_code=422, detail="An uploaded file has no link for a badge to name")
+    if scan.get("baseline") is not None:
+        # Its baseline's accepted findings don't count, so the badge would read safer than the skill.
+        raise HTTPException(status_code=422, detail="A scan with a baseline can't be on a badge: scan the skill without one")
+    if not scan.get("badge"):
+        db.set_badge(job_id, True)
+        audit(viewer.user, "scan.badge_added", detail=scan["target"])
+
+
+@router.delete("/{job_id}/badge", status_code=204)
+def remove_from_badge(job_id: str, viewer: CurrentViewer) -> None:
+    """Take the result off the badge, which then shows the target's previous scan on it, if any."""
+    _visible_scan(job_id, viewer)
+    scan = db.get_scan(job_id)
+    assert scan is not None
+    if scan.get("badge"):
+        db.set_badge(job_id, False)
+        audit(viewer.user, "scan.badge_removed", detail=scan["target"])
 
 
 @router.post("/{job_id}/rescan", response_model=ScanQueuedResponse, dependencies=[Depends(_rate_limit_scan)])

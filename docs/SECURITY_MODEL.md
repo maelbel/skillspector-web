@@ -49,6 +49,14 @@ isn't protected:
   it's revoked; creating and revoking links is in the activity log. A shared page shows the report
   and its target, and leaves out the account's AI token use and its comparison with earlier scans.
   Each address may open 120 shared pages or downloads a minute.
+- **Status badges show only what an owner put on them.** A badge (`/badge?target=…`) shows the
+  verdict and date of the latest scan of a link that its owner shared and then put on the badge, and
+  links to that shared result. A private scan, or one only shared by link, never shows; revoking the
+  link takes the scan off. A scan with a baseline can't be put on a badge, since the findings it
+  accepts don't count, nor can an upload. Anyone may put their own genuine scan of a public link on
+  its badge, and the latest one shows. Badges are cached for 5 minutes, so a change can take that
+  long to show. They aren't rate limited, so GitHub's image proxy isn't refused: each is one indexed
+  lookup, and never starts a scan.
 - **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
   `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
   microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound
