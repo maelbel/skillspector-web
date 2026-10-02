@@ -306,6 +306,29 @@ def add_audit(
     )
 
 
+def add_monitor_event(*, created_at: float, kind: str, message: str | None = None, scan_id: str | None = None, count: int = 1) -> None:
+    _store_or_raise().add_monitor_event(created_at=created_at, kind=kind, message=message, scan_id=scan_id, count=count)
+
+
+def monitor_counts(*, since: float) -> dict[str, int]:
+    """Each monitoring event kind's count since then."""
+    return _store_or_raise().monitor_counts(since=since)
+
+
+def scan_outcomes(*, since: float) -> dict[str, int]:
+    """Scans started, and finished and failed, since then."""
+    return _store_or_raise().scan_outcomes(since=since)
+
+
+def last_monitor_event(*kinds: str, message: str | None = None) -> dict[str, Any] | None:
+    """The latest event of these kinds; with a message, only one with it (an alert's rule)."""
+    return _store_or_raise().last_monitor_event(tuple(kinds), message)
+
+
+def delete_monitor_events_older_than(cutoff: float) -> int:
+    return _store_or_raise().delete_monitor_events_older_than(cutoff)
+
+
 def list_audit(limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
     return _store_or_raise().list_audit(limit, offset, target_id=target_id)
 

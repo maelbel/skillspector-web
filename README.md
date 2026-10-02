@@ -65,6 +65,8 @@ or deploy to Vercel.
 **Operations**
 - **Accounts, optional when self-hosted.** Scans are private to their owner. Admins get a
   backoffice with users, an activity log and server settings.
+- **Know when it breaks.** A health panel in the backoffice, alerts to Slack, Discord, any webhook
+  or email when scans fail or can't run, and structured logs for Vercel or your own tooling.
 - **Abuse and cost controls.** Rate limits, a bounded queue, per-user quotas and a switch that
   pauses new scans, all adjustable without a redeploy.
 - **Two ways to run it.** Docker Compose on your own server, or one Vercel project where every scan
@@ -241,6 +243,7 @@ a vulnerability, see [SECURITY.md](./SECURITY.md).
 | [Vercel Firewall rules](./docs/VERCEL_FIREWALL.md) | edge rate limits for the hosted version |
 | [Reverse proxy](./docs/REVERSE_PROXY.md) | TLS and a hostname for a self-hosted server |
 | [GitHub Action](./docs/GITHUB_ACTION.md) | scan the skills a pull request changes |
+| [Monitoring](./docs/MONITORING.md) | the health panel, alerts and structured logs |
 | [Scan service API](./backend/README.md) | endpoints and behaviour of the FastAPI service |
 | [Contributing](./CONTRIBUTING.md) | development setup and checks |
 

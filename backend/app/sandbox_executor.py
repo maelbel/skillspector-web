@@ -129,11 +129,20 @@ async def _destroy(box: Any) -> None:
         logger.warning("Couldn't destroy scan sandbox %s", getattr(box, "name", "?"), exc_info=True)
 
 
+class SandboxUnavailableError(RuntimeError):
+    """The sandbox itself failed, not the scan: no snapshot, or the platform refused or lost the
+    VM. Every scan fails the same way until it's fixed, so it raises an alert (app/monitoring.py)."""
+
+
+class SnapshotMissingError(SandboxUnavailableError, ValueError):
+    pass
+
+
 class SandboxExecutor:
     def __init__(self, settings: Settings, create_sandbox: Callable[..., Any] | None = None) -> None:
         snapshot_id = snapshot_id_for(settings)
         if not snapshot_id:
-            raise ValueError(
+            raise SnapshotMissingError(
                 "No sandbox snapshot: build one with python -m app.sandbox_snapshot, or set SKILLSPECTOR_WEB_SANDBOX_SNAPSHOT_ID"
             )
         self._snapshot_id = snapshot_id
@@ -209,7 +218,7 @@ class SandboxExecutor:
                 returncode = await process.wait()
         except SandboxError as exc:
             scan_logs.append(job_id, f"Scan failed: {exc}")
-            raise RuntimeError(f"The scan sandbox failed: {exc}") from exc
+            raise SandboxUnavailableError(f"The scan sandbox failed: {exc}") from exc
         finally:
             if box is not None:
                 await _destroy(box)

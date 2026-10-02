@@ -1,9 +1,9 @@
 import time
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app import auth, db
+from app import auth, db, monitoring
 from app.api.routes.users import ActivityEntry
 from app.auth.deps import AdminViewer
 
@@ -29,6 +29,33 @@ class ScanStats(BaseModel):
     active: int
 
 
+class HealthError(BaseModel):
+    kind: str
+    message: str | None
+    at: float
+    scan_id: str | None
+
+
+class HealthAlert(BaseModel):
+    rule: str | None
+    at: float
+
+
+class Health(BaseModel):
+    """What went wrong over the last `hours` (app/monitoring.py)."""
+
+    hours: int
+    finished: int
+    failed: int
+    sandbox_errors: int
+    redeliveries: int
+    bot_refusals: int
+    last_error: HealthError | None
+    # Where alerts go: "webhook", "email"; empty when they aren't set up.
+    alert_channels: list[str]
+    last_alert: HealthAlert | None
+
+
 class Overview(BaseModel):
     auth: str
     email_enabled: bool
@@ -37,6 +64,7 @@ class Overview(BaseModel):
     users: UserStats
     scans: ScanStats
     recent_activity: list[ActivityEntry]
+    health: Health
 
 
 class ActivityPage(BaseModel):
@@ -55,7 +83,23 @@ def read_overview(viewer: AdminViewer) -> Overview:
         users=UserStats(**stats["users"]),
         scans=ScanStats(**stats["scans"]),
         recent_activity=[ActivityEntry(**entry) for entry in activity],
+        health=Health(**monitoring.health()),
     )
+
+
+class AlertTestResponse(BaseModel):
+    channels: list[str]
+
+
+@router.post("/alerts/test", response_model=AlertTestResponse)
+def send_test_alert(viewer: AdminViewer) -> AlertTestResponse:
+    """Send a test alert to every channel set up, to check they're reached."""
+    if not monitoring.channels():
+        raise HTTPException(status_code=409, detail="Alerts aren't set up: set SKILLSPECTOR_WEB_ALERT_WEBHOOK_URL or SKILLSPECTOR_WEB_ALERT_EMAIL")
+    sent = monitoring.send_alert("Test alert", "Alerts from this server reach you here.")
+    if not sent:
+        raise HTTPException(status_code=502, detail="The alert couldn't be sent: the server's log has why")
+    return AlertTestResponse(channels=sent)
 
 
 @router.get("/activity", response_model=ActivityPage)

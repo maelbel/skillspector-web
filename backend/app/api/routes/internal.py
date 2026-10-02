@@ -1,10 +1,12 @@
 """Endpoints for the platform, not for users: Vercel Cron calls them on the hosted version."""
 
 import hmac
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, Field
 
-from app import retention, uploads
+from app import monitoring, retention, uploads
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/internal", tags=["internal"])
@@ -27,3 +29,16 @@ async def sweep_retention() -> dict:
         # Uploads no scan will read: its queueing failed, or the scan was deleted first.
         swept["stale_uploads"] = await uploads.sweep_stale_blobs()
     return swept
+
+
+class WebEvent(BaseModel):
+    # Only what the web app sees and the API doesn't: scan submissions BotID refused.
+    kind: Literal["bot_refused"]
+    # Refusals since the web app's last report (server/utils/botId.ts batches them).
+    count: int = Field(default=1, ge=1, le=10_000)
+
+
+@router.post("/events", status_code=204, dependencies=[Depends(_require_cron)])
+def record_web_event(event: WebEvent) -> None:
+    """A monitoring event from the web app (app/monitoring.py), which may raise an alert."""
+    monitoring.record(monitoring.BOT_REFUSED, count=event.count)

@@ -39,6 +39,21 @@ export interface Overview {
   users: { total: number, admins: number, suspended: number, new: number }
   scans: { total: number, recent: number, do_not_install: number, caution: number, safe: number, failed: number, active: number }
   recent_activity: ActivityEntry[]
+  health: Health
+}
+
+// What went wrong over the last `hours` (backend/app/monitoring.py).
+export interface Health {
+  hours: number
+  finished: number
+  failed: number
+  sandbox_errors: number
+  redeliveries: number
+  bot_refusals: number
+  last_error: { kind: 'scan_failed' | 'sandbox_error', message: string | null, at: number, scan_id: string | null } | null
+  // Where alerts go; empty when they aren't set up.
+  alert_channels: ('webhook' | 'email')[]
+  last_alert: { rule: string | null, at: number } | null
 }
 
 export interface ActivityPage {

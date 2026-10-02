@@ -21,6 +21,8 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `SECRET_KEY` | *unset* | Encrypts the Claude keys users save to their account (AES-256-GCM). Generate one with `uv run python -m app.secrets_box`. Without it, users paste a key per scan. Required in hosted mode. Keep it: if it changes, saved keys can't be decrypted and users have to connect again. |
 | `MAIL_FROM` | *unset* | Sender of those emails, e.g. `Skillspector <noreply@example.com>`. |
 | `PUBLIC_URL` | *unset* | This app's public address, e.g. `https://skillspector.example.com`, used for links in emails. Email features switch on when `SMTP_HOST`, `MAIL_FROM` and `PUBLIC_URL` are all set. |
+| `ALERT_WEBHOOK_URL` | *unset* | Where to POST alerts: a Slack or Discord incoming webhook, or any endpoint taking JSON. See [Monitoring](./MONITORING.md). |
+| `ALERT_EMAIL` | *unset* | Addresses to email alerts to, comma-separated. Needs email set up (above). |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
 | `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
 | `RATE_LIMIT_STORE` | *by mode* | Where rate limits count requests: `memory` (the `self_hosted` default: this process only) or `database` (the `hosted` default: the scan database, so every instance enforces the same limits). |

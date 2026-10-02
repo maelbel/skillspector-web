@@ -11,6 +11,8 @@ from app.storage.base import (
     SUMMARY_COLUMNS,
     ScanRow,
     badge_scan_query,
+    last_monitor_event_query,
+    monitor_queries,
     previous_scan_query,
     scan_filter,
     scan_order,
@@ -273,6 +275,26 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             # Whether a shared scan's owner put it on its target's status badge
             # (app/api/routes/badge.py). Only a shared scan can be; revoking the link takes it off.
             "ALTER TABLE scans ADD COLUMN badge BOOLEAN NOT NULL DEFAULT FALSE",
+        ],
+    ),
+    (
+        19,
+        [
+            # What the health panel and alerts read (app/monitoring.py): failed scans, sandbox
+            # errors, queue redeliveries, refused submissions, and the alerts sent. Kept 30 days.
+            """
+            CREATE TABLE monitor_events (
+                id BIGSERIAL PRIMARY KEY,
+                created_at DOUBLE PRECISION NOT NULL,
+                kind TEXT NOT NULL,
+                message TEXT,
+                scan_id TEXT,
+                count INTEGER NOT NULL DEFAULT 1
+            )
+            """,
+            "CREATE INDEX idx_monitor_events_kind ON monitor_events (kind, created_at)",
+            # Scans that finished within a window: the failure rate.
+            "CREATE INDEX IF NOT EXISTS scans_finished_at ON scans (finished_at)",
         ],
     ),
 ]
@@ -699,6 +721,26 @@ class PostgresStore:
             """,
             (created_at, actor_id, actor_email, action, target_id, target_email, detail),
         )
+
+    def add_monitor_event(self, *, created_at: float, kind: str, message: str | None, scan_id: str | None, count: int) -> None:
+        self._execute(monitor_queries("%s")["add"], (created_at, kind, message, scan_id, count))
+
+    def monitor_counts(self, *, since: float) -> dict[str, int]:
+        with self._pool.connection() as conn:
+            rows = conn.execute(monitor_queries("%s")["counts"], (since,)).fetchall()
+        return {row["kind"]: int(row["total"]) for row in rows}
+
+    def scan_outcomes(self, *, since: float) -> dict[str, int]:
+        with self._pool.connection() as conn:
+            row = conn.execute(monitor_queries("%s")["outcomes"], (since, since, since)).fetchone()
+        return {key: int(row[key]) for key in ("started", "finished", "failed")}
+
+    def last_monitor_event(self, kinds: tuple[str, ...], message: str | None = None) -> dict[str, Any] | None:
+        with self._pool.connection() as conn:
+            return conn.execute(*last_monitor_event_query("%s", kinds, message)).fetchone()
+
+    def delete_monitor_events_older_than(self, cutoff: float) -> int:
+        return self._execute(monitor_queries("%s")["prune"], (cutoff,))
 
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
         where, params = ("WHERE target_id = %s", (target_id,)) if target_id else ("", ())

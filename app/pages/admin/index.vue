@@ -76,6 +76,8 @@ const scanTiles = computed(() => {
         </div>
       </div>
 
+      <HealthPanel :health="overview.health" />
+
       <section
         aria-labelledby="verdicts-heading"
         class="surface flex flex-col gap-4 p-5 sm:p-6"
