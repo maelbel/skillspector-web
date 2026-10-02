@@ -62,6 +62,7 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
             target=scan["target"],
             llm=llm,
             baseline=scan.get("baseline"),
+            use_shipped_baseline=bool(scan.get("use_shipped_baseline")),
             transitive_depth=scan.get("transitive_depth"),
             upload=scan.get("upload"),
             owner_id=scan.get("owner_id"),

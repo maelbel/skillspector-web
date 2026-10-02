@@ -7,7 +7,15 @@ const props = withDefaults(defineProps<{
   // One skill of several shows its suppressed findings; the baseline downloads for the whole scan.
   downloadable?: boolean
   activeCount?: number
-}>(), { downloadable: true, activeCount: undefined })
+  // The whole scan's: which baseline applied, and the one the skill ships, if any.
+  applied?: ScanReport['applied_baseline']
+  shipped?: ScanReport['shipped_baseline']
+}>(), { downloadable: true, activeCount: undefined, applied: undefined, shipped: undefined })
+
+const suppressedBy = computed(() => {
+  if (props.applied === 'shipped') return 'the skill’s own baseline'
+  return props.applied === 'uploaded' ? 'your baseline' : 'the baseline'
+})
 
 const active = computed(() => props.activeCount ?? props.report.issues.length)
 
@@ -51,6 +59,31 @@ async function download() {
       Baseline
     </h2>
 
+    <UAlert
+      v-if="shipped"
+      :color="shipped.applied ? 'warning' : 'neutral'"
+      variant="subtle"
+      :icon="shipped.applied ? 'i-lucide-shield-alert' : 'i-lucide-file-check'"
+      :title="shipped.applied ? 'The skill’s own baseline was applied' : 'The skill ships a baseline, not applied'"
+    >
+      <template #description>
+        <template v-if="shipped.applied">
+          Its author wrote the <code class="font-mono text-xs">.skillspector-baseline.yaml</code> it ships,
+          so the findings it suppresses are theirs to accept: review them below.
+        </template>
+        <template v-else-if="shipped.problem">
+          It couldn’t be used: {{ shipped.problem }}. Every finding counts.
+        </template>
+        <template v-else-if="applied === 'uploaded'">
+          Your baseline file was used instead.
+        </template>
+        <template v-else>
+          Every finding counts. To apply it, scan again with “Use the baseline the skill ships”, under
+          More options.
+        </template>
+      </template>
+    </UAlert>
+
     <div
       v-if="suppressed.length"
       class="flex flex-col gap-2"
@@ -65,7 +98,7 @@ async function download() {
           :name="showSuppressed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
           class="size-4 text-muted"
         />
-        {{ suppressed.length }} finding{{ suppressed.length === 1 ? '' : 's' }} suppressed by the baseline, not counted in the score
+        {{ suppressed.length }} finding{{ suppressed.length === 1 ? '' : 's' }} suppressed by {{ suppressedBy }}, not counted in the score
       </button>
       <ul
         v-if="showSuppressed"

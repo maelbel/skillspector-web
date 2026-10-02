@@ -133,6 +133,18 @@ def test_a_scan_with_a_baseline_cant_be_on_a_badge(client):
     assert refused.status_code == 422 and "baseline" in refused.json()["detail"]
 
 
+def test_a_scan_the_skills_own_baseline_applied_to_cant_be_on_a_badge(client):
+    alice, _ = _accounts(client)
+    scan_id = _scan(client, alice, use_shipped_baseline=True)
+    result = db.get_scan(scan_id)["result"]
+    db.update_scan(id=scan_id, status="done", finished_at=time.time(), result={**result, "applied_baseline": "shipped"}, error=None)
+    _share(client, alice, scan_id)
+
+    refused = client.post(f"/scan/{scan_id}/badge", headers=_bearer(alice))
+
+    assert refused.status_code == 422 and "baseline" in refused.json()["detail"]
+
+
 def test_a_file_link_finds_its_badge_as_the_scan_stored_it(client):
     alice, _ = _accounts(client)
     blob = "https://github.com/acme/skills/blob/main/pdf/SKILL.md"

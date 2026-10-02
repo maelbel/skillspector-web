@@ -169,6 +169,7 @@ class SandboxExecutor:
         *,
         llm: LLMConfig | None,
         baseline: str | None = None,
+        use_shipped_baseline: bool = False,
         transitive_depth: int | None = None,
         upload: str | None = None,
         host_headers: dict[str, dict[str, str]] | None = None,
@@ -212,6 +213,8 @@ class SandboxExecutor:
                     for name, rules in self._yara_rules.items():
                         await box.fs.write_bytes(f"{YARA_RULES_PATH}/{name}", rules)
                 args = [RUNNER_PATH, scan_target, *(["--llm"] if llm else []), *(["--baseline", BASELINE_PATH] if baseline is not None else [])]
+                if use_shipped_baseline:
+                    args.append("--use-shipped-baseline")
                 if self._yara_rules:
                     args += ["--yara-rules-dir", YARA_RULES_PATH]
                 transitive = transitive_options(settings, transitive_depth)

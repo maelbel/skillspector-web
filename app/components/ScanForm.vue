@@ -377,6 +377,10 @@ const BASELINE_FORMAT_DOCS = 'https://github.com/NVIDIA/SkillSpector/blob/v2.12.
 const baselineInput = ref<HTMLInputElement>()
 const baseline = ref<{ name: string, text: string } | null>(null)
 const baselineError = ref('')
+// The baseline the skill's author ships in it, applied only when asked: it's theirs, so it could hide
+// real findings. A baseline file chosen here is used instead.
+const useShippedBaseline = ref(false)
+const applyShippedBaseline = computed(() => useShippedBaseline.value && !baseline.value)
 
 async function pickBaseline(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -408,6 +412,7 @@ const moreOpen = ref(false)
 const moreSummary = computed(() => {
   const set = []
   if (baseline.value) set.push(`baseline: ${baseline.value.name}`)
+  if (applyShippedBaseline.value) set.push('the skill’s own baseline')
   if (followReferences.value && maxReferenceDepth.value) {
     set.push(`references: ${referenceDepth.value} level${referenceDepth.value === 1 ? '' : 's'}`)
   }
@@ -454,6 +459,7 @@ async function submit() {
   const options = {
     llm,
     baseline: forCode ? baseline.value?.text : undefined,
+    useShippedBaseline: forCode && applyShippedBaseline.value ? true : undefined,
     transitiveDepth: forCode && followReferences.value && maxReferenceDepth.value ? referenceDepth.value : undefined
   }
 
@@ -936,6 +942,15 @@ async function submit() {
           >
             {{ baselineError }}
           </p>
+          <USwitch
+            v-model="useShippedBaseline"
+            label="Use the baseline the skill ships"
+            :description="baseline
+              ? 'Your baseline file is used instead.'
+              : 'If the skill has its own .skillspector-baseline.yaml at its top, apply it. Its author wrote it, so it can hide real findings.'"
+            class="mt-2"
+            :disabled="submitting || !!baseline"
+          />
         </div>
 
         <div

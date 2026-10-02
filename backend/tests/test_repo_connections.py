@@ -376,7 +376,7 @@ def test_run_job_hands_the_owners_token_to_the_sandbox(client, monkeypatch):
     seen = {}
 
     class Executor:
-        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None, upload=None, host_headers=None):
+        async def run(self, job_id, target, *, llm, baseline=None, use_shipped_baseline=False, transitive_depth=None, upload=None, host_headers=None):
             seen.update(host_headers or {})
             return {"risk_assessment": {"score": 1, "recommendation": "SAFE"}, "issues": []}
 

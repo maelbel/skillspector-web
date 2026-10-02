@@ -185,6 +185,16 @@ def test_a_rescan_scans_the_target_again_as_it_was(client, monkeypatch):
     assert (job.target, job.baseline, job.transitive_depth, job.llm) == ("https://github.com/acme/skill", "version: 2", 2, None)
 
 
+def test_a_rescan_keeps_the_opt_in_to_the_skills_own_baseline(client):
+    db.insert_scan(id="old", target="https://github.com/acme/skill", status="pending", created_at=1.0, provider=None, use_shipped_baseline=True)
+    db.update_scan(id="old", status="done", finished_at=2.0, result={"issues": []}, error=None)
+
+    client.post("/scan/old/rescan")
+
+    (job,) = client.scheduled
+    assert job.use_shipped_baseline is True
+
+
 def test_an_upload_cant_be_rescanned(client):
     db.insert_scan(id="up", target="upload:skill.zip", status="pending", created_at=1.0, provider=None)
     db.update_scan(id="up", status="done", finished_at=2.0, result={"issues": []}, error=None)

@@ -97,7 +97,9 @@ def list_monitor_events_query(placeholder: str, kinds: tuple[str, ...]) -> tuple
     )
 
 
-INSERT_SCAN_COLUMNS = "id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload, private_source"
+INSERT_SCAN_COLUMNS = (
+    "id, target, status, created_at, provider, owner_id, llm_model, baseline, use_shipped_baseline, transitive_depth, upload, private_source"
+)
 
 
 def insert_scan_query(placeholder: str, *, max_active: int | None) -> str:
@@ -128,6 +130,7 @@ class ScanStore(Protocol):
         owner_id: str | None = None,
         llm_model: str | None = None,
         baseline: str | None = None,
+        use_shipped_baseline: bool = False,
         transitive_depth: int | None = None,
         upload: str | None = None,
         private_source: bool = False,

@@ -337,6 +337,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN private_source BOOLEAN NOT NULL DEFAULT FALSE",
         ],
     ),
+    (
+        23,
+        [
+            # Apply the baseline the scanned skill ships, if any (app/sandbox_runner.py's
+            # shipped_baseline): the user opted in.
+            "ALTER TABLE scans ADD COLUMN use_shipped_baseline BOOLEAN NOT NULL DEFAULT FALSE",
+        ],
+    ),
 ]
 
 
@@ -393,12 +401,13 @@ class PostgresStore:
         owner_id: str | None = None,
         llm_model: str | None = None,
         baseline: str | None = None,
+        use_shipped_baseline: bool = False,
         transitive_depth: int | None = None,
         upload: str | None = None,
         private_source: bool = False,
         max_active: int | None = None,
     ) -> bool:
-        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload, private_source)
+        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, use_shipped_baseline, transitive_depth, upload, private_source)
         if max_active is None or owner_id is None:
             self._execute(insert_scan_query("%s", max_active=None), values)
             return True
