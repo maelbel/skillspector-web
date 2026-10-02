@@ -8,7 +8,16 @@ useHead({
 
 // Link previews (Slack, Discord, LinkedIn, X) need absolute URLs.
 const siteUrl = useSiteUrl()
+// Only the public pages are indexed (shared/utils/seo.ts); their canonical URL is on the configured
+// address, so the production alias and a custom domain don't compete.
+const siteUrlConfigured = !!useRuntimeConfig().public.siteUrl
+const indexable = computed(() => isIndexable(route.path))
+const canonical = computed(() => siteUrlConfigured && indexable.value ? `${siteUrl}${route.path}` : null)
+useHead({
+  link: () => canonical.value ? [{ rel: 'canonical', href: canonical.value }] : []
+})
 useSeoMeta({
+  robots: () => indexable.value ? undefined : NOINDEX,
   title: site.name,
   description: site.description,
   ogTitle: site.name,

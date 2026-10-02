@@ -14,7 +14,7 @@ const message = computed(() => {
   return props.error?.statusMessage || props.error?.message || 'Something went wrong.'
 })
 
-useSeoMeta({ title: `${statusCode.value} — ${site.name}` })
+useSeoMeta({ title: `${statusCode.value} — ${site.name}`, robots: NOINDEX })
 
 function goHome() {
   clearError({ redirect: '/' })

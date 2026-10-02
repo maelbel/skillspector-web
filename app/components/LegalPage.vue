@@ -13,7 +13,28 @@ const fr = computed(() => route.query.lang === 'fr')
 const heading = computed(() => fr.value ? props.titleFr : props.title)
 
 useHead({ htmlAttrs: { lang: () => fr.value ? 'fr' : 'en' } })
-useSeoMeta({ title: () => `${heading.value} — Skillspector Web` })
+useSeoMeta({
+  title: () => `${heading.value} — Skillspector Web`,
+  description: () => fr.value ? props.leadFr : props.lead
+})
+
+// Each language is its own page for search engines: its own canonical URL, and the other as an
+// alternate (app.vue's canonical, replaced, would point the French one to the English one).
+const siteUrl = useSiteUrl()
+const configured = !!useRuntimeConfig().public.siteUrl
+useHead({
+  link: () => {
+    if (!configured) return []
+    const en = `${siteUrl}${route.path}`
+    const frUrl = `${en}?lang=fr`
+    return [
+      { rel: 'canonical', href: fr.value ? frUrl : en },
+      { rel: 'alternate', hreflang: 'en', href: en },
+      { rel: 'alternate', hreflang: 'fr', href: frUrl },
+      { rel: 'alternate', hreflang: 'x-default', href: en }
+    ]
+  }
+})
 
 const links = computed(() => [
   { path: '/legal', label: fr.value ? 'Mentions légales' : 'Legal notice' },

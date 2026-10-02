@@ -9,6 +9,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const { session, accounts, user, isAdmin, refresh } = useAuth()
   if (!session.value) await refresh()
   if (!session.value) return // API unreachable: let the page show its own error.
+  // No such page: a 404 for everyone, not a redirect to sign in.
+  if (to.matched.length === 0) return
 
   if (SIGNED_OUT_ONLY.has(to.path)) {
     if (!accounts.value || user.value) return navigateTo(typeof to.query.redirect === 'string' ? to.query.redirect : '/')

@@ -4,7 +4,10 @@ const redirect = useAuthRedirect()
 const { track } = useAnalytics()
 const { enabled: legalPages } = useLegal()
 
-useSeoMeta({ title: 'Create an account — Skillspector Web' })
+useSeoMeta({
+  title: 'Create an account — Skillspector Web',
+  description: 'Create an account to scan AI agent skills and MCP servers before you install them, with your scan history kept private to you.'
+})
 
 const email = ref('')
 const password = ref('')
