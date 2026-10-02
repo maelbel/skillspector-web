@@ -71,6 +71,7 @@ or silently ignore stops the API from starting instead.
 |---|---|---|
 | `NUXT_API_BASE` | `http://localhost:8000` | Where the Nitro proxy reaches the API (`http://api:8000` in Compose; set by the service binding on Vercel). |
 | `NUXT_TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so rate limits use the client IP it appends to `X-Forwarded-For`. |
+| `NUXT_PUBLIC_SITE_URL` | *unset* | This server's public address, e.g. `https://skillspector.example.com`, for the absolute URLs of link previews (`og:image`, `og:url`). Unset, each page uses the address it was requested at: behind a reverse proxy, set it, or set `NUXT_TRUST_PROXY` so the proxy's forwarded host and protocol are used. |
 | `NUXT_PUBLIC_BOTID` | `false` | Hosted on Vercel only: `true` turns on [BotID](https://vercel.com/docs/botid) for scan submissions, refusing ones it classifies as bots (`403`). Read at build time too. |
 | `NUXT_PUBLIC_ANALYTICS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Web Analytics](https://vercel.com/docs/analytics). Read at build time only: without it the build holds none of it, and pages make no request to Vercel. See [what it records](./SECURITY_MODEL.md#web-analytics). |
 | `NUXT_PUBLIC_SPEED_INSIGHTS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Speed Insights](https://vercel.com/docs/speed-insights), Core Web Vitals from real visits. Read at build time only, like `NUXT_PUBLIC_ANALYTICS`. |

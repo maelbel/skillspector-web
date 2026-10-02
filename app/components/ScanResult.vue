@@ -114,6 +114,17 @@ useSeoMeta({
   title: () => status.value ? `${displayTitle.value} — Skillspector Web` : 'Scan result — Skillspector Web'
 })
 
+// A shared result's link preview names what was scanned and its verdict, over the default image.
+// A private result's keeps the site's: nothing of its content goes in it.
+if (shared.value) {
+  const { site } = useAppConfig()
+  const assessment = computed(() => status.value?.result?.risk_assessment ?? null)
+  useSeoMeta({
+    ogTitle: () => assessment.value ? `${displayTitle.value}: ${RECOMMENDATION_LABEL[assessment.value.recommendation]}` : site.name,
+    ogDescription: () => assessment.value ? `Risk score ${assessment.value.score}/100, from a ${site.name} scan. ${site.description}` : site.description
+  })
+}
+
 type SortKey = 'severity' | 'confidence' | 'file'
 
 const SORT_OPTIONS: { label: string, value: SortKey }[] = [

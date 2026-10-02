@@ -6,11 +6,22 @@ useHead({
   htmlAttrs: { lang: 'en' }
 })
 
+// Link previews (Slack, Discord, LinkedIn, X) need absolute URLs.
+const siteUrl = useSiteUrl()
 useSeoMeta({
   title: site.name,
   description: site.description,
   ogTitle: site.name,
-  ogDescription: site.description
+  ogDescription: site.description,
+  ogType: 'website',
+  ogSiteName: site.name,
+  ogUrl: () => `${siteUrl}${route.path}`,
+  ogImage: `${siteUrl}${site.ogImage.path}`,
+  ogImageType: 'image/png',
+  ogImageWidth: 1200,
+  ogImageHeight: 630,
+  ogImageAlt: site.ogImage.alt,
+  twitterCard: 'summary_large_image'
 })
 
 const { accounts, user, isAdmin, signOut } = useAuth()

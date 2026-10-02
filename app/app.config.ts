@@ -2,6 +2,11 @@ export default defineAppConfig({
   site: {
     name: 'Skillspector Web',
     description: 'Scan agent skills for vulnerabilities before you install them.',
+    // The link preview image, 1200×630, rendered by scripts/og-image/render.py.
+    ogImage: {
+      path: '/og-image.png',
+      alt: 'Skillspector Web: Is this skill safe to install? Know whether an AI agent skill is safe before you install it.'
+    },
     repo: 'maelbel/skillspector-web',
     scannerRepo: 'NVIDIA/skillspector'
   },
