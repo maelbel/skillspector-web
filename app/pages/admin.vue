@@ -36,9 +36,10 @@ function isActive(section: { to: string, exact: boolean }) {
               class="flex h-11 items-center gap-2.5 border-l-[3px] px-3 text-sm font-semibold whitespace-nowrap transition-colors"
               :class="isActive(section) ? 'border-brand bg-default text-highlighted' : 'border-transparent text-muted hover:bg-default/60 hover:text-highlighted'"
             >
+              <!-- On a phone the tabs sit in a row: without icons, they all fit. -->
               <UIcon
                 :name="section.icon"
-                class="size-4 shrink-0"
+                class="size-4 shrink-0 max-sm:hidden"
               />
               {{ section.label }}
             </NuxtLink>
