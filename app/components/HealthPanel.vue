@@ -2,7 +2,7 @@
 import type { Health } from '~~/shared/types/backoffice'
 
 // The backoffice's health panel: the last day's failures, the last error, and where alerts go
-// (backend/app/monitoring.py).
+// (backend/app/monitoring.py); the monitoring page has the rest.
 const props = defineProps<{ health: Health }>()
 
 const RULES: Record<string, string> = {
@@ -31,21 +31,6 @@ const tiles = computed(() => {
 })
 
 const channelText = computed(() => props.health.alert_channels.map(channel => channel === 'webhook' ? 'the webhook' : 'email').join(' and '))
-
-const testing = ref(false)
-const testResult = ref<{ ok: boolean, text: string } | null>(null)
-async function sendTest() {
-  testing.value = true
-  testResult.value = null
-  try {
-    const { channels } = await $fetch<{ channels: string[] }>('/api/admin/alerts/test', { method: 'POST' })
-    testResult.value = { ok: true, text: `Sent to ${channels.map(channel => channel === 'webhook' ? 'the webhook' : 'email').join(' and ')}.` }
-  } catch (err) {
-    testResult.value = { ok: false, text: apiErrorMessage(err, 'Couldn’t send the test alert') }
-  } finally {
-    testing.value = false
-  }
-}
 </script>
 
 <template>
@@ -127,24 +112,12 @@ async function sendTest() {
         Alerts aren’t set up: set <code class="font-mono text-xs">SKILLSPECTOR_WEB_ALERT_WEBHOOK_URL</code> or
         <code class="font-mono text-xs">SKILLSPECTOR_WEB_ALERT_EMAIL</code> to hear about failures as they happen.
       </p>
-      <UButton
-        v-if="health.alert_channels.length"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        icon="i-lucide-bell-ring"
-        :loading="testing"
-        @click="sendTest"
+      <ULink
+        to="/admin/monitoring"
+        class="text-sm font-semibold text-brand-ink"
       >
-        Send a test alert
-      </UButton>
+        Monitoring →
+      </ULink>
     </div>
-    <p
-      v-if="testResult"
-      class="text-sm"
-      :class="testResult.ok ? 'text-muted' : 'text-error'"
-    >
-      {{ testResult.text }}
-    </p>
   </section>
 </template>

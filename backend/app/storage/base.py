@@ -88,6 +88,15 @@ def last_monitor_event_query(placeholder: str, kinds: tuple[str, ...], message: 
     return f"SELECT * FROM monitor_events WHERE {where} ORDER BY created_at DESC, id DESC LIMIT 1", params
 
 
+def list_monitor_events_query(placeholder: str, kinds: tuple[str, ...]) -> tuple[str, str]:
+    """A page of events, newest first, of these kinds or every one; and their count."""
+    where = f"WHERE kind IN ({', '.join(placeholder for _ in kinds)})" if kinds else ""
+    return (
+        f"SELECT * FROM monitor_events {where} ORDER BY created_at DESC, id DESC LIMIT {placeholder} OFFSET {placeholder}",
+        f"SELECT COUNT(*) AS total FROM monitor_events {where}",
+    )
+
+
 class ScanStore(Protocol):
     """Where scans and app settings live. SQLite by default; Postgres when a database URL is set."""
 
@@ -270,6 +279,8 @@ class ScanStore(Protocol):
     def last_monitor_event(self, kinds: tuple[str, ...], message: str | None = None) -> dict[str, Any] | None: ...
 
     def delete_monitor_events_older_than(self, cutoff: float) -> int: ...
+
+    def list_monitor_events(self, limit: int, offset: int, kinds: tuple[str, ...]) -> tuple[list[dict[str, Any]], int]: ...
 
     # Stored AI provider keys and per-scan one-off keys, both encrypted by the caller.
 

@@ -6,6 +6,9 @@ can't run their sandbox, or every submission is refused, it says so three ways:
 - **The backoffice's health panel** (Overview): the last 24 hours' failed scans and sandbox errors,
   queue redeliveries and refused submissions when there are any, the last error with a link to its
   scan, and where alerts go.
+- **The Monitoring page** (Backoffice → Monitoring): the same counts over 24 hours, 7 or 30 days;
+  each alert rule with what trips it, where it stands now, when it last alerted and how long it
+  stays quiet; where alerts go, with a test; and every event kept, filterable by kind.
 - **Alerts**, to a webhook (Slack, Discord or anything taking JSON) and/or by email, as it happens.
 - **Structured logs**: one JSON line per event on stdout, for `docker compose logs`, Vercel's logs,
   or a log drain to your own alerting.
@@ -20,7 +23,7 @@ Set one or both, on the API (`api` service):
 | `SKILLSPECTOR_WEB_ALERT_EMAIL` | Emails each alert to these addresses, comma-separated. Needs [email](./CONFIGURATION.md) set up. |
 
 Set `SKILLSPECTOR_WEB_PUBLIC_URL` too, so alerts link to the backoffice. Then open **Backoffice** →
-**Overview** and use **Send a test alert** to check they arrive.
+**Monitoring** and use **Send a test alert** to check they arrive.
 
 The webhook's body has `text` (Slack), `content` (Discord), and `title`, `message` and `link` for
 anything else.

@@ -199,3 +199,40 @@ def test_events_are_kept_a_month(temp_db):
     retention.sweep_once()
 
     assert db.monitor_counts(since=0) == {monitoring.SCAN_FAILED: 1}
+
+
+def test_the_monitoring_page_shows_each_rule_where_it_stands(client, sent, monkeypatch):
+    monkeypatch.setattr(get_settings(), "smtp_host", None)
+    _fail_with(monkeypatch, RuntimeError("clone failed"))
+    for index in range(3):
+        anyio.run(scanner.run_job, _job(f"bad{index}"))
+
+    page = client.get("/admin/monitoring", params={"hours": 168}).json()
+
+    assert page["health"]["hours"] == 168 and page["health"]["failed"] == 3
+    rules = {rule["name"]: rule for rule in page["rules"]}
+    failing = rules["failure_rate"]
+    assert failing["tripped"] and failing["current"] == "3 of 3 finished scans failed in the last 30 minutes"
+    assert failing["last_alert_at"] and failing["quiet_until"] > time.time()
+    assert not rules["sandbox_error"]["tripped"] and rules["sandbox_error"]["last_alert_at"] is None
+    # Self-hosted: no queue to redeliver, no BotID.
+    assert (rules["queue_redeliveries"]["applies"], rules["bot_refusals"]["applies"]) == (False, False)
+    assert rules["bot_refusals"]["current"] is None
+    # The webhook by its host: its path is its secret.
+    assert page["channels"] == {"webhook_host": "hooks.example.com", "emails": [], "email_ready": False}
+    assert client.get("/admin/monitoring", params={"hours": 5}).status_code == 422
+
+
+def test_the_events_page_lists_and_filters_what_monitoring_kept(client, sent, monkeypatch):
+    _fail_with(monkeypatch, RuntimeError("clone failed"))
+    for index in range(3):
+        anyio.run(scanner.run_job, _job(f"bad{index}"))
+
+    every = client.get("/admin/monitoring/events").json()
+    assert every["total"] == 4
+    assert every["items"][0]["kind"] == "alert_sent" and every["items"][0]["message"] == "failure_rate"
+
+    failures = client.get("/admin/monitoring/events", params={"kind": "failures", "limit": 2}).json()
+    assert failures["total"] == 3 and len(failures["items"]) == 2
+    assert {item["kind"] for item in failures["items"]} == {"scan_failed"}
+    assert failures["items"][0]["scan_id"] == "bad2"

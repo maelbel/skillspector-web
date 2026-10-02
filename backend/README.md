@@ -27,6 +27,8 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `DELETE` | `/account/tokens/{id}` | signed in | Revoke one of your API tokens. |
 | `GET` · `PUT` · `DELETE` | `/account/claude` | signed in | Your saved Claude key: status `{ provider, hint, updated_at }` (never the key), connect or replace with `{ api_key }` (checked with Anthropic first), or disconnect. Needs accounts and `SECRET_KEY`. |
 | `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity, and `health`: the last 24 hours' failures, the last error and where alerts go ([monitoring](../docs/MONITORING.md)). |
+| `GET` | `/admin/monitoring` | admin | `?hours=` (24, 168 or 720): the window's counts, each alert rule with where it stands and when it last alerted, and where alerts go (the webhook by its host only). |
+| `GET` | `/admin/monitoring/events` | admin | Monitoring's events, newest first: `?kind=` (`all`, `failures`, `sandbox`, `redeliveries`, `bots`, `alerts`), `?limit=`, `?offset=`. |
 | `POST` | `/admin/alerts/test` | admin | Send a test alert to every channel set up: `{ channels }`; `409` when none is. |
 | `GET` | `/admin/activity` | admin | The audit log, newest first: `?limit=` and `?offset=`. Returns `{ items, total }`. |
 | `GET` · `POST` | `/admin/users` | admin | The directory (`?query=` searches emails; each user has role, status, scan count, last sign-in), or add a user with `{ email, password, role }`. |

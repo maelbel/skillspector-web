@@ -21,11 +21,13 @@ import re
 import sys
 import time
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from app import db, mail
 from app.core.config import Settings, get_settings
+from app.core.mode import Mode
 
 logger = logging.getLogger(__name__)
 
@@ -43,23 +45,103 @@ _WEBHOOK_TIMEOUT_SECONDS = 5
 
 
 @dataclass(frozen=True)
+class Measure:
+    """Where a rule stands now: whether it trips, the numbers it read, and what an alert says."""
+
+    tripped: bool
+    current: str
+    alert: str
+
+
+@dataclass(frozen=True)
 class Rule:
     name: str
     title: str
+    # What trips it, for the monitoring page.
+    condition: str
+    # The event that makes it check.
+    kind: str
     window_seconds: float
     cooldown_seconds: float
+    measure: Callable[[float, str | None], Measure]
+    # Only where it can happen: a queue that redelivers, BotID in front of the scan form.
+    hosted_only: bool = False
 
 
-SANDBOX_RULE = Rule("sandbox_error", "Scans can't start their sandbox", 30 * 60, 30 * 60)
-FAILURE_RULE = Rule("failure_rate", "Many scans are failing", 30 * 60, 60 * 60)
-REDELIVERY_RULE = Rule("queue_redeliveries", "Scans are being redelivered by the queue", 30 * 60, 60 * 60)
-BOT_RULE = Rule("bot_refusals", "Every scan submission is being refused as a bot", 15 * 60, 60 * 60)
 # Failure rate: at least this many failures, and at least this share of the scans that finished.
 FAILURE_MIN = 3
 FAILURE_SHARE = 0.5
 REDELIVERY_MIN = 3
 # Refused submissions, with no scan started in the window: real visitors are refused too.
 BOT_MIN = 10
+_HALF_HOUR = 30 * 60
+
+
+def _plural(count: int, word: str, plural: str | None = None) -> str:
+    return f"{count} {word if count == 1 else plural or word + 's'}"
+
+
+def _sandbox(now: float, message: str | None) -> Measure:
+    errors = db.monitor_counts(since=now - _HALF_HOUR).get(SANDBOX_ERROR, 0)
+    if message is None and errors:
+        last = db.last_monitor_event(SANDBOX_ERROR)
+        message = last["message"] if last else None
+    return Measure(errors > 0, f"{_plural(errors, 'sandbox error')} in the last 30 minutes", f"A scan couldn't run in its sandbox: {message}")
+
+
+def _failures(now: float, message: str | None) -> Measure:
+    outcomes = db.scan_outcomes(since=now - _HALF_HOUR)
+    failed, finished = outcomes["failed"], outcomes["finished"]
+    tripped = failed >= FAILURE_MIN and failed / max(finished, 1) >= FAILURE_SHARE
+    if message is None and failed:
+        last = db.last_monitor_event(SCAN_FAILED)
+        message = last["message"] if last else None
+    return Measure(
+        tripped,
+        f"{failed} of {_plural(finished, 'finished scan')} failed in the last 30 minutes",
+        f"{failed} of the {finished} scans that finished in the last 30 minutes failed. The last error: {message}",
+    )
+
+
+def _redeliveries(now: float, message: str | None) -> Measure:
+    count = db.monitor_counts(since=now - _HALF_HOUR).get(QUEUE_REDELIVERED, 0)
+    return Measure(
+        count >= REDELIVERY_MIN,
+        f"{_plural(count, 'redelivery', 'redeliveries')} in the last 30 minutes",
+        f"The scan queue redelivered {count} messages in the last 30 minutes: scans are being stopped before they finish (function timeouts or crashes).",
+    )
+
+
+def _bots(now: float, message: str | None) -> Measure:
+    since = now - 15 * 60
+    refused = db.monitor_counts(since=since).get(BOT_REFUSED, 0)
+    started = db.scan_outcomes(since=since)["started"]
+    return Measure(
+        refused >= BOT_MIN and started == 0,
+        f"{refused} refused, {_plural(started, 'scan')} started in the last 15 minutes",
+        f"BotID refused {refused} scan submissions in the last 15 minutes, and no scan started: check BotID's setup (its rewrites in vercel.ts, and the deployment's protection).",
+    )
+
+
+SANDBOX_RULE = Rule(
+    "sandbox_error", "Scans can't start their sandbox", "Any scan fails because of its sandbox, not its skill",
+    SANDBOX_ERROR, _HALF_HOUR, 30 * 60, _sandbox,
+)
+FAILURE_RULE = Rule(
+    "failure_rate", "Many scans are failing",
+    f"At least {FAILURE_MIN} scans failed in 30 minutes, and at least {FAILURE_SHARE:.0%} of those that finished",
+    SCAN_FAILED, _HALF_HOUR, 60 * 60, _failures,
+)
+REDELIVERY_RULE = Rule(
+    "queue_redeliveries", "Scans are being redelivered by the queue", f"The queue redelivered {REDELIVERY_MIN} or more scans in 30 minutes",
+    QUEUE_REDELIVERED, _HALF_HOUR, 60 * 60, _redeliveries, hosted_only=True,
+)
+BOT_RULE = Rule(
+    "bot_refusals", "Every scan submission is being refused as a bot",
+    f"BotID refused {BOT_MIN} or more submissions in 15 minutes, and no scan started",
+    BOT_REFUSED, 15 * 60, 60 * 60, _bots, hosted_only=True,
+)
+RULES = (SANDBOX_RULE, FAILURE_RULE, REDELIVERY_RULE, BOT_RULE)
 
 _SECRETS = [
     re.compile(r"sk-ant-[\w-]+"),
@@ -110,30 +192,11 @@ def record(kind: str, message: str | None = None, *, scan_id: str | None = None,
 
 def _check(kind: str, message: str | None) -> None:
     now = time.time()
-    if kind == SANDBOX_ERROR:
-        _alert(SANDBOX_RULE, f"A scan couldn't run in its sandbox: {message}", now)
-    elif kind == SCAN_FAILED:
-        outcomes = db.scan_outcomes(since=now - FAILURE_RULE.window_seconds)
-        failed, finished = outcomes["failed"], max(outcomes["finished"], 1)
-        if failed >= FAILURE_MIN and failed / finished >= FAILURE_SHARE:
-            _alert(FAILURE_RULE, f"{failed} of the {outcomes['finished']} scans that finished in the last 30 minutes failed. The last error: {message}", now)
-    elif kind == QUEUE_REDELIVERED:
-        count = db.monitor_counts(since=now - REDELIVERY_RULE.window_seconds).get(QUEUE_REDELIVERED, 0)
-        if count >= REDELIVERY_MIN:
-            _alert(
-                REDELIVERY_RULE,
-                f"The scan queue redelivered {count} messages in the last 30 minutes: scans are being stopped before they finish (function timeouts or crashes).",
-                now,
-            )
-    elif kind == BOT_REFUSED:
-        since = now - BOT_RULE.window_seconds
-        refused = db.monitor_counts(since=since).get(BOT_REFUSED, 0)
-        if refused >= BOT_MIN and db.scan_outcomes(since=since)["started"] == 0:
-            _alert(
-                BOT_RULE,
-                f"BotID refused {refused} scan submissions in the last 15 minutes, and no scan started: check BotID's setup (its rewrites in vercel.ts, and the deployment's protection).",
-                now,
-            )
+    for rule in RULES:
+        if rule.kind == kind:
+            measure = rule.measure(now, message)
+            if measure.tripped:
+                _alert(rule, measure.alert, now)
 
 
 def _alert(rule: Rule, text: str, now: float) -> None:
@@ -219,6 +282,43 @@ def health(*, hours: int = 24) -> dict[str, Any]:
         "alert_channels": channels(),
         "last_alert": {"rule": last_alert["message"], "at": last_alert["created_at"]} if last_alert else None,
     }
+
+
+def rules_status(settings: Settings | None = None) -> list[dict[str, Any]]:
+    """Each alert rule: what trips it, where it stands now, and when it last alerted."""
+    settings = settings or get_settings()
+    now = time.time()
+    hosted = settings.mode is Mode.HOSTED
+    status = []
+    for rule in RULES:
+        applies = hosted or not rule.hosted_only
+        measure = rule.measure(now, None) if applies else None
+        last = db.last_monitor_event(ALERT_SENT, message=rule.name)
+        quiet_until = last["created_at"] + rule.cooldown_seconds if last else None
+        status.append({
+            "name": rule.name,
+            "title": rule.title,
+            "condition": rule.condition,
+            "cooldown_minutes": round(rule.cooldown_seconds / 60),
+            "applies": applies,
+            "tripped": bool(measure and measure.tripped),
+            "current": measure.current if measure else None,
+            "last_alert_at": last["created_at"] if last else None,
+            "quiet_until": quiet_until if quiet_until and quiet_until > now else None,
+        })
+    return status
+
+
+def channel_details(settings: Settings | None = None) -> dict[str, Any]:
+    """Where alerts go, for an admin: the webhook by its host only (its path is its secret), and
+    the email addresses, with whether email can be sent."""
+    settings = settings or get_settings()
+    webhook_host = None
+    if settings.alert_webhook_url:
+        match = _URL.match(settings.alert_webhook_url)
+        webhook_host = match[2] if match else "set"
+    emails = [part.strip() for part in (settings.alert_email or "").split(",") if part.strip()]
+    return {"webhook_host": webhook_host, "emails": emails, "email_ready": mail.is_configured(settings)}
 
 
 def prune() -> int:

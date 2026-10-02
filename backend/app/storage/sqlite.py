@@ -14,6 +14,7 @@ from app.storage.base import (
     ScanRow,
     badge_scan_query,
     last_monitor_event_query,
+    list_monitor_events_query,
     monitor_queries,
     previous_scan_query,
     scan_filter,
@@ -816,6 +817,13 @@ class SQLiteStore:
         cursor = self._conn.execute(monitor_queries("?")["prune"], (cutoff,))
         self._conn.commit()
         return cursor.rowcount
+
+    @_locked
+    def list_monitor_events(self, limit: int, offset: int, kinds: tuple[str, ...]) -> tuple[list[dict[str, Any]], int]:
+        rows_query, count_query = list_monitor_events_query("?", kinds)
+        rows = self._conn.execute(rows_query, (*kinds, limit, offset)).fetchall()
+        total = self._conn.execute(count_query, kinds).fetchone()["total"]
+        return [dict(row) for row in rows], int(total)
 
     @_locked
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:

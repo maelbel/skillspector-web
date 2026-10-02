@@ -12,6 +12,7 @@ from app.storage.base import (
     ScanRow,
     badge_scan_query,
     last_monitor_event_query,
+    list_monitor_events_query,
     monitor_queries,
     previous_scan_query,
     scan_filter,
@@ -741,6 +742,13 @@ class PostgresStore:
 
     def delete_monitor_events_older_than(self, cutoff: float) -> int:
         return self._execute(monitor_queries("%s")["prune"], (cutoff,))
+
+    def list_monitor_events(self, limit: int, offset: int, kinds: tuple[str, ...]) -> tuple[list[dict[str, Any]], int]:
+        rows_query, count_query = list_monitor_events_query("%s", kinds)
+        with self._pool.connection() as conn:
+            rows = conn.execute(rows_query, (*kinds, limit, offset)).fetchall()
+            total = conn.execute(count_query, kinds).fetchone()["total"]
+        return list(rows), int(total)
 
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
         where, params = ("WHERE target_id = %s", (target_id,)) if target_id else ("", ())

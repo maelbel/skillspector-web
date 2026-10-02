@@ -329,6 +329,11 @@ def delete_monitor_events_older_than(cutoff: float) -> int:
     return _store_or_raise().delete_monitor_events_older_than(cutoff)
 
 
+def list_monitor_events(limit: int, offset: int, kinds: tuple[str, ...] = ()) -> tuple[list[dict[str, Any]], int]:
+    """A page of monitoring events, newest first: of these kinds, or every kind."""
+    return _store_or_raise().list_monitor_events(limit, offset, kinds)
+
+
 def list_audit(limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:
     return _store_or_raise().list_audit(limit, offset, target_id=target_id)
 

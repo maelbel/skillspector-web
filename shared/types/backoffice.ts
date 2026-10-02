@@ -60,3 +60,42 @@ export interface ActivityPage {
   items: ActivityEntry[]
   total: number
 }
+
+// The monitoring page (backend/app/api/routes/backoffice.py).
+export interface AlertRule {
+  name: string
+  title: string
+  condition: string
+  cooldown_minutes: number
+  // False for a hosted-only rule on a self-hosted server.
+  applies: boolean
+  tripped: boolean
+  current: string | null
+  last_alert_at: number | null
+  // Set while the rule waits out its cooldown after an alert.
+  quiet_until: number | null
+}
+
+export interface Monitoring {
+  health: Health
+  rules: AlertRule[]
+  // The webhook by its host only: its path is its secret.
+  channels: { webhook_host: string | null, emails: string[], email_ready: boolean }
+}
+
+export type MonitorEventKind = 'scan_failed' | 'sandbox_error' | 'queue_redelivered' | 'bot_refused' | 'alert_sent'
+export type MonitorEventFilter = 'all' | 'failures' | 'sandbox' | 'redeliveries' | 'bots' | 'alerts'
+
+export interface MonitorEvent {
+  id: number
+  created_at: number
+  kind: MonitorEventKind
+  message: string | null
+  scan_id: string | null
+  count: number
+}
+
+export interface MonitorEventPage {
+  items: MonitorEvent[]
+  total: number
+}

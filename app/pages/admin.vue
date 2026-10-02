@@ -7,6 +7,7 @@ const sections = computed(() => [
   { to: '/admin', label: 'Overview', icon: 'i-lucide-layout-dashboard', exact: true },
   ...(accounts.value ? [{ to: '/admin/users', label: 'Users', icon: 'i-lucide-users', exact: false }] : []),
   { to: '/admin/activity', label: 'Activity', icon: 'i-lucide-scroll-text', exact: true },
+  { to: '/admin/monitoring', label: 'Monitoring', icon: 'i-lucide-activity', exact: true },
   { to: '/admin/settings', label: 'Settings', icon: 'i-lucide-settings', exact: true }
 ])
 

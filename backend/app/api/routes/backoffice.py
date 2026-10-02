@@ -1,4 +1,5 @@
 import time
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -110,3 +111,82 @@ def read_activity(
 ) -> ActivityPage:
     rows, total = db.list_audit(limit, offset)
     return ActivityPage(items=[ActivityEntry(**row) for row in rows], total=total)
+
+
+class AlertRule(BaseModel):
+    name: str
+    title: str
+    condition: str
+    cooldown_minutes: int
+    # False for a hosted-only rule on a self-hosted server.
+    applies: bool
+    tripped: bool
+    current: str | None
+    last_alert_at: float | None
+    # Set while the rule waits out its cooldown after an alert.
+    quiet_until: float | None
+
+
+class AlertChannels(BaseModel):
+    # The webhook's host only: its path is its secret.
+    webhook_host: str | None
+    emails: list[str]
+    email_ready: bool
+
+
+class Monitoring(BaseModel):
+    health: Health
+    rules: list[AlertRule]
+    channels: AlertChannels
+
+
+# The windows the page offers: a day, a week, and the 30 days events are kept.
+_WINDOWS = (24, 168, 720)
+
+
+@router.get("/monitoring", response_model=Monitoring)
+def read_monitoring(viewer: AdminViewer, hours: int = Query(default=24)) -> Monitoring:
+    """The monitoring page: the window's counts, each alert rule's state, and where alerts go."""
+    if hours not in _WINDOWS:
+        raise HTTPException(status_code=422, detail="hours is 24, 168 or 720")
+    return Monitoring(
+        health=Health(**monitoring.health(hours=hours)),
+        rules=[AlertRule(**rule) for rule in monitoring.rules_status()],
+        channels=AlertChannels(**monitoring.channel_details()),
+    )
+
+
+class MonitorEvent(BaseModel):
+    id: int
+    created_at: float
+    kind: str
+    message: str | None
+    scan_id: str | None
+    count: int
+
+
+class MonitorEventPage(BaseModel):
+    items: list[MonitorEvent]
+    total: int
+
+
+_EVENT_FILTERS: dict[str, tuple[str, ...]] = {
+    "all": (),
+    "failures": (monitoring.SCAN_FAILED,),
+    "sandbox": (monitoring.SANDBOX_ERROR,),
+    "redeliveries": (monitoring.QUEUE_REDELIVERED,),
+    "bots": (monitoring.BOT_REFUSED,),
+    "alerts": (monitoring.ALERT_SENT,),
+}
+
+
+@router.get("/monitoring/events", response_model=MonitorEventPage)
+def read_monitor_events(
+    viewer: AdminViewer,
+    kind: Literal["all", "failures", "sandbox", "redeliveries", "bots", "alerts"] = Query(default="all"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> MonitorEventPage:
+    """The events monitoring kept (30 days), newest first."""
+    rows, total = db.list_monitor_events(limit, offset, _EVENT_FILTERS[kind])
+    return MonitorEventPage(items=[MonitorEvent(**row) for row in rows], total=total)
