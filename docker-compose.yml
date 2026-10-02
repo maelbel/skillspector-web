@@ -26,7 +26,11 @@ services:
     environment:
       NODE_ENV: development
       NUXT_API_BASE: http://api:8000
-      NODE_OPTIONS: "--max-old-space-size=512"
+      # nuxt dev outgrows 512 MB after a few minutes of reloads, and aborts.
+      NODE_OPTIONS: "--max-old-space-size=1536"
+    # An abort would otherwise dump several GB of core into the bind-mounted checkout.
+    ulimits:
+      core: 0
     ports:
       - "3005:3000"
     volumes:
