@@ -2,7 +2,7 @@
 // pages, and the links to them, exist only once a name and a contact email are set.
 export function useLegal() {
   const legal = useRuntimeConfig().public.legal
-  const enabled = !!(legal.operatorName && legal.contactEmail)
+  const enabled = hasLegalPages(legal)
   return { legal, enabled }
 }
 

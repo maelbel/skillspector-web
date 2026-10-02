@@ -1,5 +1,29 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Skillspector Web' })
+const { site } = useAppConfig()
+const siteUrl = useSiteUrl()
+
+// What people search for: whether a skill is safe, for which agents, against which threats.
+const title = 'Is this AI agent skill safe? Scan skills and MCP servers — Skillspector Web'
+const description = 'Scan Claude Code, Codex and other AI agent skills, and MCP servers, for prompt injection, data exfiltration and dangerous code before you install them. Open source.'
+useSeoMeta({ title, description, ogTitle: title, ogDescription: description })
+
+// Structured data, for search engines to tell what the site is.
+useHead({
+  script: [{
+    type: 'application/ld+json',
+    innerHTML: JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      'name': site.name,
+      'url': `${siteUrl}/`,
+      description,
+      'applicationCategory': 'SecurityApplication',
+      'operatingSystem': 'Any',
+      'browserRequirements': 'Requires JavaScript',
+      'image': `${siteUrl}${site.ogImage.path}`
+    })
+  }]
+})
 
 // With accounts on, signed-out visitors get the landing page instead of the scanner.
 const { accounts, user } = useAuth()
