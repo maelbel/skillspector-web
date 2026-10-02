@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import secrets
@@ -21,7 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from skillspector.suppression import dump_baseline
 
-from app import claude_key, db, exports, quotas, rate_limit, rescan, uploads
+from app import claude_key, db, exports, monitoring, quotas, rate_limit, rescan, uploads
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer, audit
@@ -376,6 +377,7 @@ async def _queue_scan(
         # Don't leave a scan pending forever if it never reached the queue.
         db.update_scan(id=job.id, status=JobStatus.ERROR, finished_at=time.time(), result=None, error="Couldn't queue the scan")
         await uploads.delete(upload)
+        await asyncio.to_thread(monitoring.record, monitoring.SCAN_FAILED, f"Couldn't queue the scan: {exc}", scan_id=job.id, reason="queue")
         raise HTTPException(status_code=503, detail="Couldn't queue the scan — try again in a moment") from exc
     return ScanQueuedResponse(id=job.id, status=job.status)
 

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from app import db
+from app import db, monitoring
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,8 @@ def set_retention_days(value: float | None) -> None:
 
 
 def sweep_once() -> int:
+    # Monitoring events are kept a month, whatever the scans' retention.
+    monitoring.prune()
     retention_days = db.get_retention_days()
     if retention_days is None:
         return 0

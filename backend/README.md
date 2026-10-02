@@ -26,7 +26,10 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `GET` · `POST` | `/account/tokens` | signed in | Your API tokens (never the tokens themselves), or create one with `{ name, expires_in_days }` (`null`: never expires): the response holds the token, this once. See [API tokens](#api-tokens). |
 | `DELETE` | `/account/tokens/{id}` | signed in | Revoke one of your API tokens. |
 | `GET` · `PUT` · `DELETE` | `/account/claude` | signed in | Your saved Claude key: status `{ provider, hint, updated_at }` (never the key), connect or replace with `{ api_key }` (checked with Anthropic first), or disconnect. Needs accounts and `SECRET_KEY`. |
-| `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity. |
+| `GET` | `/admin/overview` | admin | User and scan totals (with the last 7 days), sign-up and email status, recent activity, and `health`: the last 24 hours' failures, the last error and where alerts go ([monitoring](../docs/MONITORING.md)). |
+| `GET` | `/admin/monitoring` | admin | `?hours=` (24, 168 or 720): the window's counts, each alert rule with where it stands and when it last alerted, and where alerts go (the webhook by its host only). |
+| `GET` | `/admin/monitoring/events` | admin | Monitoring's events, newest first: `?kind=` (`all`, `failures`, `sandbox`, `redeliveries`, `bots`, `alerts`), `?limit=`, `?offset=`. |
+| `POST` | `/admin/alerts/test` | admin | Send a test alert to every channel set up: `{ channels }`; `409` when none is. |
 | `GET` | `/admin/activity` | admin | The audit log, newest first: `?limit=` and `?offset=`. Returns `{ items, total }`. |
 | `GET` · `POST` | `/admin/users` | admin | The directory (`?query=` searches emails; each user has role, status, scan count, last sign-in), or add a user with `{ email, password, role }`. |
 | `GET` · `PATCH` | `/admin/users/{id}` | admin | A user with their recent scans and account history, or change `{ role, status }`. Suspending signs them out. |
@@ -48,6 +51,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` · `DELETE` | `/scan/{id}/badge` | signed in | Put the shared result on its target's status badge, or take it off. Refused for an unshared result (`409`), an upload or a scan with a baseline (`422`). Revoking the link takes it off too. |
 | `GET` | `/badge` | — | `?target=`: the latest scan of the target on its badge, `{ recommendation, risk_score, scanned_at, share_token }`, all `null` when there's none. The web app renders it as an SVG at `/badge`. |
 | `GET` | `/shared/{token}` | — | A shared result, read-only; also `/skills/{index}` and `/export`. |
+| `POST` | `/internal/events` | `CRON_SECRET` | The web app reports scan submissions BotID refused, `{ kind: "bot_refused", count }`, for monitoring. Hosted only. |
 | `GET` | `/settings` | — | `{ scan_retention_days }` (`null` = keep forever). |
 | `PUT` | `/settings` | admin | Update retention; runs a sweep immediately. |
 | `POST` | `/admin/claude-login/start` | admin | Start `claude auth login`; returns the URL to open. |

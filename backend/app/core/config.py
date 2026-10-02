@@ -124,6 +124,11 @@ class Settings(AnalysisSettings):
     mail_from: str | None = None
     # This app's public address, e.g. https://skillspector.example.com, for links in emails.
     public_url: str | None = None
+    # Alerts (app/monitoring.py): a webhook to POST them to (Slack, Discord, or any JSON endpoint),
+    # and addresses to email them to (comma-separated, needs email set up). Neither: no alerts, but
+    # the backoffice's health panel and the structured logs still show the same events.
+    alert_webhook_url: str | None = None
+    alert_email: str | None = None
     # Encrypts stored API keys at rest (app/secrets_box.py); generate with `python -m app.secrets_box`.
     # Without it users can't save a Claude key. Required in hosted mode.
     secret_key: str | None = None

@@ -7,6 +7,7 @@ after the instance running it died, so the handler works from the scan's stored 
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from vercel.queue import Message, subscribe
@@ -16,7 +17,7 @@ from app.analysis_settings import apply_to_process
 # The operator's skillspector settings, before skillspector reads them on import (app.scanner).
 apply_to_process()
 
-from app import claude_key, db, scan_logs, scanner, uploads
+from app import claude_key, db, monitoring, scan_logs, scanner, uploads
 from app.jobs.vercel_queues import SCAN_TOPIC
 from app.scanner import Job, JobStatus, LLMConfig
 
@@ -36,16 +37,16 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
         # A deleted scan's upload is swept with retention; a finished one's is already gone.
         return  # Deleted, or already handled by an earlier delivery.
 
-    if message.metadata.delivery_count > MAX_DELIVERIES:
-        db.update_scan(
-            id=scan["id"],
-            status=JobStatus.ERROR,
-            finished_at=time.time(),
-            result=None,
-            error=f"The scan didn't finish after {MAX_DELIVERIES} attempts",
-        )
+    delivery = message.metadata.delivery_count
+    if delivery > 1:
+        # An earlier delivery never finished: its function was stopped, timed out or crashed.
+        await asyncio.to_thread(monitoring.record, monitoring.QUEUE_REDELIVERED, f"Delivery {delivery} of a scan", scan_id=scan["id"], delivery=delivery)
+    if delivery > MAX_DELIVERIES:
+        error = f"The scan didn't finish after {MAX_DELIVERIES} attempts"
+        db.update_scan(id=scan["id"], status=JobStatus.ERROR, finished_at=time.time(), result=None, error=error)
         db.delete_scan_secret(scan["id"])
         await uploads.delete(scan.get("upload"))
+        await asyncio.to_thread(monitoring.record, monitoring.SCAN_FAILED, error, scan_id=scan["id"], reason="queue")
         return
 
     try:
@@ -53,6 +54,7 @@ async def run_scan(message: Message[dict[str, str]]) -> None:
     except _NoKeyError as exc:
         db.update_scan(id=scan["id"], status=JobStatus.ERROR, finished_at=time.time(), result=None, error=str(exc))
         await uploads.delete(scan.get("upload"))
+        await asyncio.to_thread(monitoring.record, monitoring.SCAN_FAILED, str(exc), scan_id=scan["id"], reason="scan")
         return
     try:
         job = Job(

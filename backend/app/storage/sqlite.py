@@ -13,6 +13,9 @@ from app.storage.base import (
     SUMMARY_COLUMNS,
     ScanRow,
     badge_scan_query,
+    last_monitor_event_query,
+    list_monitor_events_query,
+    monitor_queries,
     previous_scan_query,
     scan_filter,
     scan_order,
@@ -271,6 +274,26 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             # Whether a shared scan's owner put it on its target's status badge
             # (app/api/routes/badge.py). Only a shared scan can be; revoking the link takes it off.
             "ALTER TABLE scans ADD COLUMN badge INTEGER NOT NULL DEFAULT 0",
+        ],
+    ),
+    (
+        19,
+        [
+            # What the health panel and alerts read (app/monitoring.py): failed scans, sandbox
+            # errors, queue redeliveries, refused submissions, and the alerts sent. Kept 30 days.
+            """
+            CREATE TABLE monitor_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                kind TEXT NOT NULL,
+                message TEXT,
+                scan_id TEXT,
+                count INTEGER NOT NULL DEFAULT 1
+            )
+            """,
+            "CREATE INDEX idx_monitor_events_kind ON monitor_events (kind, created_at)",
+            # Scans that finished within a window: the failure rate.
+            "CREATE INDEX IF NOT EXISTS scans_finished_at ON scans (finished_at)",
         ],
     ),
 ]
@@ -768,6 +791,39 @@ class SQLiteStore:
             (created_at, actor_id, actor_email, action, target_id, target_email, detail),
         )
         self._conn.commit()
+
+    @_locked
+    def add_monitor_event(self, *, created_at: float, kind: str, message: str | None, scan_id: str | None, count: int) -> None:
+        self._conn.execute(monitor_queries("?")["add"], (created_at, kind, message, scan_id, count))
+        self._conn.commit()
+
+    @_locked
+    def monitor_counts(self, *, since: float) -> dict[str, int]:
+        rows = self._conn.execute(monitor_queries("?")["counts"], (since,)).fetchall()
+        return {row["kind"]: int(row["total"]) for row in rows}
+
+    @_locked
+    def scan_outcomes(self, *, since: float) -> dict[str, int]:
+        row = self._conn.execute(monitor_queries("?")["outcomes"], (since, since, since)).fetchone()
+        return {key: int(row[key]) for key in ("started", "finished", "failed")}
+
+    @_locked
+    def last_monitor_event(self, kinds: tuple[str, ...], message: str | None = None) -> dict[str, Any] | None:
+        row = self._conn.execute(*last_monitor_event_query("?", kinds, message)).fetchone()
+        return dict(row) if row is not None else None
+
+    @_locked
+    def delete_monitor_events_older_than(self, cutoff: float) -> int:
+        cursor = self._conn.execute(monitor_queries("?")["prune"], (cutoff,))
+        self._conn.commit()
+        return cursor.rowcount
+
+    @_locked
+    def list_monitor_events(self, limit: int, offset: int, kinds: tuple[str, ...]) -> tuple[list[dict[str, Any]], int]:
+        rows_query, count_query = list_monitor_events_query("?", kinds)
+        rows = self._conn.execute(rows_query, (*kinds, limit, offset)).fetchall()
+        total = self._conn.execute(count_query, kinds).fetchone()["total"]
+        return [dict(row) for row in rows], int(total)
 
     @_locked
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]:

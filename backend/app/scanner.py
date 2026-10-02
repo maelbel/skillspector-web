@@ -15,9 +15,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, model_validator
 from skillspector.graph import graph
 
-from app import db, scan_logs, uploads
+from app import db, monitoring, scan_logs, uploads
 from app.core.config import get_settings
-from app.sandbox_executor import SandboxExecutor, executor_kind
+from app.sandbox_executor import SandboxExecutor, SandboxUnavailableError, executor_kind
 from app.sandbox_runner import run_scan
 from app.transitive import transitive_options
 
@@ -168,6 +168,9 @@ async def run_job(job: Job) -> None:
     scan_logs.forget(job.id)
     job.status = JobStatus.RUNNING
     db.update_scan(id=job.id, status=job.status, finished_at=None, result=None, error=None)
+    started = time.time()
+    monitoring.log_event("scan_started", scan_id=job.id, ai_review=job.llm is not None)
+    sandbox_failed = False
     try:
         if executor_kind(get_settings()) == "sandbox":
             job.result = await _sandbox_executor().run(
@@ -182,6 +185,7 @@ async def run_job(job: Job) -> None:
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)
         job.status = JobStatus.ERROR
+        sandbox_failed = isinstance(exc, SandboxUnavailableError)
     finally:
         # Never kept once scanned, whatever the outcome.
         await uploads.delete(job.upload)
@@ -194,6 +198,20 @@ async def run_job(job: Job) -> None:
             result=job.result,
             error=job.error,
         )
+        await _report(job, duration=job.finished_at - started, sandbox_failed=sandbox_failed)
+
+
+async def _report(job: Job, *, duration: float, sandbox_failed: bool) -> None:
+    """The scan's outcome for monitoring: a log line, and for a failure a counted event, which may
+    send an alert (in a thread: it can wait on a webhook or an SMTP server)."""
+    if job.status == JobStatus.DONE:
+        verdict = ((job.result or {}).get("risk_assessment") or {}).get("recommendation")
+        monitoring.log_event("scan_finished", scan_id=job.id, duration_seconds=round(duration, 1), recommendation=verdict)
+        return
+    reason = "sandbox" if sandbox_failed else "scan"
+    await asyncio.to_thread(monitoring.record, monitoring.SCAN_FAILED, job.error, scan_id=job.id, reason=reason, duration_seconds=round(duration, 1))
+    if sandbox_failed:
+        await asyncio.to_thread(monitoring.record, monitoring.SANDBOX_ERROR, job.error, scan_id=job.id)
 
 
 async def _run_locally(job: Job, path: str) -> dict[str, Any]:

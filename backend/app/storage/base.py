@@ -65,6 +65,38 @@ def badge_scan_query(placeholder: str) -> str:
     )
 
 
+def monitor_queries(placeholder: str) -> dict[str, str]:
+    """The health panel's and alerts' queries (app/monitoring.py), for either store."""
+    p = placeholder
+    return {
+        "add": f"INSERT INTO monitor_events (created_at, kind, message, scan_id, count) VALUES ({p}, {p}, {p}, {p}, {p})",
+        "counts": f"SELECT kind, SUM(count) AS total FROM monitor_events WHERE created_at >= {p} GROUP BY kind",
+        "outcomes": (
+            f"SELECT (SELECT COUNT(*) FROM scans WHERE created_at >= {p}) AS started,"
+            f" (SELECT COUNT(*) FROM scans WHERE finished_at >= {p} AND status IN ('done', 'error')) AS finished,"
+            f" (SELECT COUNT(*) FROM scans WHERE finished_at >= {p} AND status = 'error') AS failed"
+        ),
+        "prune": f"DELETE FROM monitor_events WHERE created_at < {p}",
+    }
+
+
+def last_monitor_event_query(placeholder: str, kinds: tuple[str, ...], message: str | None) -> tuple[str, tuple[Any, ...]]:
+    """The latest event of these kinds; with a message, only one with that message (an alert's rule)."""
+    marks = ", ".join(placeholder for _ in kinds)
+    where = f"kind IN ({marks})" + (f" AND message = {placeholder}" if message is not None else "")
+    params = (*kinds, *((message,) if message is not None else ()))
+    return f"SELECT * FROM monitor_events WHERE {where} ORDER BY created_at DESC, id DESC LIMIT 1", params
+
+
+def list_monitor_events_query(placeholder: str, kinds: tuple[str, ...]) -> tuple[str, str]:
+    """A page of events, newest first, of these kinds or every one; and their count."""
+    where = f"WHERE kind IN ({', '.join(placeholder for _ in kinds)})" if kinds else ""
+    return (
+        f"SELECT * FROM monitor_events {where} ORDER BY created_at DESC, id DESC LIMIT {placeholder} OFFSET {placeholder}",
+        f"SELECT COUNT(*) AS total FROM monitor_events {where}",
+    )
+
+
 class ScanStore(Protocol):
     """Where scans and app settings live. SQLite by default; Postgres when a database URL is set."""
 
@@ -235,6 +267,20 @@ class ScanStore(Protocol):
     def list_audit(self, limit: int, offset: int, *, target_id: str | None = None) -> tuple[list[dict[str, Any]], int]: ...
 
     def overview_stats(self, *, since: float) -> dict[str, Any]: ...
+
+    # Monitoring (app/monitoring.py).
+
+    def add_monitor_event(self, *, created_at: float, kind: str, message: str | None, scan_id: str | None, count: int) -> None: ...
+
+    def monitor_counts(self, *, since: float) -> dict[str, int]: ...
+
+    def scan_outcomes(self, *, since: float) -> dict[str, int]: ...
+
+    def last_monitor_event(self, kinds: tuple[str, ...], message: str | None = None) -> dict[str, Any] | None: ...
+
+    def delete_monitor_events_older_than(self, cutoff: float) -> int: ...
+
+    def list_monitor_events(self, limit: int, offset: int, kinds: tuple[str, ...]) -> tuple[list[dict[str, Any]], int]: ...
 
     # Stored AI provider keys and per-scan one-off keys, both encrypted by the caller.
 
