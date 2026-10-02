@@ -24,7 +24,7 @@ or deploy to Vercel.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-home-dark.png">
-  <img src="docs/assets/screenshot-home-light.png" width="860" alt="The Skillspector Web home page: a skill URL field with examples, an AI analysis toggle, and a list of recent scans with their verdicts.">
+  <img src="docs/assets/screenshot-home-light.png" width="860" alt="The Skillspector Web home page: the headline Is this skill safe to install?, a scan field for a link with an AI review switch, and recent scans with their risk scores and verdicts.">
 </picture>
 
 </div>
@@ -77,7 +77,25 @@ or deploy to Vercel.
 <br>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-result-dark.png">
-  <img src="docs/assets/screenshot-result-light.png" width="860" alt="A scan result: risk score 54, HIGH, Do not install, followed by the list of findings.">
+  <img src="docs/assets/screenshot-result-light.png" width="860" alt="A scan result: the verdict Do not install, its top finding, MCP tool poisoning, and a risk score of 100 out of 100, Critical.">
+</picture>
+</details>
+
+<details>
+<summary><b>Account page</b></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-account-dark.png">
+  <img src="docs/assets/screenshot-account-light.png" width="860" alt="The Account page: scans used against the daily and in-progress quotas, a Claude key to connect for AI review, and API tokens.">
+</picture>
+</details>
+
+<details>
+<summary><b>Backoffice</b></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-admin-dark.png">
+  <img src="docs/assets/screenshot-admin-light.png" width="860" alt="The backoffice overview: users and scans this week, whether sign-up and email are on, and the server's health over the last 24 hours.">
 </picture>
 </details>
 
