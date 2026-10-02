@@ -413,6 +413,17 @@ class _Rescans:
         return True
 
 
+class UploadFolderResponse(BaseModel):
+    folder: str
+
+
+@router.get("/upload-folder", response_model=UploadFolderResponse)
+def read_upload_folder(viewer: ScanViewer) -> UploadFolderResponse:
+    """Where the viewer's Blob uploads go, for a session or an API token alike: the web app only
+    hands out upload tokens for this folder (server/api/scan/upload-token.post.ts)."""
+    return UploadFolderResponse(folder=uploads.blob_folder_for(viewer.user_id))
+
+
 @router.get("", response_model=ScanHistoryResponse)
 async def read_scan_history(
     viewer: ScanViewer,

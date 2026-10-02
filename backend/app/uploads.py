@@ -140,6 +140,11 @@ def clear_local() -> None:
 # Blob store.
 
 
+def blob_folder_for(user_id: str | None) -> str:
+    """Where a user's uploads go in the Blob store: the only folder their upload tokens allow."""
+    return f"{BLOB_FOLDER}/{user_id or 'anonymous'}/"
+
+
 def blob_pathname_for(user_id: str | None, pathname: str) -> str:
     """The pathname, if it's an upload of this user's; refused otherwise.
 

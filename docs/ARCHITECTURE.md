@@ -103,6 +103,7 @@ backend/tests/            pytest suite
 test/                     Vitest suite
 docs/                     guides and README assets
 scripts/setup.mjs         the `pnpm setup` wizard
+action.yml, action/       the GitHub Action that scans a pull request's skills
 vercel.ts                 the hosted deployment: services, routing and cron
 ```
 

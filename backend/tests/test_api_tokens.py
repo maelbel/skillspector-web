@@ -169,6 +169,17 @@ def test_a_token_cant_delete_or_share_a_scan(client):
     assert db.get_scan(scan_id) is not None
 
 
+def test_a_token_uploads_to_its_owners_folder(client):
+    # The folder the web app hands out Blob upload tokens for: a script's and its owner's are one.
+    _, alice = _sessions(client)
+    token = _token(client, alice)["token"]
+    alice_id = client.get("/auth/session", headers=_bearer(alice)).json()["user"]["id"]
+
+    assert client.get("/scan/upload-folder", headers=_bearer(token)).json() == {"folder": f"uploads/{alice_id}/"}
+    assert client.get("/scan/upload-folder", headers=_bearer(alice)).json() == {"folder": f"uploads/{alice_id}/"}
+    assert client.get("/scan/upload-folder").status_code == 401
+
+
 def test_a_token_counts_towards_its_owners_quota(client):
     admin, alice = _sessions(client)
     client.put("/settings", json={"daily_scan_quota": 2, "concurrent_scan_quota": None}, headers=_bearer(admin))

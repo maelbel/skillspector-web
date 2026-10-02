@@ -43,6 +43,9 @@ or deploy to Vercel.
   in, until you revoke it.
 - **Or upload it.** Drop a `.zip` of a skill, or its `SKILL.md`, on the scan form to scan one you
   haven't published. The file is kept only until it's scanned.
+- **Check pull requests.** A [GitHub Action](./docs/GITHUB_ACTION.md) scans the skills a pull
+  request changes, fails the check on a risky one, comments with each verdict, and uploads the
+  findings to code scanning.
 - **20+ static analyzers.** Prompt injection, data exfiltration, dangerous code, supply chain and
   MCP tool poisoning: skillspector's full pipeline, run as a library rather than a CLI wrapper.
 - **Optional AI review.** Add a deeper semantic analysis with your own Claude, OpenAI or Ollama
@@ -235,6 +238,7 @@ a vulnerability, see [SECURITY.md](./SECURITY.md).
 | [Deploying to Vercel](./docs/VERCEL.md) | the hosted version, step by step |
 | [Vercel Firewall rules](./docs/VERCEL_FIREWALL.md) | edge rate limits for the hosted version |
 | [Reverse proxy](./docs/REVERSE_PROXY.md) | TLS and a hostname for a self-hosted server |
+| [GitHub Action](./docs/GITHUB_ACTION.md) | scan the skills a pull request changes |
 | [Scan service API](./backend/README.md) | endpoints and behaviour of the FastAPI service |
 | [Contributing](./CONTRIBUTING.md) | development setup and checks |
 
