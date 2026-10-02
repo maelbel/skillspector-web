@@ -37,6 +37,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `DELETE` | `/admin/users/{id}` | admin | Remove a user and end their sessions; their scans stay. Not yourself, not the last admin. |
 | `POST` | `/scan` | token · rate-limited | Queue a scan of a `target`, or of an `upload` already in the Blob store (hosted). Returns `{ id, status }`. |
 | `POST` | `/scan/upload` | token · rate-limited | Queue a scan of a `.zip` or `.md` sent as the multipart `file`, with the options as JSON in `options` (self-hosted). |
+| `GET` | `/scan/upload-folder` | token | `{ folder }`: where your Blob uploads go, which the web app hands out upload tokens for (hosted). |
 | `GET` | `/scan` | token | Scan history: `?limit=` (1–100, default 20), `?offset=`, `?target=` (one target's scans), `?sort=` (`created_at`, `target`, `risk_score`, `verdict`, `status`) and `?order=` (`asc`, `desc`; newest first by default). Returns `{ items, total }`. |
 | `GET` | `/scan/{id}` | token | Status (`pending` · `running` · `done` · `error`), step progress and, once done, the report, with what changed since the target's previous scan (`comparison`). |
 | `GET` | `/scan/{id}/export` | token | The finished report as a download: `?format=json` (skillspector's report) or `?format=sarif` (SARIF 2.1.0). |
