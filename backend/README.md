@@ -192,8 +192,16 @@ The recommendation is `SAFE`, `CAUTION` or `DO_NOT_INSTALL`, so a CI job can fai
 - **Concurrency.** Up to `SKILLSPECTOR_WEB_MAX_CONCURRENT_SCANS` scans run at once, each in a
   worker thread. Scans with AI analysis are additionally serialised, because the provider's
   credentials are passed to skillspector through process environment variables.
-- **Restarts.** With the in-process runner, on startup any scan left `pending` or `running` is marked
-  failed with an "interrupted" message.
+- **Restarts.** With the in-process runner the queue lives in the database: a restart or redeploy
+  loses no scan (`app/jobs/in_process.py`).
+  - A scan stopped mid-run goes back to `pending` (or stays `running`, if the process was killed),
+    and its upload is kept. On startup, every pending or running scan is run again, oldest first.
+  - Each start counts towards `scans.attempts`; a scan started 3 times without finishing fails with
+    "The scan didn't finish after 3 attempts".
+  - AI review runs again with what it had: the user's saved key, the server's Claude login, or the
+    one-off key and endpoint held encrypted in `scan_secrets` until the scan has run. Holding them
+    needs `SECRET_KEY`; without it, only scans with a one-off key fail on restart, saying so.
+  - One API process runs the queue: don't run several replicas of a self-hosted API.
 - **Logs.** `SKILLSPECTOR_WEB_LOG_STORE` picks where log lines and step progress go (`app/scan_logs.py`):
   - `memory` (self-hosted default): the last 500 lines of each of the 50 most recent scans, lost on
     restart.

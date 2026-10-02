@@ -7,6 +7,7 @@ pasting it each time. On a hosted server this is how people bring Claude: there'
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -101,3 +102,21 @@ def hold_for_scan(scan_id: str, key: str) -> None:
 def held_for_scan(scan_id: str) -> str | None:
     encrypted = db.get_scan_secret(scan_id)
     return secrets_box.decrypt(encrypted, context=_scan_context(scan_id)) if encrypted else None
+
+
+def hold_llm_for_scan(scan_id: str, *, api_key: str | None, base_url: str | None) -> None:
+    """Keep a scan's one-off AI credentials, any provider's key and endpoint, encrypted until it has
+    run: a self-hosted API that restarts mid-scan runs it again with them (app/jobs/in_process.py)."""
+    hold_for_scan(scan_id, json.dumps({"api_key": api_key, "base_url": base_url}))
+
+
+def held_llm_for_scan(scan_id: str) -> dict[str, str | None] | None:
+    """What hold_llm_for_scan kept, or a key hold_for_scan did, as {api_key, base_url}."""
+    held = held_for_scan(scan_id)
+    if held is None:
+        return None
+    try:
+        parsed = json.loads(held)
+    except ValueError:
+        return {"api_key": held, "base_url": None}
+    return parsed if isinstance(parsed, dict) else {"api_key": held, "base_url": None}

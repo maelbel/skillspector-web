@@ -8,6 +8,8 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # A hung test fails the job, with its log, rather than holding it for 6 hours.
+    timeout-minutes: 15
     # Every storage test runs on SQLite and, through TEST_DATABASE_URL, on Postgres.
     services:
       postgres:

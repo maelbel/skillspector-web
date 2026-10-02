@@ -307,6 +307,14 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE users ADD COLUMN concurrent_scan_quota INTEGER",
         ],
     ),
+    (
+        21,
+        [
+            # How many times a scan was started (app/scanner.py's run_job): a self-hosted API picks
+            # unfinished scans back up when it restarts, up to a limit (app/jobs/in_process.py).
+            "ALTER TABLE scans ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
+        ],
+    ),
 ]
 
 
@@ -398,6 +406,15 @@ class PostgresStore:
                 id,
             ),
         )
+
+    def start_attempt(self, scan_id: str) -> int:
+        with self._pool.connection() as conn:
+            row = conn.execute("UPDATE scans SET attempts = attempts + 1 WHERE id = %s RETURNING attempts", (scan_id,)).fetchone()
+        return int(row["attempts"]) if row else 0
+
+    def unfinished_scans(self) -> list[ScanRow]:
+        with self._pool.connection() as conn:
+            return list(conn.execute("SELECT * FROM scans WHERE status IN ('pending', 'running') ORDER BY created_at").fetchall())
 
     def fail_unfinished_scans(self, *, error: str, finished_at: float) -> int:
         return self._execute(

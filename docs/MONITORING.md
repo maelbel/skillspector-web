@@ -55,7 +55,9 @@ Each line is a JSON object with `event`, `at` (Unix time) and the fields below. 
 |---|---|
 | `skillspector.scan_started` | `scan_id`, `ai_review` |
 | `skillspector.scan_finished` | `scan_id`, `duration_seconds`, `recommendation` |
-| `skillspector.scan_failed` | `scan_id`, `reason` (`scan`, `sandbox` or `queue`), `message`, `duration_seconds` |
+| `skillspector.scan_failed` | `scan_id`, `reason` (`scan`, `sandbox`, `queue` or `restart`), `message`, `duration_seconds` |
+| `skillspector.scan_interrupted` | `scan_id`: the API stopped mid-scan, which runs again on startup |
+| `skillspector.scans_resumed` | `count`: scans a self-hosted API picked back up on startup |
 | `skillspector.sandbox_error` | `scan_id`, `message` |
 | `skillspector.queue_redelivered` | `scan_id`, `delivery` |
 | `skillspector.bot_refused` | `path` from the web app; `count` from the API |

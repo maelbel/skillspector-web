@@ -42,12 +42,14 @@ def _reset_postgres(url: str) -> None:
 def temp_db(request, tmp_path, monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "scan_retention_days", None)
+    # On Postgres too: local uploads live next to it (app/uploads.py), so a test never touches a
+    # real data/uploads folder, or leaves one behind for the next test.
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "test.db"))
     if request.param == "postgres":
         _reset_postgres(TEST_DATABASE_URL)
         monkeypatch.setattr(settings, "database_url", TEST_DATABASE_URL)
     else:
         monkeypatch.setattr(settings, "database_url", None)
-        monkeypatch.setattr(settings, "db_path", str(tmp_path / "test.db"))
     db.init_db()
     yield request.param
     db.close_db()

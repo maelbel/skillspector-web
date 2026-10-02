@@ -73,6 +73,16 @@ def update_scan(
     _store_or_raise().update_scan(id=id, status=status, finished_at=finished_at, result=result, error=error)
 
 
+def start_attempt(scan_id: str) -> int:
+    """Count one more start of the scan; how many there have been."""
+    return _store_or_raise().start_attempt(scan_id)
+
+
+def unfinished_scans() -> list[ScanRow]:
+    """Every pending or running scan, oldest first."""
+    return _store_or_raise().unfinished_scans()
+
+
 def fail_unfinished_scans(*, error: str, finished_at: float) -> int:
     return _store_or_raise().fail_unfinished_scans(error=error, finished_at=finished_at)
 
