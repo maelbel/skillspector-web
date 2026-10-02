@@ -90,4 +90,23 @@ isn't protected:
     submissions, and Vercel Firewall rules add an edge-level limit in front (see
     [VERCEL_FIREWALL.md](./VERCEL_FIREWALL.md)).
 
+## Web Analytics
+
+The hosted version can count visits with [Vercel Web Analytics](https://vercel.com/docs/analytics),
+built in only when `NUXT_PUBLIC_ANALYTICS=true` at build time. Self-hosted builds leave it out, and
+their pages make no request to Vercel (CI checks the build for it). Web Analytics sets no cookies and
+keeps no identifier for a visitor across days, so it needs no consent banner. What it records:
+
+- **Page views**, by the route's pattern only: `/scan/[id]`, `/shared/[token]`. Never the page's
+  path, which can hold a share link's token or a scan's id, nor its query string, which can hold a
+  scanned link (`/?target=…`).
+- **Three events**, with no email, target or id:
+  - *Sign Up*, when an account is created;
+  - *Scan Started*, with whether it was a link, an upload or an MCP server, and whether AI review was on;
+  - *Scan Viewed*, once per visit to a finished scan of one's own (not a shared result), with its
+    status and verdict.
+
+Vercel also records what it records for any page view: the referring site, the country, and the
+browser, operating system and device type. The privacy policy should list this.
+
 Found a vulnerability? Please report it privately — see [SECURITY.md](../SECURITY.md).

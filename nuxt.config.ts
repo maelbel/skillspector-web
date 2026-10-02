@@ -2,6 +2,9 @@
 // Vercel's edge, which vercel.ts routes its challenge through, so self-hosted builds leave it out.
 // Read at build time and at runtime.
 const botId = process.env.NUXT_PUBLIC_BOTID === 'true'
+// Vercel Web Analytics (app/analytics/vercel.client.ts), on the hosted version too. Read at build
+// time only: without it the plugin isn't built in, so self-hosted pages never load Vercel's script.
+const analytics = process.env.NUXT_PUBLIC_ANALYTICS === 'true'
 
 export default defineNuxtConfig({
   modules: [
@@ -9,6 +12,8 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxt/fonts'
   ],
+
+  plugins: analytics ? ['~/analytics/vercel.client'] : [],
 
   devtools: {
     enabled: true

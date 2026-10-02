@@ -49,6 +49,9 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
       - run: pnpm run build
+      # Self-hosted builds hold no Web Analytics: their pages never call Vercel.
+      - name: Check the build has no Vercel Web Analytics
+        run: "! grep -rl '_vercel/insights' .output"
 
   # The hosted configuration: vercel.ts must compile, and both services must build the way Vercel
   # builds them, including the scan queue's subscriber. Offline: no Vercel project or token needed.
@@ -57,6 +60,7 @@ jobs:
     env:
       ENABLE_EXPERIMENTAL_COREPACK: "1"
       NUXT_PUBLIC_BOTID: "true"
+      NUXT_PUBLIC_ANALYTICS: "true"
       # On Actions, Nitro detects GitHub rather than Vercel and would build for plain Node.
       NITRO_PRESET: vercel
     steps:
