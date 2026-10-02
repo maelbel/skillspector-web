@@ -92,6 +92,8 @@ def _job_for(scan: dict) -> Job:
         baseline=scan.get("baseline"),
         transitive_depth=scan.get("transitive_depth"),
         upload=scan.get("upload"),
+        owner_id=scan.get("owner_id"),
+        private_source=bool(scan.get("private_source")),
         created_at=scan["created_at"],
     )
 

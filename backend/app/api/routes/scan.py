@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Form,
@@ -22,7 +23,17 @@ from fastapi import (
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from skillspector.suppression import dump_baseline
 
-from app import claude_key, db, exports, monitoring, quotas, rate_limit, rescan, uploads
+from app import (
+    claude_key,
+    db,
+    exports,
+    monitoring,
+    quotas,
+    rate_limit,
+    repo_connections,
+    rescan,
+    uploads,
+)
 from app.ai_review import AIReview, ai_review_status
 from app.ai_usage import TokenTotals, token_totals
 from app.auth import Viewer, audit
@@ -164,6 +175,8 @@ class ScanStatusResponse(BaseModel):
     share_token: str | None = None
     # Whether the shared result is on its target's status badge (app/api/routes/badge.py).
     badge: bool = False
+    # Whether it read a private repository with its owner's connection (app/repo_connections.py).
+    private_source: bool = False
 
 
 class ScanSummaryResponse(BaseModel):
@@ -343,6 +356,13 @@ async def _queue_scan(
         )
         raise HTTPException(status_code=422, detail=detail)
     llm = _resolve_llm(req.llm, viewer)
+    private_source = False
+    if keep_upload is None and not is_mcp_entry(target):
+        # A private GitHub repository the user's connection reads: scanned with their token.
+        try:
+            private_source = await asyncio.to_thread(repo_connections.private_for, viewer.user_id, target)
+        except repo_connections.NoAccessError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     runner = get_runner()
     try:
         runner.check(llm)
@@ -370,6 +390,7 @@ async def _queue_scan(
                 upload=upload,
                 job_id=job_id,
                 max_active=quotas.active_limit(viewer, limits),
+                private_source=private_source,
             )
         except ActiveScansFullError as exc:
             quotas.refuse_active(exc.limit)
@@ -475,11 +496,16 @@ async def read_scan_history(
     return ScanHistoryResponse(items=items, total=total)
 
 
-def _visible_scan(job_id: str, viewer: Viewer) -> None:
-    """404, not 403, for someone else's scan, so ids can't be probed."""
+def _visible_scan(job_id: str, viewer: Viewer, *, content: bool = True) -> None:
+    """404, not 403, for someone else's scan, so ids can't be probed. A scan of a private
+    repository's content (its report, logs, a share link, a rescan with its owner's connection) is
+    its owner's alone: an admin sees that it exists, and may delete it or revoke its link
+    (content=False), but not open it."""
     scan = db.get_scan(job_id)
     if scan is None or not viewer.can_see(scan):
         raise HTTPException(status_code=404, detail="scan not found")
+    if content and scan.get("private_source") and scan.get("owner_id") != viewer.user_id:
+        raise HTTPException(status_code=403, detail="This scan read a private repository: only the person who started it can open it")
 
 
 @router.get("/{job_id}", response_model=ScanStatusResponse)
@@ -493,6 +519,7 @@ async def read_scan(job_id: str, viewer: ScanViewer) -> ScanStatusResponse:
     response.rescan = _Rescans(viewer).allowed(scan)
     response.share_token = scan.get("share_token")
     response.badge = bool(scan.get("badge"))
+    response.private_source = bool(scan.get("private_source"))
     compared = rescan.comparison_for(scan)
     if compared is not None:
         response.comparison, before = compared
@@ -545,8 +572,18 @@ class ShareResponse(BaseModel):
     token: str
 
 
+class PrivateConfirm(BaseModel):
+    # Required to share, or badge, a scan of a private repository: its result becomes public.
+    confirm_private: bool = False
+
+
+def _confirmed_if_private(scan: dict, confirm: PrivateConfirm | None, what: str) -> None:
+    if scan.get("private_source") and not (confirm and confirm.confirm_private):
+        raise HTTPException(status_code=409, detail=f"This scan read a private repository: confirm that its result may be {what}")
+
+
 @router.post("/{job_id}/share", response_model=ShareResponse)
-def share_scan(job_id: str, viewer: CurrentViewer) -> ShareResponse:
+def share_scan(job_id: str, viewer: CurrentViewer, confirm: Annotated[PrivateConfirm | None, Body()] = None) -> ShareResponse:
     """A read-only link to the result, for anyone who has it, until it's revoked. Sharing again
     gives the same link."""
     _visible_scan(job_id, viewer)
@@ -556,6 +593,7 @@ def share_scan(job_id: str, viewer: CurrentViewer) -> ShareResponse:
         raise HTTPException(status_code=409, detail="Only a finished scan's result can be shared")
     if scan.get("share_token"):
         return ShareResponse(token=scan["share_token"])
+    _confirmed_if_private(scan, confirm, "shared")
     token = secrets.token_urlsafe(24)
     db.set_share_token(job_id, token)
     audit(viewer.user, "scan.shared", detail=scan["target"])
@@ -565,7 +603,7 @@ def share_scan(job_id: str, viewer: CurrentViewer) -> ShareResponse:
 @router.delete("/{job_id}/share", status_code=204)
 def unshare_scan(job_id: str, viewer: CurrentViewer) -> None:
     """Revoke the result's link: it stops working at once. Sharing again makes a new one."""
-    _visible_scan(job_id, viewer)
+    _visible_scan(job_id, viewer, content=False)
     scan = db.get_scan(job_id)
     assert scan is not None
     if scan.get("share_token"):
@@ -574,7 +612,7 @@ def unshare_scan(job_id: str, viewer: CurrentViewer) -> None:
 
 
 @router.post("/{job_id}/badge", status_code=204)
-def add_to_badge(job_id: str, viewer: CurrentViewer) -> None:
+def add_to_badge(job_id: str, viewer: CurrentViewer, confirm: Annotated[PrivateConfirm | None, Body()] = None) -> None:
     """Show the shared result on its target's public status badge (/badge?target=…): the badge
     shows the latest scan of the target put on it, by anyone."""
     _visible_scan(job_id, viewer)
@@ -587,6 +625,7 @@ def add_to_badge(job_id: str, viewer: CurrentViewer) -> None:
     if scan.get("baseline") is not None:
         # Its baseline's accepted findings don't count, so the badge would read safer than the skill.
         raise HTTPException(status_code=422, detail="A scan with a baseline can't be on a badge: scan the skill without one")
+    _confirmed_if_private(scan, confirm, "shown on a public badge")
     if not scan.get("badge"):
         db.set_badge(job_id, True)
         audit(viewer.user, "scan.badge_added", detail=scan["target"])
@@ -595,7 +634,7 @@ def add_to_badge(job_id: str, viewer: CurrentViewer) -> None:
 @router.delete("/{job_id}/badge", status_code=204)
 def remove_from_badge(job_id: str, viewer: CurrentViewer) -> None:
     """Take the result off the badge, which then shows the target's previous scan on it, if any."""
-    _visible_scan(job_id, viewer)
+    _visible_scan(job_id, viewer, content=False)
     scan = db.get_scan(job_id)
     assert scan is not None
     if scan.get("badge"):
@@ -651,6 +690,6 @@ async def read_scan_logs(job_id: str, viewer: ScanViewer) -> ScanLogsResponse:
 
 @router.delete("/{job_id}", status_code=204)
 async def delete_scan(job_id: str, viewer: CurrentViewer) -> None:
-    _visible_scan(job_id, viewer)
+    _visible_scan(job_id, viewer, content=False)
     if not delete_job(job_id):
         raise HTTPException(status_code=404, detail="scan not found")

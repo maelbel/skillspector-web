@@ -314,6 +314,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             "ALTER TABLE scans ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
         ],
     ),
+    (
+        22,
+        [
+            # A user's connected code host accounts (app/repo_connections.py), to scan their private
+            # repositories: one per provider, its tokens encrypted with SECRET_KEY.
+            """
+            CREATE TABLE repo_connections (
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                account_name TEXT NOT NULL,
+                encrypted_token TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (user_id, provider)
+            )
+            """,
+            # The scan reads a private repository, with its owner's connection: its result stays
+            # theirs (no share link or badge unless they confirm, and only they open it).
+            "ALTER TABLE scans ADD COLUMN private_source INTEGER NOT NULL DEFAULT 0",
+        ],
+    ),
 ]
 
 def _locked[T](method: Callable[..., T]) -> Callable[..., T]:
@@ -380,9 +401,10 @@ class SQLiteStore:
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
+        private_source: bool = False,
         max_active: int | None = None,
     ) -> bool:
-        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload)
+        values = (id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload, private_source)
         limited = max_active is not None and owner_id is not None
         # One statement: SQLite runs it whole, whichever connection or process sends another.
         cursor = self._conn.execute(
@@ -635,6 +657,36 @@ class SQLiteStore:
         self._conn.execute("DELETE FROM sessions WHERE user_id = ?", (id,))
         self._conn.execute("DELETE FROM llm_credentials WHERE user_id = ?", (id,))
         self._conn.execute("DELETE FROM api_tokens WHERE user_id = ?", (id,))
+        self._conn.execute("DELETE FROM repo_connections WHERE user_id = ?", (id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
+
+    @_locked
+    def set_repo_connection(self, *, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO repo_connections (user_id, provider, account_name, encrypted_token, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id, provider) DO UPDATE SET
+                account_name = excluded.account_name, encrypted_token = excluded.encrypted_token, updated_at = excluded.updated_at
+            """,
+            (user_id, provider, account_name, encrypted_token, now, now),
+        )
+        self._conn.commit()
+
+    @_locked
+    def get_repo_connection(self, user_id: str, provider: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM repo_connections WHERE user_id = ? AND provider = ?", (user_id, provider)).fetchone()
+        return dict(row) if row else None
+
+    @_locked
+    def list_repo_connections(self, user_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute("SELECT * FROM repo_connections WHERE user_id = ? ORDER BY provider", (user_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    @_locked
+    def delete_repo_connection(self, user_id: str, provider: str) -> bool:
+        cursor = self._conn.execute("DELETE FROM repo_connections WHERE user_id = ? AND provider = ?", (user_id, provider))
         self._conn.commit()
         return cursor.rowcount > 0
 

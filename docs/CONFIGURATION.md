@@ -23,6 +23,8 @@ Every variable is prefixed with `SKILLSPECTOR_WEB_` — for example `SKILLSPECTO
 | `PUBLIC_URL` | *unset* | This app's public address, e.g. `https://skillspector.example.com`, used for links in emails. Email features switch on when `SMTP_HOST`, `MAIL_FROM` and `PUBLIC_URL` are all set. |
 | `ALERT_WEBHOOK_URL` | *unset* | Where to POST alerts: a Slack or Discord incoming webhook, or any endpoint taking JSON. See [Monitoring](./MONITORING.md). |
 | `ALERT_EMAIL` | *unset* | Addresses to email alerts to, comma-separated. Needs email set up (above). |
+| `GITHUB_APP_CLIENT_ID`<br>`GITHUB_APP_CLIENT_SECRET` | *unset* | The GitHub App users connect to scan their private repositories ([below](#private-github-repositories)). Both set, with accounts, `SECRET_KEY` and `PUBLIC_URL`, switch the feature on. |
+| `GITHUB_APP_SLUG` | *unset* | The app's slug (`github.com/apps/<slug>`), for the Account page's link to choose which repositories it reads. |
 | `JOB_RUNNER` | *by mode* | How scans run: `in_process` (the `self_hosted` default: tasks inside the API) or `vercel_queues` (the `hosted` default: a durable Vercel Queues topic consumed by a queue-triggered function). |
 | `LOG_STORE` | *by mode* | Where live scan logs and step progress go: `memory` (the `self_hosted` default; lost on restart) or `database` (the `hosted` default; the scan database, so logs survive restarts and are shared between instances). |
 | `RATE_LIMIT_STORE` | *by mode* | Where rate limits count requests: `memory` (the `self_hosted` default: this process only) or `database` (the `hosted` default: the scan database, so every instance enforces the same limits). |
@@ -73,6 +75,28 @@ or silently ignore stops the API from starting instead.
 | `NUXT_PUBLIC_ANALYTICS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Web Analytics](https://vercel.com/docs/analytics). Read at build time only: without it the build holds none of it, and pages make no request to Vercel. See [what it records](./SECURITY_MODEL.md#web-analytics). |
 | `NUXT_PUBLIC_SPEED_INSIGHTS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Speed Insights](https://vercel.com/docs/speed-insights), Core Web Vitals from real visits. Read at build time only, like `NUXT_PUBLIC_ANALYTICS`. |
 | `NUXT_ALLOWED_HOST` | *unset* | Public hostname allowed by the development server (`nuxt dev`) only. |
+
+## Private GitHub repositories
+
+Users can connect their GitHub account from the Account page, then scan private repositories they
+have access to, the same way as public links. It needs accounts (`AUTH=accounts`), `SECRET_KEY` (the
+tokens are stored encrypted with it) and `PUBLIC_URL`, plus a GitHub App of your own:
+
+1. On GitHub: **Settings → Developer settings → GitHub Apps → New GitHub App**.
+2. **Callback URL:** `<PUBLIC_URL>/api/account/connections/github/callback`. Turn on **Expire user
+   authorization tokens**. Leave **Webhook** off.
+3. **Repository permissions:** **Contents: Read-only** (and **Metadata: Read-only**, which GitHub
+   adds). Nothing else: the app never writes.
+4. **Where can this GitHub App be installed?** "Any account" lets your users install it on their own
+   repositories and organizations; "Only on this account" limits it to yours.
+5. Create it, generate a **client secret**, and set `SKILLSPECTOR_WEB_GITHUB_APP_CLIENT_ID`,
+   `SKILLSPECTOR_WEB_GITHUB_APP_CLIENT_SECRET` and `SKILLSPECTOR_WEB_GITHUB_APP_SLUG` on the API.
+
+A user then connects GitHub, and chooses on GitHub which repositories the app may read (**Choose
+repositories**, which installs it). A scan reads only what both they and the app's installation can.
+On the scan form, choosing **GitHub** as the source lists those, most recently pushed first, to
+pick one instead of pasting its link.
+GitLab, Bitbucket and Hugging Face follow later, the same way.
 
 ## AI analysis
 

@@ -23,6 +23,8 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'scan.unshared': { verb: 'revoked the shared link to a scan of', icon: 'i-lucide-unlink' },
   'scan.badge_added': { verb: 'added to a status badge a scan of', icon: 'i-lucide-badge-check' },
   'scan.badge_removed': { verb: 'removed from a status badge a scan of', icon: 'i-lucide-badge-x' },
+  'connection.connected': { verb: 'connected a code host account for', icon: 'i-simple-icons-github' },
+  'connection.disconnected': { verb: 'disconnected a code host account of', icon: 'i-lucide-unplug' },
   'token.created': { verb: 'created an API token for', icon: 'i-lucide-key-square' },
   'token.used': { verb: 'used an API token of', icon: 'i-lucide-terminal' },
   'token.revoked': { verb: 'revoked an API token of', icon: 'i-lucide-key-square' }
@@ -55,6 +57,10 @@ export function describeActivity(entry: ActivityEntry): ActivityLine {
   }
   if (self && entry.action.startsWith('password.')) {
     return { icon: known.icon, actor, verb: known.verb.replace(/ (of|for|to)$/, '').replace('the password', 'their password'), target: null, detail: entry.detail }
+  }
+  if (self && entry.action.startsWith('connection.')) {
+    const verb = entry.action === 'connection.connected' ? 'connected their account' : 'disconnected their account'
+    return { icon: known.icon, actor, verb, target: null, detail: entry.detail }
   }
   if (self && entry.action.startsWith('token.')) {
     const verb = { 'token.created': 'created an API token', 'token.used': 'used an API token', 'token.revoked': 'revoked an API token' }[entry.action]

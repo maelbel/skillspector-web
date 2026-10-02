@@ -47,6 +47,7 @@ def insert_scan(
     baseline: str | None = None,
     transitive_depth: int | None = None,
     upload: str | None = None,
+    private_source: bool = False,
     max_active: int | None = None,
 ) -> bool:
     """Insert a scan; with max_active and an owner, only while they have fewer than that many
@@ -62,6 +63,7 @@ def insert_scan(
         baseline=baseline,
         transitive_depth=transitive_depth,
         upload=upload,
+        private_source=private_source,
         max_active=max_active,
     )
 
@@ -205,6 +207,22 @@ def count_users() -> int:
 
 def delete_user(id: str) -> bool:
     return _store_or_raise().delete_user(id)
+
+
+def set_repo_connection(*, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None:
+    _store_or_raise().set_repo_connection(user_id=user_id, provider=provider, account_name=account_name, encrypted_token=encrypted_token, now=now)
+
+
+def get_repo_connection(user_id: str, provider: str) -> dict[str, Any] | None:
+    return _store_or_raise().get_repo_connection(user_id, provider)
+
+
+def list_repo_connections(user_id: str) -> list[dict[str, Any]]:
+    return _store_or_raise().list_repo_connections(user_id)
+
+
+def delete_repo_connection(user_id: str, provider: str) -> bool:
+    return _store_or_raise().delete_repo_connection(user_id, provider)
 
 
 def create_api_token(

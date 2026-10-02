@@ -78,6 +78,7 @@ async function save() {
           title="Saved Claude keys are off on this server"
           description="To let users connect their own Claude key, set SKILLSPECTOR_WEB_SECRET_KEY on the API (generate one with python -m app.secrets_box) and restart it."
         />
+        <GitHubConnectionCard />
         <ApiTokensCard />
       </section>
 

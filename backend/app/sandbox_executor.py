@@ -78,8 +78,10 @@ ANTHROPIC_HOST = "api.anthropic.com"
 BROKERED_KEY_PLACEHOLDER = "brokered-at-the-sandbox-firewall"
 
 
-def scan_network_policy(api_key: str | None = None) -> Any:
-    """Code hosts only; with AI review, also Anthropic, with the key added by the firewall."""
+def scan_network_policy(api_key: str | None = None, host_headers: dict[str, dict[str, str]] | None = None) -> Any:
+    """Code hosts only; with AI review, also Anthropic, with the key added by the firewall. For a
+    private repository, host_headers are the owner's credentials the firewall adds to requests to
+    those code hosts (app/repo_connections.py): the VM never holds them."""
     from vercel.sandbox import (
         NetworkPolicy,
         NetworkPolicyRule,
@@ -88,6 +90,8 @@ def scan_network_policy(api_key: str | None = None) -> Any:
     )
 
     allow: dict[str, Any] = {host: () for host in SCAN_HOSTS}
+    for host, headers in (host_headers or {}).items():
+        allow[host] = [NetworkPolicyRule(transform=[NetworkPolicyTransform(headers=headers)])]
     if api_key:
         allow[ANTHROPIC_HOST] = [NetworkPolicyRule(transform=[NetworkPolicyTransform(headers={"x-api-key": api_key})])]
     return NetworkPolicy.custom(allow=allow, subnets=NetworkPolicySubnets(deny=list(BLOCKED_SUBNETS)))
@@ -167,8 +171,10 @@ class SandboxExecutor:
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
+        host_headers: dict[str, dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Scan target in a fresh sandbox; for an upload (target upload:<name>), the file held at upload."""
+        """Scan target in a fresh sandbox; for an upload (target upload:<name>), the file held at
+        upload; for a private repository, with host_headers added by the firewall."""
         if llm is not None and (llm.provider != "anthropic" or not llm.api_key):
             raise RuntimeError("AI review in the scan sandbox needs a Claude (Anthropic) key")
 
@@ -187,7 +193,7 @@ class SandboxExecutor:
                 # A little headroom over the scan itself for boot and upload.
                 execution_time_limit=limit + 60,
                 persistent=False,
-                network_policy=scan_network_policy(llm.api_key if llm else None),
+                network_policy=scan_network_policy(llm.api_key if llm else None, host_headers),
                 env=_scan_env(settings, llm),
                 tags={"app": "skillspector-web", "scan": job_id},
                 destroy=False,

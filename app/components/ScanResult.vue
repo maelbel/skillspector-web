@@ -361,6 +361,7 @@ const errorMessage = computed(() => {
       v-model:badge="onBadge"
       :scan-id="scanId"
       :target="status?.target ?? ''"
+      :private-source="status?.private_source ?? false"
     />
 
     <UAlert

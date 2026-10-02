@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Share a result as a read-only link (backend/app/api/routes/shared.py), or revoke it; and once
 // shared, put it on its target's public status badge (backend/app/api/routes/badge.py).
-const props = defineProps<{ scanId: string, target: string }>()
+const props = defineProps<{ scanId: string, target: string, privateSource?: boolean }>()
 const open = defineModel<boolean>('open', { default: false })
 const token = defineModel<string | null>('token', { default: null })
 const badge = defineModel<boolean>('badge', { default: false })
@@ -12,6 +12,11 @@ const FAILURES: Record<Action, string> = {
   revoke: 'Couldn’t revoke the link',
   badge: 'Couldn’t change the badge'
 }
+
+// A scan of a private repository (backend/app/repo_connections.py) is shared, or badged, only once
+// its owner confirms its result may be public.
+const confirmPrivate = ref(false)
+const privateBody = () => (props.privateSource ? { confirm_private: confirmPrivate.value } : undefined)
 
 const busy = ref<Action | null>(null)
 const errorMessage = ref('')
@@ -42,7 +47,7 @@ async function run(action: Action, call: () => Promise<void>) {
 function createLink() {
   copied.value = null
   return run('create', async () => {
-    token.value = (await $fetch<{ token: string }>(`/api/scan/${props.scanId}/share`, { method: 'POST' })).token
+    token.value = (await $fetch<{ token: string }>(`/api/scan/${props.scanId}/share`, { method: 'POST', body: privateBody() })).token
   })
 }
 
@@ -57,7 +62,8 @@ function revokeLink() {
 
 function setBadge(on: boolean) {
   return run('badge', async () => {
-    await $fetch(`/api/scan/${props.scanId}/badge`, { method: on ? 'POST' : 'DELETE' })
+    // Turning the switch on is the confirmation: its description says the result becomes public.
+    await $fetch(`/api/scan/${props.scanId}/badge`, { method: on ? 'POST' : 'DELETE', body: on && props.privateSource ? { confirm_private: true } : undefined })
     badge.value = on
   })
 }
@@ -118,7 +124,9 @@ async function copy(what: 'link' | 'badge') {
               :model-value="badge"
               :loading="busy === 'badge'"
               label="Show on the skill’s status badge"
-              description="A badge for its README, with the verdict and date of the latest scan of this link put on it. Anyone can see it."
+              :description="privateSource
+                ? 'This scan read one of your private repositories. A badge shows its verdict and date to anyone, and links to this result.'
+                : 'A badge for its README, with the verdict and date of the latest scan of this link put on it. Anyone can see it.'"
               @update:model-value="setBadge"
             />
             <template v-if="badge">
@@ -155,6 +163,12 @@ async function copy(what: 'link' | 'badge') {
           The link shows the verdict, the findings and the files inspected, and lets anyone download
           the report. It works until you revoke it.
         </p>
+        <UCheckbox
+          v-if="privateSource && !token"
+          v-model="confirmPrivate"
+          label="Share it anyway"
+          description="This scan read one of your private repositories. Anyone with the link will see its findings, with excerpts of its code."
+        />
 
         <UAlert
           v-if="errorMessage"
@@ -181,6 +195,7 @@ async function copy(what: 'link' | 'badge') {
           color="primary"
           icon="i-lucide-link"
           :loading="busy === 'create'"
+          :disabled="privateSource && !confirmPrivate"
           @click="createLink"
         >
           Create link

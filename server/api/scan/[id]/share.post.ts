@@ -6,6 +6,8 @@ export default defineEventHandler(async (event) => {
   }
   return await backendFetch<{ token: string }>(event, `/scan/${encodeURIComponent(id)}/share`, {
     method: 'POST',
+    // A private repository's scan is only shared, or badged, once its owner confirms.
+    body: { confirm_private: await confirmedPrivate(event) },
     fallbackMessage: 'Failed to share the result'
   })
 })
