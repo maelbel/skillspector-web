@@ -147,6 +147,22 @@ def test_a_bad_baseline_is_refused_before_the_scan_is_queued(client, baseline, m
     assert db.list_scans(10, 0)[1] == 0
 
 
+def test_a_scan_keeps_its_opt_in_to_the_skills_own_baseline(client):
+    scan_id = client.post("/scan", json={"target": "https://github.com/acme/skill", "use_shipped_baseline": True}).json()["id"]
+
+    assert db.get_scan(scan_id)["use_shipped_baseline"]
+    plain = client.post("/scan", json={"target": "https://github.com/acme/skill"}).json()["id"]
+    assert not db.get_scan(plain)["use_shipped_baseline"]
+
+
+def test_a_baseline_file_and_the_skills_own_cant_both_be_used(client):
+    response = client.post("/scan", json={"target": "https://github.com/acme/skill", "baseline": BASELINE, "use_shipped_baseline": True})
+
+    assert response.status_code == 422 and "not both" in response.json()["detail"]
+    mcp = client.post("/scan", json={"target": "io.github.acme/weather", "use_shipped_baseline": True})
+    assert mcp.status_code == 422
+
+
 def test_a_scans_baseline_downloads_with_the_reason_given(client):
     _insert("b", created_at=1.0)
     generated = {

@@ -163,6 +163,10 @@ export interface ScanReport {
   // A baseline accepting every active finding, made during the scan (app/sandbox_runner.py). Absent
   // without findings, and for scans from before it existed.
   generated_baseline?: Record<string, unknown>
+  // Which baseline suppressed findings: the user's file, or the one the skill ships (absent before
+  // this was recorded). shipped_baseline is there when the skill ships one, applied or not.
+  applied_baseline?: 'uploaded' | 'shipped'
+  shipped_baseline?: { applied: boolean, problem?: string }
   // A repository holding several skills: each one's summary, and those left out.
   skills?: SkillSummary[]
   unscanned_skills?: UnscannedSkill[]

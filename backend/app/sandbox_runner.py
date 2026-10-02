@@ -1,9 +1,10 @@
 """Run one skillspector scan and report on stdout, one tagged JSON event per line.
 
 This file is uploaded into a Vercel Sandbox and run there with
-``python3 sandbox_runner.py <target> [--llm] [--baseline FILE] [--yara-rules-dir DIR]
-[--transitive-depth N [--transitive-allow PREFIX]... [--transitive-deny PREFIX]...]`` (``--llm``
-adds skillspector's AI review; ``--baseline`` suppresses the findings a baseline accepts;
+``python3 sandbox_runner.py <target> [--llm] [--baseline FILE] [--use-shipped-baseline]
+[--yara-rules-dir DIR] [--transitive-depth N [--transitive-allow PREFIX]... [--transitive-deny PREFIX]...]``
+(``--llm`` adds skillspector's AI review; ``--baseline`` suppresses the findings a baseline accepts;
+``--use-shipped-baseline`` applies the one the skill ships, if any;
 ``--yara-rules-dir`` loads extra YARA rules; ``--transitive-depth`` follows the skill's external
 references and scans them too), so it must stay standalone: the
 standard library and skillspector only, nothing from ``app``. The API's own scans reuse its
@@ -14,7 +15,9 @@ Events, each on its own line after PREFIX:
 - ``{"event": "step", "node": "..."}``: a graph node finished
 - ``{"event": "log", "line": "INFO ..."}``: a skillspector log record
 - ``{"event": "report", "report": {...}}``: the finished report, exit code 0. Its
-  ``generated_baseline`` holds a baseline accepting every active finding, when one could be made.
+  ``generated_baseline`` holds a baseline accepting every active finding, when one could be made;
+  ``applied_baseline`` says which baseline suppressed findings ("uploaded" or "shipped"), and
+  ``shipped_baseline`` whether the skill ships one, applied or not (see shipped_baseline)
   For a repository holding several skills, ``skills`` lists each skill's own report
   (see run_scan)
 - ``{"event": "error", "message": "..."}``: the scan failed, exit code 1
@@ -48,6 +51,11 @@ def emit(event: str, **data: Any) -> None:
 class _EventLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         emit("log", line=self.format(record))
+
+
+# Well under skillspector's own limit (2 MB): an uploaded baseline is stored with the scan, and each
+# accepted finding is a few lines. A shipped one is held to the same.
+MAX_BASELINE_BYTES = 256 * 1024
 
 
 def baseline_state(path: str | None) -> dict[str, Any]:
@@ -146,6 +154,40 @@ def skill_name(folder: Path) -> str:
             if key.strip() == "name" and value.strip():
                 return value.strip().strip("\"'")[:100]
     return folder.name
+
+
+def shipped_baseline(root: Path | None, *, use: bool, on_log: Callable[[str], None]) -> tuple[str | None, dict[str, Any] | None]:
+    """The baseline the skill's author shipped at the top of root (skillspector's
+    discover_baseline), and what the report says about it: (its path when it's to be applied,
+    {"applied": ..., "problem": ...}); (None, None) when there's none.
+
+    It's the author's own say on which findings don't count, so it's applied only when the user
+    opted in (use), and checked like an uploaded one first. Never read when they didn't.
+    """
+    if root is None or not root.is_dir():
+        return None, None
+    from skillspector.suppression import SHIPPED_BASELINE_FILENAME
+
+    candidate = root / SHIPPED_BASELINE_FILENAME
+    # A link could point anywhere on this machine: it's not the skill's own file.
+    if candidate.is_symlink() or not candidate.is_file():
+        return None, None
+    if not use:
+        on_log(f"The skill ships a baseline ({SHIPPED_BASELINE_FILENAME}): not applied")
+        return None, {"applied": False}
+    problem = None
+    if candidate.stat().st_size > MAX_BASELINE_BYTES:
+        problem = f"it's larger than {MAX_BASELINE_BYTES // 1024} KB"
+    else:
+        try:
+            baseline_state(str(candidate))
+        except Exception as exc:  # noqa: BLE001 - the author's file: whatever's wrong with it, it's not applied
+            problem = str(exc).replace(f": {candidate}", "").replace(str(candidate), "the file")
+    if problem:
+        on_log(f"The skill's shipped baseline can't be used: {problem}")
+        return None, {"applied": False, "problem": problem}
+    on_log(f"Applying the baseline the skill ships ({SHIPPED_BASELINE_FILENAME})")
+    return str(candidate), {"applied": True}
 
 
 def combine_reports(skills: list[dict[str, Any]], unscanned: list[dict[str, str]]) -> dict[str, Any]:
@@ -512,6 +554,7 @@ def run_scan(
     *,
     use_llm: bool,
     baseline_path: str | None = None,
+    use_shipped_baseline: bool = False,
     on_step: Callable[[str], None],
     on_log: Callable[[str], None],
     config: dict[str, Any] | None = None,
@@ -526,16 +569,20 @@ def run_scan(
     deadline_seconds, skills are only started while there's time left for them. With transitive
     ({"depth", "allow", "deny"}), each scan also follows the skill's external references; it runs
     through skillspector's CLI, so it makes no baseline (that needs the scanned files' contents).
-    yara_rules_dir adds a directory of YARA rules to skillspector's own. An MCP Registry entry's URL
+    yara_rules_dir adds a directory of YARA rules to skillspector's own. A baseline the skill ships
+    at its top is applied with use_shipped_baseline, unless baseline_path gives one (as
+    skillspector's CLI does); the report says it was found either way. An MCP Registry entry's URL
     is checked by scan_mcp_entry instead, which none of these options apply to.
     """
     if is_mcp_entry(target):
         return scan_mcp_entry(target, on_step=on_step, on_log=on_log)
     from skillspector.graph import graph
 
-    base_state = {"output_format": "json", "use_llm": use_llm, **baseline_state(baseline_path)}
+    base_state: dict[str, Any] = {"output_format": "json", "use_llm": use_llm, **baseline_state(baseline_path)}
     if yara_rules_dir:
         base_state["yara_rules_dir"] = yara_rules_dir
+    applied = "uploaded" if baseline_path else None
+    shipped: dict[str, Any] | None = None
 
     def scan_one(input_path: str, step: Callable[[str], None], extra: dict[str, Any] | None = None) -> dict[str, Any]:
         if transitive:
@@ -576,15 +623,27 @@ def run_scan(
             except Exception:  # noqa: BLE001
                 # The scan itself reports a target it can't fetch, as before.
                 root, skills = None, []
+            # An uploaded baseline wins, as with skillspector's CLI; the shipped one is still noted.
+            shipped_path, shipped = shipped_baseline(root, use=use_shipped_baseline and baseline_path is None, on_log=on_log)
+            if shipped_path is not None:
+                # Read by scan_one when it runs.
+                baseline_path, applied = shipped_path, "shipped"
+                base_state.update(baseline_state(shipped_path))
         if len(skills) < 2:
             # Following references, skillspector's CLI charges the target's own download to the
             # traversal's 10 MB budget, which one repository clone can use up: scan the copy
             # fetched above instead, so the budget goes to what the skill references. A folder
             # fetched here can only be scanned from its copy.
-            return scan_one(str(root) if root is not None and (transitive or copy) else target, on_step)
-        if len(skills) > MAX_SKILLS:
+            report = scan_one(str(root) if root is not None and (transitive or copy) else target, on_step)
+        elif len(skills) > MAX_SKILLS:
             raise RuntimeError(f"This repository holds more than {MAX_SKILLS} skills: scan them one folder at a time")
-        return _scan_each(root, skills, scan_one, on_step, on_log, started, deadline_seconds)
+        else:
+            report = _scan_each(root, skills, scan_one, on_step, on_log, started, deadline_seconds)
+        if applied:
+            report["applied_baseline"] = applied
+        if shipped is not None:
+            report["shipped_baseline"] = shipped
+        return report
     finally:
         if handler is not None:
             handler.cleanup()
@@ -635,6 +694,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("target")
     parser.add_argument("--llm", action="store_true")
     parser.add_argument("--baseline")
+    parser.add_argument("--use-shipped-baseline", action="store_true")
     parser.add_argument("--yara-rules-dir")
     parser.add_argument("--transitive-depth", type=int)
     parser.add_argument("--transitive-allow", action="append", default=[])
@@ -663,6 +723,7 @@ def main(argv: list[str]) -> int:
             target,
             use_llm=use_llm,
             baseline_path=args.baseline,
+            use_shipped_baseline=args.use_shipped_baseline,
             on_step=lambda node: emit("step", node=node),
             on_log=lambda line: emit("log", line=line),
             deadline_seconds=float(deadline) if deadline else None,

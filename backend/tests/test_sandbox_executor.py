@@ -26,7 +26,7 @@ from app.sandbox_executor import (
     executor_kind,
     workflow_deadline,
 )
-from app.sandbox_runner import PREFIX
+from app.sandbox_runner import PREFIX, run_scan, shipped_baseline
 from app.sandbox_snapshot import skillspector_requirement
 from app.scan_logs import MemoryLogStore
 from app.scanner import LLMConfig
@@ -211,6 +211,62 @@ def test_a_baseline_from_a_scan_suppresses_its_findings_on_a_rescan(memory_logs,
     # The same in the API's own process.
     local = scanner._invoke_graph("local", str(skill_dir), False, baseline_path.read_text())
     assert local["issues"] == [] and local["suppressed_count"] == len(first["issues"])
+
+
+def test_a_baseline_the_skill_ships_applies_only_when_opted_in(memory_logs, skill_dir, sandboxes):
+    created, create_sandbox = sandboxes
+    executor = SandboxExecutor(_settings(), create_sandbox=create_sandbox)
+    first = anyio.run(lambda: executor.run("scan1", str(skill_dir), llm=None))
+    (skill_dir / ".skillspector-baseline.yaml").write_text(json.dumps(first["generated_baseline"]))
+
+    ignored = anyio.run(lambda: executor.run("scan2", str(skill_dir), llm=None))
+    applied = anyio.run(lambda: executor.run("scan3", str(skill_dir), llm=None, use_shipped_baseline=True))
+
+    # Off, nothing changes, but the report says it's there.
+    assert _comparable(ignored)["issues"] == _comparable(first)["issues"]
+    assert ignored["shipped_baseline"] == {"applied": False} and "applied_baseline" not in ignored
+    assert applied["issues"] == [] and applied["suppressed_count"] == len(first["issues"])
+    assert applied["shipped_baseline"] == {"applied": True} and applied["applied_baseline"] == "shipped"
+    assert "--use-shipped-baseline" in created[2].commands[0][1]
+    # The same in the API's own process.
+    local = scanner._invoke_graph("local", str(skill_dir), False, use_shipped_baseline=True)
+    assert local["issues"] == [] and local["applied_baseline"] == "shipped"
+
+
+def test_an_uploaded_baseline_wins_over_the_one_the_skill_ships(skill_dir, tmp_path):
+    (skill_dir / ".skillspector-baseline.yaml").write_text('version: 2\nrules:\n  - id: "*"\n    reason: "All fine"\n')
+    uploaded = tmp_path / "mine.yaml"
+    uploaded.write_text("version: 2\n")
+
+    report = run_scan(str(skill_dir), use_llm=False, baseline_path=str(uploaded), use_shipped_baseline=True, on_step=lambda _: None, on_log=lambda _: None)
+
+    assert report["issues"] and report["applied_baseline"] == "uploaded"
+    assert report["shipped_baseline"] == {"applied": False}
+
+
+@pytest.mark.parametrize(
+    ("content", "problem"),
+    [("version: 2\nfingerprints:\n  - hash: nope\n", "fingerprint"), ("x" * (256 * 1024 + 1), "larger than 256 KB")],
+    ids=["invalid", "too-large"],
+)
+def test_a_shipped_baseline_that_cant_be_used_isnt_applied(tmp_path, content, problem):
+    (tmp_path / ".skillspector-baseline.yaml").write_text(content)
+
+    path, note = shipped_baseline(tmp_path, use=True, on_log=lambda _: None)
+
+    assert path is None and note["applied"] is False
+    assert problem in note["problem"] and str(tmp_path) not in note["problem"]
+
+
+def test_a_shipped_baseline_isnt_read_unless_opted_in_nor_through_a_link(tmp_path):
+    outside = tmp_path / "outside.yaml"
+    outside.write_text("version: 2\n")
+    skill = tmp_path / "skill"
+    skill.mkdir()
+
+    assert shipped_baseline(skill, use=True, on_log=lambda _: None) == (None, None)
+    (skill / ".skillspector-baseline.yaml").symlink_to(outside)
+    assert shipped_baseline(skill, use=True, on_log=lambda _: None) == (None, None)
 
 
 def test_references_are_followed_in_the_sandbox_when_asked(memory_logs, skill_dir, sandboxes):
@@ -474,18 +530,18 @@ def test_run_job_uses_the_sandbox_when_configured(temp_db, memory_logs, monkeypa
     calls = []
 
     class Executor:
-        async def run(self, job_id, target, *, llm, baseline=None, transitive_depth=None, upload=None, host_headers=None):
-            calls.append((job_id, target, llm, baseline))
+        async def run(self, job_id, target, *, llm, baseline=None, use_shipped_baseline=False, transitive_depth=None, upload=None, host_headers=None):
+            calls.append((job_id, target, llm, baseline, use_shipped_baseline))
             return {"risk_assessment": {"score": 1}, "issues": []}
 
     monkeypatch.setattr(scanner, "executor_kind", lambda settings: "sandbox")
     monkeypatch.setattr(scanner, "_sandbox_executor", lambda: Executor())
     db.insert_scan(id="a", target="https://github.com/acme/skill", status="pending", created_at=1.0, provider=None)
 
-    job = scanner.Job(id="a", target="https://github.com/acme/skill", llm=None, baseline="version: 2")
+    job = scanner.Job(id="a", target="https://github.com/acme/skill", llm=None, baseline="version: 2", use_shipped_baseline=True)
     anyio.run(scanner.run_job, job)
 
-    assert calls == [("a", "https://github.com/acme/skill", None, "version: 2")]
+    assert calls == [("a", "https://github.com/acme/skill", None, "version: 2", True)]
     assert db.get_scan("a")["status"] == "done"
 
 

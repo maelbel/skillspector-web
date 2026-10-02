@@ -90,6 +90,7 @@ def _job_for(scan: dict) -> Job:
         target=scan["target"],
         llm=_llm_for(scan),
         baseline=scan.get("baseline"),
+        use_shipped_baseline=bool(scan.get("use_shipped_baseline")),
         transitive_depth=scan.get("transitive_depth"),
         upload=scan.get("upload"),
         owner_id=scan.get("owner_id"),

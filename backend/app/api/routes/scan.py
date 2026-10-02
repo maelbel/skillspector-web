@@ -42,7 +42,7 @@ from app.claude_login import is_claude_cli_available
 from app.core.config import get_settings
 from app.core.mode import Mode
 from app.jobs import JobRejectedError, get_runner
-from app.sandbox_runner import baseline_state, is_mcp_entry
+from app.sandbox_runner import MAX_BASELINE_BYTES, baseline_state, is_mcp_entry
 from app.scan_logs import get_logs, get_progress
 from app.scanner import (
     TOTAL_GRAPH_STEPS,
@@ -72,11 +72,6 @@ def _rate_limit_scan(request: Request, viewer: ScanViewer) -> None:
         rate_limit.enforce(f"scan:ip:{address}", settings.scan_ip_rate_limit, window, "Too many scans from this address")
 
 
-# Well under skillspector's own limit (2 MB): the file is stored with the scan, and each accepted
-# finding is a few lines.
-MAX_BASELINE_BYTES = 256 * 1024
-
-
 def check_baseline(text: str) -> None:
     """Refuse a baseline skillspector wouldn't load, with its reason, before the scan is queued."""
     if len(text.encode()) > MAX_BASELINE_BYTES:
@@ -98,6 +93,9 @@ class ScanOptions(BaseModel):
     # A skillspector baseline file's text (YAML or JSON): the findings it accepts are suppressed.
     # Its size is checked by check_baseline, for a readable error.
     baseline: str | None = None
+    # Apply the baseline the skill ships (.skillspector-baseline.yaml at its top), if any. Its author
+    # wrote it, so it's off unless the user opts in.
+    use_shipped_baseline: bool = False
     # Follow the skill's external references this many levels deep (skillspector's --transitive).
     transitive_depth: int | None = Field(default=None, ge=1)
 
@@ -339,12 +337,14 @@ async def _queue_scan(
     file that can't be scanned."""
     limits = quotas.current(viewer.user)
     quotas.ensure_not_paused(limits)
-    if is_mcp_entry(target) and (req.llm or req.baseline is not None or req.transitive_depth):
+    if is_mcp_entry(target) and (req.llm or req.baseline is not None or req.use_shipped_baseline or req.transitive_depth):
         # Its checks read the registry entry alone: there's no code to review, suppress or follow.
         raise HTTPException(
             status_code=422,
             detail="An MCP server scan checks its registry entry only: AI review, baselines and external references don't apply",
         )
+    if req.baseline is not None and req.use_shipped_baseline:
+        raise HTTPException(status_code=422, detail="Use either your baseline file or the one the skill ships, not both")
     if req.baseline is not None:
         check_baseline(req.baseline)
     max_depth = get_settings().transitive_max_depth
@@ -386,6 +386,7 @@ async def _queue_scan(
                 llm,
                 owner_id=viewer.user_id,
                 baseline=req.baseline,
+                use_shipped_baseline=req.use_shipped_baseline,
                 transitive_depth=req.transitive_depth,
                 upload=upload,
                 job_id=job_id,
@@ -622,7 +623,7 @@ def add_to_badge(job_id: str, viewer: CurrentViewer, confirm: Annotated[PrivateC
         raise HTTPException(status_code=409, detail="Share the result first: the badge links to it")
     if uploads.is_upload_target(scan["target"]):
         raise HTTPException(status_code=422, detail="An uploaded file has no link for a badge to name")
-    if scan.get("baseline") is not None:
+    if scan.get("baseline") is not None or ((scan.get("result") or {}).get("applied_baseline")):
         # Its baseline's accepted findings don't count, so the badge would read safer than the skill.
         raise HTTPException(status_code=422, detail="A scan with a baseline can't be on a badge: scan the skill without one")
     _confirmed_if_private(scan, confirm, "shown on a public badge")
@@ -655,7 +656,12 @@ async def rescan_target(job_id: str, viewer: ScanViewer) -> ScanQueuedResponse:
         llm = _Rescans(viewer).llm(scan)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    options = ScanOptions(llm=llm, baseline=scan.get("baseline"), transitive_depth=scan.get("transitive_depth"))
+    options = ScanOptions(
+        llm=llm,
+        baseline=scan.get("baseline"),
+        use_shipped_baseline=bool(scan.get("use_shipped_baseline")),
+        transitive_depth=scan.get("transitive_depth"),
+    )
     return await _queue_scan(scan["target"], options, viewer)
 
 

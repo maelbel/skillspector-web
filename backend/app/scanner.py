@@ -80,6 +80,8 @@ class Job:
     llm: LLMConfig | None
     # A baseline file's text (YAML or JSON): findings it accepts are suppressed.
     baseline: str | None = None
+    # Apply the baseline the skill ships, if any, when there's no baseline above (the user opted in).
+    use_shipped_baseline: bool = False
     # Levels of external references to follow and scan too; None follows none.
     transitive_depth: int | None = None
     # Where an uploaded file is held (app/uploads.py); its name is the target's.
@@ -110,6 +112,7 @@ def create_job(
     *,
     owner_id: str | None = None,
     baseline: str | None = None,
+    use_shipped_baseline: bool = False,
     transitive_depth: int | None = None,
     upload: str | None = None,
     job_id: str | None = None,
@@ -123,6 +126,7 @@ def create_job(
         target=target,
         llm=llm,
         baseline=baseline,
+        use_shipped_baseline=use_shipped_baseline,
         transitive_depth=transitive_depth,
         upload=upload,
         owner_id=owner_id,
@@ -137,6 +141,7 @@ def create_job(
         owner_id=owner_id,
         llm_model=llm.model if llm else None,
         baseline=baseline,
+        use_shipped_baseline=use_shipped_baseline,
         transitive_depth=transitive_depth,
         upload=upload,
         private_source=private_source,
@@ -212,6 +217,7 @@ async def run_job(job: Job) -> None:
                 job.target,
                 llm=job.llm,
                 baseline=job.baseline,
+                use_shipped_baseline=job.use_shipped_baseline,
                 transitive_depth=job.transitive_depth,
                 upload=job.upload,
                 host_headers=repo_connections.firewall_headers(token) if token else None,
@@ -264,7 +270,16 @@ async def _report(job: Job, *, duration: float, sandbox_failed: bool) -> None:
 async def _run_locally(job: Job, path: str) -> dict[str, Any]:
     """Scan path (the target, or a local copy of the upload) in this process."""
     loop = asyncio.get_running_loop()
-    scan = functools.partial(_invoke_graph, job.id, path, job.llm is not None, job.baseline, job.transitive_depth, label=job.target)
+    scan = functools.partial(
+        _invoke_graph,
+        job.id,
+        path,
+        job.llm is not None,
+        job.baseline,
+        job.transitive_depth,
+        label=job.target,
+        use_shipped_baseline=job.use_shipped_baseline,
+    )
     if job.llm is None:
         return await loop.run_in_executor(None, scan)
     async with _llm_lock:
@@ -307,6 +322,7 @@ def _invoke_graph(
     transitive_depth: int | None = None,
     *,
     label: str | None = None,
+    use_shipped_baseline: bool = False,
 ) -> dict[str, Any]:
     """Scan target; label is what the log calls it, when that's not the target (an upload's copy)."""
     scan_logs.start_capture(job_id)
@@ -334,6 +350,7 @@ def _invoke_graph(
                 target,
                 use_llm=use_llm,
                 baseline_path=baseline_file.name if baseline_file else None,
+                use_shipped_baseline=use_shipped_baseline,
                 on_step=step,
                 on_log=lambda line: scan_logs.append(job_id, line),
                 config=config,

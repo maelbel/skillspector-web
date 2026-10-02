@@ -52,11 +52,19 @@ isn't protected:
 - **Status badges show only what an owner put on them.** A badge (`/badge?target=…`) shows the
   verdict and date of the latest scan of a link that its owner shared and then put on the badge, and
   links to that shared result. A private scan, or one only shared by link, never shows; revoking the
-  link takes the scan off. A scan with a baseline can't be put on a badge, since the findings it
-  accepts don't count, nor can an upload. Anyone may put their own genuine scan of a public link on
+  link takes the scan off. A scan with a baseline, uploaded or shipped by the skill, can't be put on
+  a badge, since the findings it accepts don't count, nor can an upload. Anyone may put their own genuine scan of a public link on
   its badge, and the latest one shows. Badges are cached for 5 minutes, so a change can take that
   long to show. They aren't rate limited, so GitHub's image proxy isn't refused: each is one indexed
   lookup, and never starts a scan.
+- **A baseline the skill ships is applied only when asked.** A skill can carry its own
+  `.skillspector-baseline.yaml`, which suppresses findings, and its author wrote it. A scan applies it
+  only when the user turns on "Use the baseline the skill ships" for that scan, and never alongside
+  their own baseline file. It's read from the copy of the skill being scanned (at the same ref, and
+  in the sandbox when hosted, so the API never fetches the target itself), only at the skill's top,
+  never through a symbolic link, and checked like an uploaded one (skillspector must load it, up to
+  256 KB). Otherwise it's left unread, and the result page says it's there but not applied; when it
+  is applied, the page says the findings it suppresses were accepted by the skill's author.
 - **Where scans run.** Self-hosted, targets are fetched and analysed inside the API process. With
   `SCAN_EXECUTOR=sandbox` (the hosted default) each scan runs in its own short-lived Vercel Sandbox
   microVM instead: booted from a snapshot, 2 vCPUs, stopped after `SANDBOX_TIMEOUT_SECONDS`, outbound
