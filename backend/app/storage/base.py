@@ -97,6 +97,21 @@ def list_monitor_events_query(placeholder: str, kinds: tuple[str, ...]) -> tuple
     )
 
 
+INSERT_SCAN_COLUMNS = "id, target, status, created_at, provider, owner_id, llm_model, baseline, transitive_depth, upload"
+
+
+def insert_scan_query(placeholder: str, *, max_active: int | None) -> str:
+    """The scan's INSERT; with max_active, only while its owner has fewer scans in progress, as one
+    statement (SQLite; Postgres takes a lock around a count and the plain INSERT instead)."""
+    values = ", ".join(placeholder for _ in INSERT_SCAN_COLUMNS.split(", "))
+    if max_active is None:
+        return f"INSERT INTO scans ({INSERT_SCAN_COLUMNS}) VALUES ({values})"
+    return (
+        f"INSERT INTO scans ({INSERT_SCAN_COLUMNS}) SELECT {values}"
+        f" WHERE (SELECT COUNT(*) FROM scans WHERE owner_id = {placeholder} AND status IN ('pending', 'running')) < {placeholder}"
+    )
+
+
 class ScanStore(Protocol):
     """Where scans and app settings live. SQLite by default; Postgres when a database URL is set."""
 
@@ -115,7 +130,10 @@ class ScanStore(Protocol):
         baseline: str | None = None,
         transitive_depth: int | None = None,
         upload: str | None = None,
-    ) -> None: ...
+        # With an owner: insert only while they have fewer pending or running scans than this,
+        # checked and inserted as one step. False when they didn't have room.
+        max_active: int | None = None,
+    ) -> bool: ...
 
     def update_scan(
         self,

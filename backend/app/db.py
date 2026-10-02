@@ -47,8 +47,11 @@ def insert_scan(
     baseline: str | None = None,
     transitive_depth: int | None = None,
     upload: str | None = None,
-) -> None:
-    _store_or_raise().insert_scan(
+    max_active: int | None = None,
+) -> bool:
+    """Insert a scan; with max_active and an owner, only while they have fewer than that many
+    pending or running, checked and inserted at once. Whether it was inserted."""
+    return _store_or_raise().insert_scan(
         id=id,
         target=target,
         status=status,
@@ -59,6 +62,7 @@ def insert_scan(
         baseline=baseline,
         transitive_depth=transitive_depth,
         upload=upload,
+        max_active=max_active,
     )
 
 

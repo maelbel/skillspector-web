@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastapi import HTTPException
 
@@ -112,13 +112,22 @@ def ensure_not_paused(limits: ScanLimits) -> None:
         raise HTTPException(status_code=503, detail="New scans are paused on this server — try again later")
 
 
-def enforce(viewer: Viewer, limits: ScanLimits) -> None:
-    """Refuse a scan beyond the viewer's quotas, or count it towards today's."""
+def active_limit(viewer: Viewer, limits: ScanLimits) -> int | None:
+    """How many scans the viewer may have pending or running at once; None for no limit. The scan's
+    insert checks it (db.insert_scan's max_active), so two requests at once can't both take the
+    last slot."""
+    return limits.concurrent if applies_to(viewer) else None
+
+
+def refuse_active(limit: int) -> NoReturn:
+    running = f"{limit} scan{'s' if limit != 1 else ''}"
+    raise HTTPException(status_code=429, detail=f"You already have {running} in progress — wait for one to finish")
+
+
+def count_today(viewer: Viewer, limits: ScanLimits) -> None:
+    """Count a scan towards the viewer's daily quota, or refuse it past the quota."""
     if not applies_to(viewer):
         return
-    if limits.concurrent is not None and db.count_active_scans(owner_id=viewer.user_id) >= limits.concurrent:
-        running = f"{limits.concurrent} scan{'s' if limits.concurrent != 1 else ''}"
-        raise HTTPException(status_code=429, detail=f"You already have {running} in progress — wait for one to finish")
     if limits.daily is not None:
         retry_after = db.rate_limit_hit(
             _daily_key(viewer.user_id), limit=limits.daily, window_seconds=_DAY_SECONDS, now=time.time()
