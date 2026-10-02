@@ -286,6 +286,26 @@ def update_user(actor: dict[str, Any], user_id: str, *, role: Role | None = None
     return db.get_user(user_id)
 
 
+def _quota_text(value: int | None) -> str:
+    return "the server's" if value is None else "no limit" if value == 0 else str(value)
+
+
+def set_user_quotas(actor: dict[str, Any], user_id: str, *, daily: int | None, concurrent: int | None) -> dict[str, Any]:
+    """Give a user their own scan quotas (app/quotas.py): None follows the server's, 0 is no limit."""
+    user = db.get_user(user_id)
+    if user is None:
+        raise AuthError("user not found", 404)
+    changes = [
+        f"{label}: {_quota_text(user.get(column))} → {_quota_text(value)}"
+        for label, column, value in (("per day", "daily_scan_quota", daily), ("at once", "concurrent_scan_quota", concurrent))
+        if user.get(column) != value
+    ]
+    if changes:
+        db.set_user_quotas(user_id, daily_scan_quota=daily, concurrent_scan_quota=concurrent)
+        audit(actor, "user.quotas_changed", user, "; ".join(changes))
+    return db.get_user(user_id)
+
+
 def delete_user(actor: dict[str, Any], user_id: str) -> None:
     user = db.get_user(user_id)
     if user is None:

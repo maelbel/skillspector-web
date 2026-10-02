@@ -5,6 +5,7 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'account.created': { verb: 'created the account of', icon: 'i-lucide-user-plus' },
   'user.role_changed': { verb: 'changed the role of', icon: 'i-lucide-shield-half' },
   'user.suspended': { verb: 'suspended', icon: 'i-lucide-user-x' },
+  'user.quotas_changed': { verb: 'changed the scan quotas of', icon: 'i-lucide-gauge' },
   'user.reactivated': { verb: 'reactivated', icon: 'i-lucide-user-check' },
   'user.deleted': { verb: 'deleted', icon: 'i-lucide-trash-2' },
   'password.reset_link_created': { verb: 'created a password reset link for', icon: 'i-lucide-link' },

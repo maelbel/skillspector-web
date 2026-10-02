@@ -289,3 +289,115 @@ def test_a_rescan_counts_towards_the_quota(client, fake_runner):
 
     assert refused.status_code == 429
     assert len(fake_runner.submitted) == 2
+
+
+# Per-user quotas
+
+
+def _user_id(client, session: str) -> str:
+    return client.get("/auth/session", headers=_bearer(session)).json()["user"]["id"]
+
+
+def _set_quotas(client, admin: str, user_id: str, daily, concurrent):
+    return client.put(
+        f"/admin/users/{user_id}/quotas",
+        json={"daily_scan_quota": daily, "concurrent_scan_quota": concurrent},
+        headers=_bearer(admin),
+    )
+
+
+def test_a_users_own_quota_wins_over_every_other_level(temp_db, settings, monkeypatch):
+    monkeypatch.setattr(settings, "mode", Mode.HOSTED)
+    monkeypatch.setattr(settings, "daily_scan_quota", 3)
+    quotas.save(quotas.ScanLimits(paused=False, daily=4, concurrent=1))
+
+    assert quotas.current({"daily_scan_quota": 50, "concurrent_scan_quota": None}) == quotas.ScanLimits(paused=False, daily=50, concurrent=1)
+    # 0 is no limit, for that user only.
+    assert quotas.current({"daily_scan_quota": 0, "concurrent_scan_quota": 0}) == quotas.ScanLimits(paused=False, daily=None, concurrent=None)
+    assert quotas.current() == quotas.ScanLimits(paused=False, daily=4, concurrent=1)
+
+
+def test_an_override_applies_to_that_user_only_and_at_once(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    bob = _user(client, admin, "bob@example.com")
+    _limits(client, admin, daily_scan_quota=1, concurrent_scan_quota=None)
+
+    saved = _set_quotas(client, admin, _user_id(client, alice), 3, None)
+
+    assert saved.status_code == 200
+    assert saved.json() | {"scans_today": 0} == {
+        "daily_scan_quota": 3,
+        "concurrent_scan_quota": None,
+        "server_daily_scan_quota": 1,
+        "server_concurrent_scan_quota": None,
+        "applies": True,
+        "scans_today": 0,
+        "active_scans": 0,
+    }
+    # Alice's next scans, in the same session.
+    assert [client.post("/scan", json=SCAN, headers=_bearer(alice)).status_code for _ in range(4)] == [200, 200, 200, 429]
+    assert [client.post("/scan", json=SCAN, headers=_bearer(bob)).status_code for _ in range(2)] == [200, 429]
+    assert client.get("/account/usage", headers=_bearer(alice)).json()["daily_scan_quota"] == 3
+    assert client.get("/account/usage", headers=_bearer(bob)).json()["daily_scan_quota"] == 1
+
+
+def test_clearing_an_override_brings_the_user_back_to_the_server(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    alice_id = _user_id(client, alice)
+    _limits(client, admin, daily_scan_quota=5, concurrent_scan_quota=2)
+    _set_quotas(client, admin, alice_id, 0, 0)
+    assert client.get("/account/usage", headers=_bearer(alice)).json()["daily_scan_quota"] is None
+
+    _set_quotas(client, admin, alice_id, None, None)
+
+    usage = client.get("/account/usage", headers=_bearer(alice)).json()
+    assert (usage["daily_scan_quota"], usage["concurrent_scan_quota"]) == (5, 2)
+    detail = client.get(f"/admin/users/{alice_id}", headers=_bearer(admin)).json()["quotas"]
+    assert (detail["daily_scan_quota"], detail["concurrent_scan_quota"]) == (None, None)
+
+
+def test_a_token_counts_against_its_owners_override(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    _limits(client, admin, daily_scan_quota=1, concurrent_scan_quota=None)
+    _set_quotas(client, admin, _user_id(client, alice), 2, None)
+    token = client.post("/account/tokens", json={"name": "CI"}, headers=_bearer(alice)).json()["token"]
+
+    assert [client.post("/scan", json=SCAN, headers=_bearer(token)).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_quota_changes_are_audited_with_what_changed(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    alice_id = _user_id(client, alice)
+
+    _set_quotas(client, admin, alice_id, 50, None)
+    _set_quotas(client, admin, alice_id, 50, None)  # No change: nothing to record.
+    _set_quotas(client, admin, alice_id, None, 0)
+
+    entries = [entry for entry in db.list_audit(20, 0, target_id=alice_id)[0] if entry["action"] == "user.quotas_changed"]
+    assert [entry["detail"] for entry in entries] == [
+        "per day: 50 → the server's; at once: the server's → no limit",
+        "per day: the server's → 50",
+    ]
+
+
+@pytest.mark.parametrize("body", [{"daily_scan_quota": -1}, {"concurrent_scan_quota": "lots"}])
+def test_an_override_must_be_a_count_or_null(client, body):
+    admin = _admin(client)
+    alice = _user(client, admin)
+
+    assert client.put(f"/admin/users/{_user_id(client, alice)}/quotas", json=body, headers=_bearer(admin)).status_code == 422
+
+
+def test_only_admins_set_overrides_and_admins_have_no_quota(client):
+    admin = _admin(client)
+    alice = _user(client, admin)
+    alice_id = _user_id(client, alice)
+
+    assert _set_quotas(client, alice, alice_id, 100, None).status_code == 403
+    assert _set_quotas(client, admin, "nobody", 1, 1).status_code == 404
+    admin_quotas = client.get(f"/admin/users/{_user_id(client, admin)}", headers=_bearer(admin)).json()["quotas"]
+    assert admin_quotas["applies"] is False

@@ -323,7 +323,7 @@ async def _queue_scan(
     """Check a scan may start, and queue it. keep_upload stores an upload for the scan, once
     everything else allows it, and returns where it's held; it raises UploadRejectedError for a
     file that can't be scanned."""
-    limits = quotas.current()
+    limits = quotas.current(viewer.user)
     quotas.ensure_not_paused(limits)
     if is_mcp_entry(target) and (req.llm or req.baseline is not None or req.transitive_depth):
         # Its checks read the registry entry alone: there's no code to review, suppress or follow.

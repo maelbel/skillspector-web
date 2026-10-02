@@ -36,6 +36,7 @@ The service is meant to sit on an internal network behind the web app's Nitro pr
 | `POST` | `/admin/users/{id}/reset-email` | admin | Email the user a reset link; `409` without SMTP. |
 | `POST` | `/admin/users/{id}/reset` | admin | Issue a one-time password reset link, valid 24 hours: `{ path, expires_at }`. Cancels earlier links. |
 | `GET` | `/admin/users/{id}/tokens` | admin | A user's API tokens, as they see them. |
+| `PUT` | `/admin/users/{id}/quotas` | admin | Give a user their own scan quotas, `{ daily_scan_quota, concurrent_scan_quota }`: a number, `0` for no limit, or `null` to follow the server's. Audited. `GET /admin/users/{id}` has them under `quotas`, with the server's and today's use. |
 | `DELETE` | `/admin/users/{id}/tokens/{token_id}` | admin | Revoke a user's API token. |
 | `DELETE` | `/admin/users/{id}` | admin | Remove a user and end their sessions; their scans stay. Not yourself, not the last admin. |
 | `POST` | `/scan` | token · rate-limited | Queue a scan of a `target`, or of an `upload` already in the Blob store (hosted). Returns `{ id, status }`. |
@@ -216,9 +217,12 @@ The recommendation is `SAFE`, `CAUTION` or `DO_NOT_INSTALL`, so a CI job can fai
     survives restarts and deleting a scan doesn't give it back. The in-progress limit counts the
     user's pending and running scans. It isn't locked, so two requests sent at the same instant can
     both pass it; the per-minute rate limit bounds that.
-  - Limits come from `app_settings` once an admin saves them (`PUT /settings`), otherwise from
-    `DAILY_SCAN_QUOTA` and `CONCURRENT_SCAN_QUOTA`, otherwise from the mode. `GET /account/usage`
-    reports them to the user with their counts.
+  - Each limit is, in order: the user's own (`users.daily_scan_quota`, `concurrent_scan_quota`,
+    set with `PUT /admin/users/{id}/quotas`), the server's in `app_settings` once an admin saves
+    them (`PUT /settings`), `DAILY_SCAN_QUOTA` and `CONCURRENT_SCAN_QUOTA`, then the mode's
+    default. `0` is no limit; a user's `null` follows the server. An override applies from the
+    user's next request: their row is read with their session or token. `GET /account/usage`
+    reports the user's own effective limits with their counts.
 - **Retention.** The sweep deletes finished scans older than the configured number of days, with
   their log lines and held keys; scans still in progress are never swept. Changing the retention
   sweeps straight away.

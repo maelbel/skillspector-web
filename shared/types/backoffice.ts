@@ -29,6 +29,20 @@ export interface UserDetail {
   }[]
   activity: ActivityEntry[]
   ai_usage: AIUsage
+  quotas: UserQuotas
+}
+
+// A user's scan quotas (backend/app/quotas.py): their own (null follows the server's, 0 is no
+// limit), the server's as it applies now (null: no limit), and today's use.
+export interface UserQuotas {
+  daily_scan_quota: number | null
+  concurrent_scan_quota: number | null
+  server_daily_scan_quota: number | null
+  server_concurrent_scan_quota: number | null
+  // False for an admin: quotas don't apply to them.
+  applies: boolean
+  scans_today: number
+  active_scans: number
 }
 
 export interface Overview {

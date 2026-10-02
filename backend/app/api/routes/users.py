@@ -1,9 +1,9 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app import auth, db
+from app import auth, db, quotas
 from app.api.routes.account import AIUsage, ApiToken, ai_usage
 from app.api.routes.auth import UserResponse
 from app.auth import api_tokens
@@ -45,11 +45,33 @@ class ActivityEntry(BaseModel):
     detail: str | None
 
 
+class UserQuotas(BaseModel):
+    """A user's scan quotas: their own, the server's they'd follow without, and today's use."""
+
+    # Their own: None follows the server's, 0 is no limit.
+    daily_scan_quota: int | None
+    concurrent_scan_quota: int | None
+    # The server's, as it applies now (None: no limit).
+    server_daily_scan_quota: int | None
+    server_concurrent_scan_quota: int | None
+    # False for an admin: quotas don't apply to them.
+    applies: bool
+    scans_today: int
+    active_scans: int
+
+
 class UserDetail(BaseModel):
     user: DirectoryUser
     recent_scans: list[RecentScan]
     activity: list[ActivityEntry]
     ai_usage: AIUsage
+    quotas: UserQuotas
+
+
+class SetQuotasRequest(BaseModel):
+    # None follows the server's, 0 is no limit.
+    daily_scan_quota: int | None = Field(default=None, ge=0, le=100_000)
+    concurrent_scan_quota: int | None = Field(default=None, ge=0, le=1_000)
 
 
 class CreateUserRequest(BaseModel):
@@ -67,6 +89,19 @@ class ResetLinkResponse(BaseModel):
     # Relative to the web app, e.g. /reset-password?token=…; the web proxy makes it absolute.
     path: str
     expires_at: float
+
+
+def _quotas(user: dict) -> UserQuotas:
+    server = quotas.current()
+    return UserQuotas(
+        daily_scan_quota=user.get("daily_scan_quota"),
+        concurrent_scan_quota=user.get("concurrent_scan_quota"),
+        server_daily_scan_quota=server.daily,
+        server_concurrent_scan_quota=server.concurrent,
+        applies=user["role"] != "admin",
+        scans_today=quotas.scans_today(user["id"]),
+        active_scans=db.count_active_scans(owner_id=user["id"]),
+    )
 
 
 def _user_or_404(user_id: str) -> dict:
@@ -92,6 +127,7 @@ def read_user(user_id: str, viewer: AdminViewer) -> UserDetail:
         recent_scans=[RecentScan(**scan) for scan in scans],
         activity=[ActivityEntry(**entry) for entry in activity],
         ai_usage=ai_usage(user_id),
+        quotas=_quotas(db.get_user(user_id)),
     )
 
 
@@ -108,6 +144,16 @@ def update_user(user_id: str, req: UpdateUserRequest, viewer: AdminViewer) -> Us
     """Change a user's role, or suspend (signed out, can't sign in) or reactivate them."""
     try:
         return UserResponse(**auth.public_user(auth.update_user(viewer.user, user_id, role=req.role, status=req.status)))
+    except auth.AuthError as exc:
+        raise _raise(exc) from exc
+
+
+@router.put("/{user_id}/quotas", response_model=UserQuotas, dependencies=[Depends(_require_accounts)])
+def set_user_quotas(user_id: str, req: SetQuotasRequest, viewer: AdminViewer) -> UserQuotas:
+    """Give the user their own scan quotas, or (null) bring them back to the server's. Applies from
+    their next scan."""
+    try:
+        return _quotas(auth.set_user_quotas(viewer.user, user_id, daily=req.daily_scan_quota, concurrent=req.concurrent_scan_quota))
     except auth.AuthError as exc:
         raise _raise(exc) from exc
 

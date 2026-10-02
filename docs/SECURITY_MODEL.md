@@ -80,7 +80,9 @@ isn't protected:
   signed in from it; sign-in, sign-up and password reset attempts per client IP. A refused request
   gets a `429` saying when to try again.
   - **Quotas** (on by default when hosted) cap each user's scans per 24 hours and in progress at
-    once, and users see their usage on the Account page. Admins have no quota.
+    once, and users see their usage on the Account page. Admins have no quota. An admin can give
+    one user their own quotas, more or fewer, from that user's page; the change is in the activity
+    log.
   - **Pausing:** an admin can pause new scans for everyone from the backoffice (Settings → Scans),
     without a redeploy. New scans then get a `503`, and scans already running finish.
   - AI review always runs on the user's own Claude key when hosted, so its cost stays theirs.
