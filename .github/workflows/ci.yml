@@ -34,7 +34,9 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
       - run: uv run ruff check .
-      - run: uv run pytest
+      # In a random order, so no test leans on another having run first; the seed is in the log
+      # (`--random-order-seed=<seed>` replays it).
+      - run: uv run pytest --random-order
       - run: uv run python -c "from app.main import app"
 
   frontend:

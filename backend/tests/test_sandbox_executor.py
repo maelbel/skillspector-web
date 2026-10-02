@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -114,9 +115,18 @@ class FakeSandbox:
         # Files uploaded to the sandbox live in root locally.
         local_args = [str(_local_path(self.root, arg)) if Path(arg).is_relative_to(SANDBOX_HOME) else arg for arg in args]
         process = await asyncio.create_subprocess_exec(
-            sys.executable, *local_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            sys.executable,
+            *local_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            env=self._env(),
         )
         return _Process(process)
+
+    def _env(self) -> dict[str, str]:
+        """What a fresh VM's process sees: the environment the executor gave the sandbox, and none of
+        this test process's (no key another test, or importing app.main, happened to set)."""
+        return {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(self.root), **self.options.get("env", {})}
 
 
 @pytest.fixture
