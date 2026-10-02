@@ -265,6 +265,50 @@ def private_for(user_id: str | None, target: str) -> bool:
     raise NoAccessError("GitHub didn't answer about this repository: try again in a moment")
 
 
+# Picking a repository to scan.
+
+_PAGE_SIZE = 100
+# Listing stops here, so a user in large organizations still gets an answer quickly; they can still
+# paste any other link.
+MAX_LISTED_REPOSITORIES = 1000
+
+
+def _get(client: httpx.Client, path: str, token: str, page: int) -> dict[str, Any]:
+    response = client.get(f"{_API}{path}", params={"per_page": _PAGE_SIZE, "page": page}, headers=_api_headers(token))
+    if response.status_code == 401:
+        raise NoAccessError("GitHub refused your connection: connect GitHub again on your account page")
+    if response.status_code != 200:
+        raise NoAccessError("GitHub didn't answer: try again in a moment")
+    return response.json()
+
+
+def repositories(user_id: str) -> tuple[list[dict[str, Any]], bool]:
+    """The repositories the user's connection reads, most recently pushed first: those of every
+    installation of the app they can see, which GitHub limits to what both they and it can read.
+    With whether the list stopped at MAX_LISTED_REPOSITORIES."""
+    token = token_for(user_id)
+    if token is None:
+        raise NoAccessError("Connect GitHub on your account page to pick one of your repositories")
+    found: dict[str, dict[str, Any]] = {}
+    with _http() as client:
+        installations = _get(client, "/user/installations", token, 1).get("installations", [])
+        for installation in installations:
+            page = 1
+            # One past the cap tells that there were more.
+            while len(found) <= MAX_LISTED_REPOSITORIES:
+                listed = _get(client, f"/user/installations/{installation['id']}/repositories", token, page)
+                for repo in listed.get("repositories", []):
+                    found.setdefault(repo["full_name"], repo)
+                if page * _PAGE_SIZE >= listed.get("total_count", 0):
+                    break
+                page += 1
+    ordered = sorted(found.values(), key=lambda repo: repo.get("pushed_at") or "", reverse=True)
+    return [
+        {"full_name": repo["full_name"], "url": repo["html_url"], "private": bool(repo.get("private")), "description": repo.get("description")}
+        for repo in ordered[:MAX_LISTED_REPOSITORIES]
+    ], len(found) > MAX_LISTED_REPOSITORIES
+
+
 def require_token(user_id: str | None) -> str:
     """The token a private-source scan runs with: its owner's, now."""
     token = token_for(user_id)

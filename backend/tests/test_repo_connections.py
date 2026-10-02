@@ -39,6 +39,7 @@ class FakeGitHub:
         self.users = {"code-alice": ("alice-gh", TOKEN), "code-bob": ("bob-gh", "ghu_bobstoken")}
         self.readable = {TOKEN: {"acme/secret-skills", "acme/open-skills"}, "ghu_bobstoken": {"acme/open-skills"}}
         self.private = {"acme/secret-skills"}
+        self.pushed_at = {"acme/secret-skills": "2026-09-30T10:00:00Z", "acme/open-skills": "2026-06-01T10:00:00Z"}
         self.expires_in = 28800
         self.refresh_ok = True
         self.revoked: list[str] = []
@@ -66,6 +67,16 @@ class FakeGitHub:
             if repository not in self.readable.get(token, set()):
                 return httpx.Response(404, json={"message": "Not Found"})
             return httpx.Response(200, json={"full_name": repository, "private": repository in self.private})
+        if path == "/user/installations":
+            return httpx.Response(200, json={"total_count": 1, "installations": [{"id": 7}]} if self.readable.get(token) else {"total_count": 0, "installations": []})
+        if path == "/user/installations/7/repositories":
+            page, per_page = int(request.url.params["page"]), int(request.url.params["per_page"])
+            readable = sorted(self.readable.get(token, set()))
+            repositories = [
+                {"full_name": name, "html_url": f"https://github.com/{name}", "private": name in self.private, "description": None, "pushed_at": self.pushed_at.get(name)}
+                for name in readable[(page - 1) * per_page : page * per_page]
+            ]
+            return httpx.Response(200, json={"total_count": len(readable), "repositories": repositories})
         if path.endswith("/grant") and request.method == "DELETE":
             self.revoked.append(json.loads(request.content)["access_token"])
             return httpx.Response(204)
@@ -213,6 +224,54 @@ def test_an_api_token_cant_manage_connections(client):
     token = client.post("/account/tokens", json={"name": "CI"}, headers=_bearer(alice)).json()["token"]
 
     assert client.get("/account/connections/github/start", headers=_bearer(token)).status_code == 403
+
+
+# Picking a repository
+
+
+def test_the_picker_lists_what_the_connection_reads_most_recent_first(client, github):
+    _, alice, bob = _accounts(client)
+    _connect(client, alice)
+    _connect(client, bob, "code-bob")
+
+    listed = client.get("/account/connections/github/repositories", headers=_bearer(alice)).json()
+
+    assert listed == {
+        "repositories": [
+            {"full_name": "acme/secret-skills", "url": PRIVATE, "private": True, "description": None},
+            {"full_name": "acme/open-skills", "url": PUBLIC, "private": False, "description": None},
+        ],
+        "truncated": False,
+    }
+    bobs = client.get("/account/connections/github/repositories", headers=_bearer(bob)).json()["repositories"]
+    assert [repo["full_name"] for repo in bobs] == ["acme/open-skills"]
+
+
+def test_the_picker_pages_through_and_stops_at_the_cap(client, github, monkeypatch):
+    _, alice, _ = _accounts(client)
+    _connect(client, alice)
+    github.readable[TOKEN] = {f"acme/skill-{n:03}" for n in range(250)}
+    monkeypatch.setattr(repo_connections, "MAX_LISTED_REPOSITORIES", 150)
+
+    listed = client.get("/account/connections/github/repositories", headers=_bearer(alice)).json()
+
+    assert len(listed["repositories"]) == 150 and listed["truncated"] is True
+    pages = [request.url.params["page"] for request in github.requests if request.url.path == "/user/installations/7/repositories"]
+    assert pages == ["1", "2"]
+
+    monkeypatch.setattr(repo_connections, "MAX_LISTED_REPOSITORIES", 250)
+    listed = client.get("/account/connections/github/repositories", headers=_bearer(alice)).json()
+    assert len(listed["repositories"]) == 250 and listed["truncated"] is False
+
+
+def test_the_picker_needs_a_connection(client):
+    _, alice, _ = _accounts(client)
+    token = client.post("/account/tokens", json={"name": "CI"}, headers=_bearer(alice)).json()["token"]
+
+    response = client.get("/account/connections/github/repositories", headers=_bearer(alice))
+
+    assert response.status_code == 409 and "Connect GitHub" in response.json()["detail"]
+    assert client.get("/account/connections/github/repositories", headers=_bearer(token)).status_code == 403
 
 
 # Scanning

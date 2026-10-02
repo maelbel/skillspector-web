@@ -94,6 +94,8 @@ tokens are stored encrypted with it) and `PUBLIC_URL`, plus a GitHub App of your
 
 A user then connects GitHub, and chooses on GitHub which repositories the app may read (**Choose
 repositories**, which installs it). A scan reads only what both they and the app's installation can.
+On the scan form, choosing **GitHub** as the source lists those, most recently pushed first, to
+pick one instead of pasting its link.
 GitLab, Bitbucket and Hugging Face follow later, the same way.
 
 ## AI analysis

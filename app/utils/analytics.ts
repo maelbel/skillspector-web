@@ -23,6 +23,6 @@ export function anonymousUrl(url: string, patternOf: (path: string) => string): 
 // The events tracked, with what each may carry: never a target, an email or an id.
 export interface AnalyticsEvents {
   'Sign Up': undefined
-  'Scan Started': { source: 'link' | 'upload' | 'mcp', ai_review: boolean }
+  'Scan Started': { source: 'link' | 'github' | 'upload' | 'mcp', ai_review: boolean }
   'Scan Viewed': { status: 'done' | 'error', verdict: string | null }
 }

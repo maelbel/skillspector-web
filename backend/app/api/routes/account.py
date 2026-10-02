@@ -210,6 +210,29 @@ def complete_github_connection(req: CompleteConnectionRequest, viewer: CurrentVi
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class GitHubRepository(BaseModel):
+    full_name: str
+    url: str
+    private: bool
+    description: str | None
+
+
+class RepositoriesResponse(BaseModel):
+    repositories: list[GitHubRepository]
+    # True when there were more than the list holds (repo_connections.MAX_LISTED_REPOSITORIES).
+    truncated: bool
+
+
+@router.get("/connections/github/repositories", response_model=RepositoriesResponse)
+def list_github_repositories(viewer: CurrentViewer) -> RepositoriesResponse:
+    """The repositories the user's connection reads, to pick one to scan."""
+    try:
+        found, truncated = repo_connections.repositories(_connecting_user(viewer)["id"])
+    except repo_connections.NoAccessError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return RepositoriesResponse(repositories=[GitHubRepository(**repo) for repo in found], truncated=truncated)
+
+
 @router.delete("/connections/github", status_code=204)
 def disconnect_github(viewer: CurrentViewer) -> None:
     """Delete the GitHub tokens: private repositories can't be scanned until connecting again."""

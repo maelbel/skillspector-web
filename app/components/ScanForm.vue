@@ -45,7 +45,7 @@ const PROVIDER_ICONS: Record<LLMProvider, string> = {
   claude_cli: 'i-lucide-terminal'
 }
 
-const { session } = useAuth()
+const { session, user } = useAuth()
 // A hosted server offers Claude only: no shared login, no other providers.
 const hosted = computed(() => health.value?.mode === 'hosted')
 
@@ -74,14 +74,27 @@ const route = useRoute()
 const queryTarget = typeof route.query.target === 'string' ? route.query.target : ''
 const target = ref(queryTarget)
 const targetInput = useTemplateRef('targetInput')
+const repoSelect = useTemplateRef('repoSelect')
 const targetTouched = ref(!!queryTarget)
 const targetInfo = computed(() => describeScanTarget(target.value))
 const targetProblem = computed(() =>
   targetTouched.value && targetInfo.value && !targetInfo.value.ok ? targetInfo.value.problem : undefined
 )
+
+// Where the skill comes from, chosen on the left of the field. Typing or dropping something that
+// belongs to another source switches to it, so pasting never needs choosing first.
+type Source = 'link' | 'github' | 'upload' | 'mcp'
+const kindOf = (value: string) => {
+  const info = describeScanTarget(value)
+  return info?.ok ? info.kind : undefined
+}
+const source = ref<Source>(kindOf(queryTarget) === 'mcp' ? 'mcp' : 'link')
+watch(targetInfo, (info) => {
+  if (info?.ok && (source.value === 'link' || source.value === 'mcp')) source.value = info.kind === 'mcp' ? 'mcp' : 'link'
+})
 // An MCP server is checked from its registry entry alone: the depth and the options, which are
 // about a skill's code, don't apply to it.
-const isMcpServer = computed(() => !file.value && targetInfo.value?.ok === true && targetInfo.value.kind === 'mcp')
+const isMcpServer = computed(() => source.value === 'mcp')
 
 // A skill uploaded from this computer instead of a link: a .zip, or a SKILL.md on its own. Offered
 // when the server takes uploads, which it holds only until the scan ends (backend/app/uploads.py).
@@ -90,7 +103,6 @@ const file = ref<File | null>(null)
 const fileError = ref('')
 const fileInput = ref<HTMLInputElement>()
 const dragging = ref(false)
-const uploadHint = computed(() => `Upload a .zip or SKILL.md, up to ${formatBytes(health.value?.max_upload_bytes ?? 0)}`)
 
 function pickFile(picked: File | null | undefined) {
   fileError.value = ''
@@ -103,6 +115,7 @@ function pickFile(picked: File | null | undefined) {
   } else {
     file.value = picked
   }
+  source.value = 'upload'
 }
 
 function onFileInput(event: Event) {
@@ -120,7 +133,6 @@ function onDrop(event: DragEvent) {
 function clearFile() {
   file.value = null
   fileError.value = ''
-  nextTick(() => targetInput.value?.inputRef?.focus())
 }
 
 // Point at an existing result before starting a duplicate scan of the same URL.
@@ -131,7 +143,7 @@ const normalizeTarget = (value: string) => {
   return server ? mcpEntryUrl(server) : value.trim().replace(/\/+$/, '')
 }
 const previousScan = computed(() => {
-  if (file.value || !targetInfo.value?.ok) return undefined
+  if (source.value === 'upload' || !targetInfo.value?.ok) return undefined
   const wanted = normalizeTarget(target.value)
   return recentScans.value?.items.find(scan => scan.status !== 'error' && normalizeTarget(scan.target) === wanted)
 })
@@ -143,15 +155,81 @@ const EXAMPLES = [
   { label: 'A poisoned MCP tool', icon: 'i-lucide-skull', target: 'https://github.com/NVIDIA/skillspector/blob/main/tests/fixtures/mcp_poisoned_tool/SKILL.md' },
   { label: 'GitHub’s MCP server', icon: 'i-lucide-server', target: 'io.github.github/github-mcp-server' }
 ]
-const exampleItems = EXAMPLES.map(example => ({ label: example.label, icon: example.icon, onSelect: () => useExample(example) }))
 
-function useExample(example: typeof EXAMPLES[number]) {
-  file.value = null
+// Signed in with GitHub connected, one of their repositories can be picked instead of pasted
+// (GitHubRepoSelect): its link is the target.
+const { data: connections, execute: loadConnections } = useFetch<{ github: { available: boolean, manage_url: string | null, connection: object | null } }>(
+  '/api/account/connections',
+  { key: 'account-connections', immediate: false, server: false }
+)
+watch(user, (signedIn) => {
+  if (signedIn) loadConnections()
+}, { immediate: true })
+const github = computed(() => user.value && connections.value?.github.available ? connections.value.github : null)
+
+const SOURCES: Record<Source, { label: string, icon: string }> = {
+  link: { label: 'Link', icon: 'i-lucide-link' },
+  github: { label: 'GitHub', icon: 'i-simple-icons-github' },
+  upload: { label: 'Upload', icon: 'i-lucide-upload' },
+  mcp: { label: 'MCP server', icon: 'i-lucide-server' }
+}
+const sources = computed(() => (['link', 'github', 'upload', 'mcp'] as Source[]).filter(name =>
+  name === 'github' ? !!github.value?.connection : name === 'upload' ? !!uploadStore.value : true
+))
+// A source that went away (GitHub disconnected, uploads turned off) falls back to a link.
+watch(sources, (available) => {
+  if (!available.includes(source.value)) selectSource('link')
+})
+
+const sourceItems = computed(() => [
+  [
+    { type: 'label' as const, label: 'Scan from' },
+    ...sources.value.map(name => ({
+      type: 'checkbox' as const,
+      label: SOURCES[name].label,
+      icon: SOURCES[name].icon,
+      checked: source.value === name,
+      onSelect: () => selectSource(name)
+    })),
+    ...(github.value && !github.value.connection
+      ? [{ label: 'Connect GitHub…', icon: SOURCES.github.icon, to: '/account' }]
+      : [])
+  ],
+  [
+    { type: 'label' as const, label: 'Try an example' },
+    ...EXAMPLES.map(example => ({ label: example.label, icon: example.icon, onSelect: () => fillTarget(example.target) }))
+  ]
+])
+
+function focusField() {
+  nextTick(() => {
+    if (source.value === 'github') repoSelect.value?.focus()
+    else targetInput.value?.inputRef?.focus()
+  })
+}
+
+function selectSource(next: Source) {
+  if (next === source.value) return
+  // What's in the field stays only when it's also a target of the new source.
+  const kind = kindOf(target.value)
+  const fits = next === 'mcp' ? kind === 'mcp' : next === 'link' ? !!kind && kind !== 'mcp' : false
+  if (!fits) target.value = ''
+  targetTouched.value = false
   fileError.value = ''
-  target.value = example.target
+  source.value = next
+  if (next === 'upload') {
+    if (!file.value) fileInput.value?.click()
+  } else {
+    focusField()
+  }
+}
+
+function fillTarget(value: string) {
+  source.value = kindOf(value) === 'mcp' ? 'mcp' : 'link'
+  target.value = value
   targetTouched.value = true
-  // The clicked chip disappears once the field is filled; keep focus in the form so Enter scans.
-  targetInput.value?.inputRef?.focus()
+  // Keep focus in the form so Enter scans.
+  focusField()
 }
 
 const TARGET_KIND_LABELS: Record<ScanTargetKind, { icon: string, label: string }> = {
@@ -174,6 +252,7 @@ const errorMessage = ref('')
 // Remembered per browser so repeat visitors don't re-pick their setup. The API key never is.
 const PREFS_KEY = 'skillspector:scan-prefs'
 interface ScanPrefs {
+  source?: Source
   useLlm?: boolean
   provider?: LLMProvider
   baseUrl?: string
@@ -191,6 +270,14 @@ onMounted(() => {
   } catch {
     // Unreadable or unavailable storage: start from the defaults.
   }
+  // The last source, once it's known to be offered (GitHub's is fetched), unless a link was given.
+  if (prefs.source && !queryTarget) {
+    const stop = watch(sources, (available) => {
+      if (!available.includes(prefs.source!)) return
+      if (source.value === 'link' && !target.value) source.value = prefs.source!
+      nextTick(() => stop())
+    }, { immediate: true })
+  }
   if (route.query.deep === '1') useLlm.value = true
   else if (typeof prefs.useLlm === 'boolean') useLlm.value = prefs.useLlm
   if (prefs.provider && prefs.provider in PROVIDER_LABELS) {
@@ -204,6 +291,7 @@ onMounted(() => {
 
 function savePrefs() {
   const prefs: ScanPrefs = {
+    source: source.value,
     useLlm: useLlm.value,
     provider: provider.value,
     baseUrl: baseUrl.value.trim() || undefined,
@@ -248,7 +336,7 @@ const claudeCliUnauthenticated = computed(() =>
 const backendDown = computed(() => health.value?.status === 'down')
 const canSubmit = computed(() => {
   if (backendDown.value) return false
-  if (!file.value && !targetInfo.value?.ok) return false
+  if (source.value === 'upload' ? !file.value : !targetInfo.value?.ok) return false
   if (isMcpServer.value) return true
   if (useLlm.value && needsApiKey.value && !apiKey.value.trim()) return false
   if (useLlm.value && needsEndpoint.value && !baseUrl.value.trim()) return false
@@ -370,11 +458,11 @@ async function submit() {
   }
 
   try {
-    const { id } = file.value
+    const { id } = source.value === 'upload' && file.value
       ? await submitUpload(file.value, options)
       : await $fetch<{ id: string }>('/api/scan', { method: 'POST', body: { target: target.value.trim(), ...options } })
     savePrefs()
-    track('Scan Started', { source: file.value ? 'upload' : isMcpServer.value ? 'mcp' : 'link', ai_review: !!llm })
+    track('Scan Started', { source: source.value, ai_review: !!llm })
     await navigateTo(`/scan/${id}`)
   } catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Failed to start scan')
@@ -420,69 +508,95 @@ async function submit() {
 
     <UFormField
       label="Skill or MCP server"
-      :error="fileError || (file ? undefined : targetProblem)"
+      :error="fileError || (source === 'upload' ? undefined : targetProblem)"
       :ui="{ label: 'sr-only' }"
     >
       <div class="flex gap-2 rounded-xs bg-muted p-1.5 ring-1 ring-default transition-shadow focus-within:ring-2 focus-within:ring-brand max-sm:flex-col">
-        <div
-          v-if="file"
-          class="flex h-12 min-w-0 flex-1 items-center gap-2 px-3"
-        >
-          <UIcon
-            :name="file.name.toLowerCase().endsWith('.zip') ? 'i-lucide-file-archive' : 'i-lucide-file-text'"
-            class="size-5 shrink-0 text-dimmed"
-          />
-          <span class="truncate font-mono text-sm text-highlighted">{{ file.name }}</span>
-          <span class="shrink-0 text-xs text-muted">{{ formatBytes(file.size) }}</span>
-          <UButton
-            icon="i-lucide-x"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            class="ml-auto"
-            aria-label="Remove the file, to scan a link instead"
-            :disabled="submitting"
-            @click="clearFile"
-          />
-        </div>
-        <UInput
-          v-else
-          id="scan-target"
-          ref="targetInput"
-          v-model="target"
-          type="text"
-          inputmode="url"
-          autocapitalize="off"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Link or MCP server name"
-          icon="i-lucide-link"
-          size="xl"
-          class="min-w-0 flex-1"
-          variant="none"
-          :ui="{ base: 'h-12 font-mono text-sm', leadingIcon: 'text-dimmed', trailing: 'pe-1' }"
-          :disabled="submitting"
-          @blur="targetTouched = true"
-        >
-          <template
-            v-if="uploadStore"
-            #trailing
+        <div class="flex min-w-0 flex-1 items-center">
+          <UDropdownMenu
+            :items="sourceItems"
+            :content="{ align: 'start' }"
+            :ui="{ content: 'w-56' }"
           >
-            <UTooltip
-              :text="uploadHint"
-              :content="{ side: 'top' }"
+            <UButton
+              :icon="SOURCES[source].icon"
+              trailing-icon="i-lucide-chevron-down"
+              color="neutral"
+              variant="ghost"
+              size="xl"
+              class="h-12 shrink-0 font-medium"
+              :aria-label="`Scan from: ${SOURCES[source].label}`"
+              :disabled="submitting"
             >
+              <span class="max-sm:sr-only">{{ SOURCES[source].label }}</span>
+            </UButton>
+          </UDropdownMenu>
+          <USeparator
+            orientation="vertical"
+            class="h-6 shrink-0"
+          />
+
+          <template v-if="source === 'upload'">
+            <div
+              v-if="file"
+              class="flex h-12 min-w-0 flex-1 items-center gap-2 px-3"
+            >
+              <UIcon
+                :name="file.name.toLowerCase().endsWith('.zip') ? 'i-lucide-file-archive' : 'i-lucide-file-text'"
+                class="size-5 shrink-0 text-dimmed"
+              />
+              <span class="truncate font-mono text-sm text-highlighted">{{ file.name }}</span>
+              <span class="shrink-0 text-xs text-muted">{{ formatBytes(file.size) }}</span>
               <UButton
-                icon="i-lucide-upload"
+                icon="i-lucide-x"
                 color="neutral"
                 variant="ghost"
-                :aria-label="uploadHint"
+                size="sm"
+                class="ml-auto"
+                aria-label="Remove the file"
                 :disabled="submitting"
-                @click="fileInput?.click()"
+                @click="clearFile"
               />
-            </UTooltip>
+            </div>
+            <UButton
+              v-else
+              color="neutral"
+              variant="ghost"
+              size="xl"
+              class="h-12 min-w-0 flex-1 text-sm font-normal text-muted"
+              :disabled="submitting"
+              @click="fileInput?.click()"
+            >
+              <span class="truncate">Choose or drop a .zip or SKILL.md, up to {{ formatBytes(health?.max_upload_bytes ?? 0) }}</span>
+            </UButton>
           </template>
-        </UInput>
+          <GitHubRepoSelect
+            v-else-if="source === 'github'"
+            ref="repoSelect"
+            v-model="target"
+            :manage-url="github?.manage_url ?? null"
+            :disabled="submitting"
+            class="min-w-0 flex-1"
+          />
+          <UInput
+            v-else
+            id="scan-target"
+            ref="targetInput"
+            v-model="target"
+            type="text"
+            :inputmode="source === 'mcp' ? 'text' : 'url'"
+            autocapitalize="off"
+            autocomplete="off"
+            spellcheck="false"
+            :placeholder="source === 'mcp' ? 'io.github.acme/weather' : 'Paste a link, or pick an example from the menu'"
+            size="xl"
+            class="min-w-0 flex-1"
+            variant="none"
+            :ui="{ base: 'h-12 font-mono text-sm' }"
+            :disabled="submitting"
+            @blur="targetTouched = true"
+          />
+        </div>
         <UButton
           type="submit"
           color="primary"
@@ -492,11 +606,11 @@ async function submit() {
           :loading="submitting"
           :disabled="!canSubmit"
         >
-          {{ isMcpServer ? 'Scan server' : 'Scan skill' }}
+          Scan
         </UButton>
       </div>
       <template #help>
-        <span v-if="file">
+        <span v-if="source === 'upload'">
           Uploaded for this scan only, and deleted once it’s scanned.
         </span>
         <span
@@ -537,11 +651,11 @@ async function submit() {
       </template>
     </UAlert>
 
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <div
-        v-if="!isMcpServer"
-        class="flex items-center gap-1.5"
-      >
+    <div
+      v-if="!isMcpServer"
+      class="flex flex-wrap items-center gap-x-6 gap-y-3"
+    >
+      <div class="flex items-center gap-1.5">
         <USwitch
           id="scan-ai-review"
           v-model="useLlm"
@@ -562,24 +676,7 @@ async function submit() {
           />
         </UTooltip>
       </div>
-      <UDropdownMenu
-        :items="exampleItems"
-        :content="{ align: 'start' }"
-      >
-        <UButton
-          icon="i-lucide-sparkles"
-          color="neutral"
-          variant="link"
-          size="sm"
-          trailing-icon="i-lucide-chevron-down"
-          class="px-0"
-          :disabled="submitting"
-        >
-          Examples
-        </UButton>
-      </UDropdownMenu>
       <UButton
-        v-if="!isMcpServer"
         color="neutral"
         variant="link"
         size="sm"

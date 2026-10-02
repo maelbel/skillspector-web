@@ -29,10 +29,37 @@ export default defineAppConfig({
         base: 'rounded-xs'
       }
     },
+    link: {
+      base: 'cursor-pointer'
+    },
     select: {
       slots: {
         base: 'cursor-pointer',
         item: 'cursor-pointer'
+      }
+    },
+    selectMenu: {
+      slots: {
+        base: 'cursor-pointer',
+        item: 'cursor-pointer'
+      }
+    },
+    // The field itself is typed in; its toggle and items are clicked.
+    inputMenu: {
+      slots: {
+        trailing: 'cursor-pointer',
+        item: 'cursor-pointer'
+      }
+    },
+    dropdownMenu: {
+      slots: {
+        item: 'cursor-pointer'
+      }
+    },
+    checkbox: {
+      slots: {
+        base: 'cursor-pointer',
+        label: 'cursor-pointer'
       }
     },
     switch: {
