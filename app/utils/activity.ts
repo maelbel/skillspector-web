@@ -20,6 +20,8 @@ const VERBS: Record<string, { verb: string, icon: string }> = {
   'settings.quotas_changed': { verb: 'changed scan quotas', icon: 'i-lucide-gauge' },
   'scan.shared': { verb: 'shared the result of a scan of', icon: 'i-lucide-link' },
   'scan.unshared': { verb: 'revoked the shared link to a scan of', icon: 'i-lucide-unlink' },
+  'scan.badge_added': { verb: 'added to a status badge a scan of', icon: 'i-lucide-badge-check' },
+  'scan.badge_removed': { verb: 'removed from a status badge a scan of', icon: 'i-lucide-badge-x' },
   'token.created': { verb: 'created an API token for', icon: 'i-lucide-key-square' },
   'token.used': { verb: 'used an API token of', icon: 'i-lucide-terminal' },
   'token.revoked': { verb: 'revoked an API token of', icon: 'i-lucide-key-square' }

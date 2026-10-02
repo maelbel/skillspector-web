@@ -81,6 +81,10 @@ const shareToken = ref<string | null>(null)
 watch(() => status.value?.share_token ?? null, (token) => {
   shareToken.value = token
 }, { immediate: true })
+const onBadge = ref(false)
+watch(() => status.value?.badge ?? false, (badge) => {
+  onBadge.value = badge
+}, { immediate: true })
 
 // The target again, as this scan ran: the new result is compared with this one.
 const rescanning = ref(false)
@@ -345,7 +349,9 @@ const errorMessage = computed(() => {
       v-if="scanId"
       v-model:open="shareOpen"
       v-model:token="shareToken"
+      v-model:badge="onBadge"
       :scan-id="scanId"
+      :target="status?.target ?? ''"
     />
 
     <UAlert

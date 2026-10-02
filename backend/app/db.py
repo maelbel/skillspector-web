@@ -133,6 +133,16 @@ def get_shared_scan(token: str) -> ScanRow | None:
     return _store_or_raise().get_shared_scan(token)
 
 
+def set_badge(scan_id: str, on: bool) -> None:
+    """Put a shared scan on its target's status badge, or take it off."""
+    _store_or_raise().set_badge(scan_id, on)
+
+
+def badge_scan(target: str) -> ScanRow | None:
+    """The scan a target's badge shows: the latest one its owner put on it."""
+    return _store_or_raise().badge_scan(target)
+
+
 def append_log_line(scan_id: str, line: str, *, keep: int) -> None:
     _store_or_raise().append_log_line(scan_id, line, keep=keep)
 
