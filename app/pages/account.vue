@@ -188,6 +188,7 @@ async function save() {
             </form>
           </div>
         </UCard>
+        <DeleteAccountCard />
       </section>
     </div>
   </UContainer>

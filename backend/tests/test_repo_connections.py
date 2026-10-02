@@ -209,7 +209,7 @@ def test_disconnecting_deletes_and_revokes_the_token(client, github):
     assert github.revoked == [TOKEN]
 
 
-def test_deleting_the_account_deletes_its_connection(client):
+def test_deleting_the_account_deletes_and_revokes_its_connection(client, github):
     admin, alice, _ = _accounts(client)
     _connect(client, alice)
     alice_id = _user_id(client, alice)
@@ -217,6 +217,7 @@ def test_deleting_the_account_deletes_its_connection(client):
     client.delete(f"/admin/users/{alice_id}", headers=_bearer(admin))
 
     assert db.get_repo_connection(alice_id, "github") is None
+    assert github.revoked == [TOKEN]
 
 
 def test_an_api_token_cant_manage_connections(client):

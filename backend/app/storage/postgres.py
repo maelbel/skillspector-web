@@ -517,6 +517,12 @@ class PostgresStore:
             conn.execute("DELETE FROM scan_secrets WHERE scan_id = %s", (id,))
         return deleted > 0
 
+    def prune_account_records(self, *, audit_cutoff: float, now: float) -> int:
+        with self._pool.connection() as conn, conn.transaction():
+            deleted = conn.execute("DELETE FROM audit_log WHERE created_at < %s", (audit_cutoff,)).rowcount
+            conn.execute("DELETE FROM password_resets WHERE expires_at < %s", (now,))
+        return deleted
+
     def delete_scans_older_than(self, cutoff: float) -> int:
         # Pending/running scans are still owned by a live job; deleting them would lose the result.
         with self._pool.connection() as conn, conn.transaction():
@@ -637,14 +643,21 @@ class PostgresStore:
         with self._pool.connection() as conn:
             return conn.execute("SELECT COUNT(*) AS users FROM users").fetchone()["users"]
 
-    def delete_user(self, id: str) -> bool:
+    def delete_user(self, id: str) -> list[str] | None:
         with self._pool.connection() as conn, conn.transaction():
-            deleted = conn.execute("DELETE FROM users WHERE id = %s", (id,)).rowcount
-            conn.execute("DELETE FROM sessions WHERE user_id = %s", (id,))
-            conn.execute("DELETE FROM llm_credentials WHERE user_id = %s", (id,))
-            conn.execute("DELETE FROM api_tokens WHERE user_id = %s", (id,))
-            conn.execute("DELETE FROM repo_connections WHERE user_id = %s", (id,))
-        return deleted > 0
+            if conn.execute("SELECT 1 FROM users WHERE id = %s FOR UPDATE", (id,)).fetchone() is None:
+                return None
+            uploads = [row["upload"] for row in conn.execute("SELECT upload FROM scans WHERE owner_id = %s AND upload IS NOT NULL", (id,))]
+            conn.execute("DELETE FROM scan_log_lines WHERE scan_id IN (SELECT id FROM scans WHERE owner_id = %s)", (id,))
+            conn.execute("DELETE FROM scan_secrets WHERE scan_id IN (SELECT id FROM scans WHERE owner_id = %s)", (id,))
+            conn.execute("DELETE FROM scans WHERE owner_id = %s", (id,))
+            # Fixed names, never input.
+            for table in ("sessions", "password_resets", "llm_credentials", "api_tokens", "repo_connections"):
+                conn.execute(f"DELETE FROM {table} WHERE user_id = %s", (id,))
+            conn.execute("UPDATE audit_log SET actor_email = NULL, detail = NULL WHERE actor_id = %s", (id,))
+            conn.execute("UPDATE audit_log SET target_email = NULL, detail = NULL WHERE target_id = %s", (id,))
+            conn.execute("DELETE FROM users WHERE id = %s", (id,))
+        return uploads
 
     def set_repo_connection(self, *, user_id: str, provider: str, account_name: str, encrypted_token: str, now: float) -> None:
         self._execute(

@@ -424,7 +424,7 @@ async function deleteUser() {
     <UModal
       v-model:open="confirmingDelete"
       title="Delete user"
-      :description="`${user?.email} is signed out and can’t sign in again. Their scans stay, visible to admins.`"
+      :description="`Everything of ${user?.email}’s is deleted: their scans and reports, keys, tokens and connections. The activity log keeps their entries without their email. This can’t be undone.`"
     >
       <template #footer>
         <div class="flex w-full justify-end gap-2">

@@ -228,7 +228,9 @@ def test_the_activity_log_records_who_did_what(client):
 
     assert [e["action"] for e in page["items"]] == ["user.deleted", "user.suspended", "account.created", "account.created"]
     assert page["items"][0]["actor_email"] == "admin@example.com"
-    assert page["items"][0]["target_email"] == "alice@example.com"
+    # Deleted, alice's entries keep only her id.
+    assert {e["target_email"] for e in page["items"][:2]} == {None}
+    assert page["items"][1]["target_id"] == alice_id and page["items"][1]["detail"] is None
     assert page["total"] == 4
 
 

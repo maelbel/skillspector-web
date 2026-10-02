@@ -3,7 +3,7 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import claude_key, db, quotas, repo_connections
+from app import accounts, claude_key, db, quotas, repo_connections
 from app.auth import AuthError, api_tokens
 from app.auth.deps import CurrentViewer
 
@@ -237,3 +237,22 @@ def list_github_repositories(viewer: CurrentViewer) -> RepositoriesResponse:
 def disconnect_github(viewer: CurrentViewer) -> None:
     """Delete the GitHub tokens: private repositories can't be scanned until connecting again."""
     repo_connections.disconnect(_connecting_user(viewer))
+
+
+# Deleting the account (app/accounts.py).
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+@router.delete("", status_code=204)
+async def delete_own_account(req: DeleteAccountRequest, viewer: CurrentViewer) -> None:
+    """Delete the signed-in user's account and everything of theirs, once they confirm with their
+    password: their scans, keys, tokens and connections, and their name in the activity log."""
+    if viewer.user is None:
+        raise HTTPException(status_code=404, detail="There are no accounts on this server")
+    try:
+        await accounts.delete_account(viewer.user, viewer.user["id"], password=req.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

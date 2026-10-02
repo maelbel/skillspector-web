@@ -9,6 +9,8 @@ from app import db, monitoring
 logger = logging.getLogger(__name__)
 
 _SWEEP_INTERVAL_SECONDS = 3600.0
+# How long the activity log keeps an entry, whatever the scans' retention (the privacy policy says so).
+AUDIT_RETENTION_DAYS = 365
 
 _task: asyncio.Task | None = None
 
@@ -23,8 +25,10 @@ def set_retention_days(value: float | None) -> None:
 
 
 def sweep_once() -> int:
-    # Monitoring events are kept a month, whatever the scans' retention.
+    # Monitoring events are kept a month, and the activity log a year, whatever the scans' retention.
     monitoring.prune()
+    now = time.time()
+    db.prune_account_records(audit_cutoff=now - AUDIT_RETENTION_DAYS * 86400, now=now)
     retention_days = db.get_retention_days()
     if retention_days is None:
         return 0

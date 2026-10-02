@@ -13,6 +13,9 @@ export default defineEventHandler(async () => {
     // How an uploaded file reaches the API (backend/app/uploads.py); null when uploads are off.
     upload_store: 'local' | 'blob' | null
     max_upload_bytes: number
+    // What the privacy policy says is kept how long; scan_days is null when scans are kept until
+    // deleted, and retention null while the database is unreachable.
+    retention: { scan_days: number | null, session_days: number, activity_days: number } | null
   }>('/health', { baseURL: apiBase }).catch(() => ({
     status: 'down',
     mode: null,
@@ -22,6 +25,7 @@ export default defineEventHandler(async () => {
     claude_cli_available: false,
     transitive_max_depth: 0,
     upload_store: null,
-    max_upload_bytes: 0
+    max_upload_bytes: 0,
+    retention: null
   }))
 })

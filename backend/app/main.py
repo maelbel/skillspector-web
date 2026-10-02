@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse
 from skillspector import __version__ as skillspector_version
 from skillspector.llm_utils import is_llm_available
 
-from app import retention, uploads
+from app import db, retention, uploads
 from app.api.routes import (
     account,
     admin,
@@ -123,4 +123,14 @@ def health() -> dict:
         # straight to the Blob store first (blob); and the largest it takes.
         "upload_store": uploads.store_kind(settings),
         "max_upload_bytes": uploads.MAX_UPLOAD_BYTES,
+        # What the privacy policy says is kept how long; scans' is None when they're kept until deleted.
+        "retention": _retention(),
     }
+
+
+def _retention() -> dict | None:
+    try:
+        scan_days = db.get_retention_days()
+    except Exception:  # noqa: BLE001 - the database is down: health says so elsewhere
+        return None
+    return {"scan_days": scan_days, "session_days": settings.session_days, "activity_days": retention.AUDIT_RETENTION_DAYS}

@@ -3,7 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app import auth, db, quotas
+from app import accounts, auth, db, quotas
 from app.api.routes.account import AIUsage, ApiToken, ai_usage
 from app.api.routes.auth import UserResponse
 from app.auth import api_tokens
@@ -179,9 +179,12 @@ def send_reset_email(user_id: str, viewer: AdminViewer) -> None:
 
 
 @router.delete("/{user_id}", status_code=204, dependencies=[Depends(_require_accounts)])
-def delete_user(user_id: str, viewer: AdminViewer) -> None:
+async def delete_user(user_id: str, viewer: AdminViewer) -> None:
+    """Delete the account and everything of theirs (app/accounts.py)."""
+    if user_id == viewer.user["id"]:
+        raise HTTPException(status_code=409, detail="Delete your own account from your Account page")
     try:
-        auth.delete_user(viewer.user, user_id)
+        await accounts.delete_account(viewer.user, user_id)
     except auth.AuthError as exc:
         raise _raise(exc) from exc
 
