@@ -5,6 +5,8 @@ const botId = process.env.NUXT_PUBLIC_BOTID === 'true'
 // Vercel Web Analytics (app/analytics/vercel.client.ts), on the hosted version too. Read at build
 // time only: without it the plugin isn't built in, so self-hosted pages never load Vercel's script.
 const analytics = process.env.NUXT_PUBLIC_ANALYTICS === 'true'
+// Vercel Speed Insights (app/analytics/speed-insights.client.ts): the same, for Core Web Vitals.
+const speedInsights = process.env.NUXT_PUBLIC_SPEED_INSIGHTS === 'true'
 
 export default defineNuxtConfig({
   modules: [
@@ -13,7 +15,10 @@ export default defineNuxtConfig({
     '@nuxt/fonts'
   ],
 
-  plugins: analytics ? ['~/analytics/vercel.client'] : [],
+  plugins: [
+    ...(analytics ? ['~/analytics/vercel.client'] : []),
+    ...(speedInsights ? ['~/analytics/speed-insights.client'] : [])
+  ],
 
   devtools: {
     enabled: true

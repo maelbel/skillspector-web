@@ -1,5 +1,5 @@
-// Web Analytics on the hosted version (app/analytics/vercel.client.ts): what a page view or an
-// event may say. Only a route's pattern goes to Vercel, never its path: a path can hold a share
+// Web Analytics and Speed Insights on the hosted version (app/analytics/): what a page view, an
+// event or a measurement may say. Only a route's pattern goes to Vercel, never its path: a path can hold a share
 // link's token (/shared/<token>) or a scan's id, and a query string a scanned link (/?target=…).
 
 /** A route's pattern as Vercel shows routes: /scan/:id() → /scan/[id], /:path(.*)* → /[...path]. */
