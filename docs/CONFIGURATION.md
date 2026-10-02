@@ -71,6 +71,7 @@ or silently ignore stops the API from starting instead.
 | `NUXT_TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so rate limits use the client IP it appends to `X-Forwarded-For`. |
 | `NUXT_PUBLIC_BOTID` | `false` | Hosted on Vercel only: `true` turns on [BotID](https://vercel.com/docs/botid) for scan submissions, refusing ones it classifies as bots (`403`). Read at build time too. |
 | `NUXT_PUBLIC_ANALYTICS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Web Analytics](https://vercel.com/docs/analytics). Read at build time only: without it the build holds none of it, and pages make no request to Vercel. See [what it records](./SECURITY_MODEL.md#web-analytics). |
+| `NUXT_PUBLIC_SPEED_INSIGHTS` | `false` | Hosted on Vercel only: `true` builds in [Vercel Speed Insights](https://vercel.com/docs/speed-insights), Core Web Vitals from real visits. Read at build time only, like `NUXT_PUBLIC_ANALYTICS`. |
 | `NUXT_ALLOWED_HOST` | *unset* | Public hostname allowed by the development server (`nuxt dev`) only. |
 
 ## AI analysis

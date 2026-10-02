@@ -109,4 +109,9 @@ keeps no identifier for a visitor across days, so it needs no consent banner. Wh
 Vercel also records what it records for any page view: the referring site, the country, and the
 browser, operating system and device type. The privacy policy should list this.
 
+**Speed Insights**, built in only with `NUXT_PUBLIC_SPEED_INSIGHTS=true`, measures how fast pages
+load and respond (Core Web Vitals) in visitors' browsers, also without cookies. Each measurement
+names the route's pattern the same way, never its path or query, with the browser, device type and
+country, and the type of network connection.
+
 Found a vulnerability? Please report it privately — see [SECURITY.md](../SECURITY.md).
